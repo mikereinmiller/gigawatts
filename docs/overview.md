@@ -91,6 +91,7 @@ An account is one Claude Code config directory (`~/.claude`, or wherever `CLAUDE
 - **Tracking versus displaying.** Tracking means the engine reads an account's transcripts and limits into history. It runs whether or not anything is on screen, because a gap can't be filled after Claude Code deletes the transcripts. Tracking is on by default for every account found, a newly found account is announced in the view, and it can be turned off per account. Off means Gigawatts never reads that directory. Turning it off keeps existing history, and `gigawatts accounts forget` deletes it.
 - **Limits belong to the account.** If two directories are ever logged into the same account, they share one set of limits and keep separate cost history.
 - **A changed login.** If the account ID inside a directory changes, Gigawatts says so instead of mixing the two accounts' history.
+- **A switch Gigawatts didn't see.** Transcripts don't record which account made a request, so a directory that changed accounts before Gigawatts first ran (the work Mac moving from enterprise to Ultra in the same `~/.claude`) would otherwise put all its history under the newer account. Each config directory can carry a switch setting: a time and the earlier account ID. Requests before that time, and `cachedUsageUtilization` readings whose `fetchedAtMs` is before it, belong to the earlier account.
 
 ## Architecture
 
@@ -214,6 +215,7 @@ Settings live in `~/.config/gigawatts/config.toml` on both platforms, and data (
 | Store session titles, per account | On. Turning it off offers to delete stored titles |
 | Credit reset, per account | Midnight UTC on the 1st, labeled provisional until set |
 | Price overrides, per model | None |
+| Account switch, per config directory | None. A time and the earlier account ID; requests and `cachedUsageUtilization` readings before it belong to that account |
 | Daily `pricing.md` download | On |
 
 ## Insights skill (version 1.1)
