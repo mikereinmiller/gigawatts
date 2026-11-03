@@ -172,7 +172,7 @@ The price table comes from three layers. A built-in table is copied by hand from
 
 ## Attribution
 
-- **Repo.** When Gigawatts first sees a working directory, it asks git which repository the directory belongs to, resolving a worktree to its main checkout, and stores the repo's name, path, and remote URL with the request. It has to happen then, because a deleted worktree can't be resolved later. Directories outside git count as themselves, and directories under `/tmp` are grouped as "temporary."
+- **Repo.** When Gigawatts first sees a working directory, it asks git which repository the directory belongs to, resolving a worktree to its main checkout, and stores the repo's name, path, and remote URL with the request. It has to happen then, because a deleted worktree can't be resolved later. The one exception is the work Mac, where folders deleted before Gigawatts first ran there are resolved from the `repos.jsonl` files its enterprise capture runs saved, newest run first. Directories outside git count as themselves, and directories under `/tmp` are grouped as "temporary."
 - **Branch.** From the line's `gitBranch`. When that is `HEAD`, as during a rebase, Gigawatts asks git for the branch being worked on, and shows "detached" if git can't say.
 - **Skill and agent.** Straight from `attributionSkill` and `attributionAgent`. Lines with neither belong to the main conversation with no skill.
 - **No tickets.** Cost breaks down by repo and branch. Grouping branches into a larger piece of work is left to asking Claude, which needs no tracker or naming scheme. Branches are stored forever, so a ticket grouping could still be added later over all history.
