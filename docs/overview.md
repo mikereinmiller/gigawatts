@@ -26,7 +26,7 @@ Status: version 1 shaped. No code yet.
 3. **Every number shows its source and age.** For example: "32% weekly, from Claude Code, 4 min ago" or "$14.20 today, estimated."
 4. **Event-driven.** It reacts to file changes and sets no polling timers while Claude Code is idle.
 5. **Degrade instead of breaking.** Every source is undocumented or can change. When one changes, Gigawatts marks the numbers it affects and keeps showing the rest.
-6. **Numbers stay local.** The database holds counts, costs, models, repos, branches, times, and session titles. It never stores prompts, responses, tool inputs, file contents, or commands. Gigawatts never sends your data anywhere. Its one network request downloads Anthropic's public pricing page, and it can be turned off.
+6. **Numbers stay local.** The database holds counts, costs, models, repos, branches, times, and session titles. It never stores prompts, responses, tool inputs, file contents, or commands. Gigawatts never sends your data anywhere. The one network request planned, a daily download of Anthropic's public pricing page, is deferred to Later and could be turned off.
 
 ## Stages
 
@@ -71,7 +71,7 @@ Claude Code keeps desktop and Cowork transcripts indefinitely unless `desktopSes
 | Transcripts, `~/.claude/projects/**/*.jsonl` | Per request: tokens by type (input, output, thinking, cache reads, 5-minute and 1-hour cache writes, web searches), model and requested model, effort, speed, `inference_geo`, `attributionSkill`, `attributionAgent`, working directory, git branch, time, and `requestId`. Per session: `cost-state` records with the cost per model (written when the session ends), durations, lines changed, the session title (`ai-title`), and tools used | Partly. [Location and retention](https://code.claude.com/docs/en/claude-directory) are documented, the line format isn't | Primary source for cost, tokens, and history |
 | `.claude.json`, `cachedUsageUtilization` | A generic `limits` list (kind, scope, percent, severity, reset time), credits in `spend` (older `extra_usage` as a fallback), a weekly breakdown by surface, the `accountUuid` (but not the `organizationUuid`, so readings are assigned to an account through its directory's `oauthAccount`), and when it was fetched (`fetchedAtMs`). Claude Code doesn't refresh it during ordinary use | No | Read after every refresh. On its own it can be days old |
 | `get_usage` control request through an unmodified `claude -p` | Fresh limits and credits, refreshing `cachedUsageUtilization`. Without `skip_behaviors`, also the `behaviors` section that `/usage` shows as "What's contributed to your usage": behavior shares, top agents and skills, and recommendations. Costs no tokens | No (the SDK names it `usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET`) | Limits refresh every 10 minutes per active account, and when you look (see [Stale data and errors](#stale-data-and-errors)). `behaviors` fetched once a day per active account. Measured on Claude Code 2.1.314: 1.1–1.9 s and 258–305 MB peak per run, released when the process exits |
-| Anthropic's pricing page as Markdown, `https://platform.claude.com/docs/en/about-claude/pricing.md` | Per-token prices by model and token type, plus pricing rules (long prompts on Haiku 5.5, US-only inference at 1.1×, fast mode) | Yes, it's Anthropic's public docs | Daily price update. See [Cost](#cost) |
+| Anthropic's pricing page as Markdown, `https://platform.claude.com/docs/en/about-claude/pricing.md` | Per-token prices by model and token type, plus pricing rules (long prompts on Haiku 5.5, US-only inference at 1.1×, fast mode) | Yes, it's Anthropic's public docs | Prices copied by hand into the built-in table. A daily download is Later. See [Cost](#cost) |
 | Status line JSON | Live `rate_limits` on every Claude Code event | [Yes](https://code.claude.com/docs/en/statusline) | Possible later enhancement, not scheduled. It would be installed and removed with one command, wrap the user's existing status line script, and record what it receives, so limits stay current to the second while a session runs, at no cost |
 
 Sources considered and rejected:
@@ -100,7 +100,7 @@ Claude Code's files ──▶ engine ──▶ SQLite history ──▶ snapshot
   transcripts            readers     (private)          (view contract)               terminal
   .claude.json           cost model                                                   report page (1.1)
   claude -p get_usage    rollups                                                      insights skill (1.1)
-  pricing.md                                                                          macOS menu bar (2)
+                                                                                      macOS menu bar (2)
 ```
 
 - **Engine (Rust).** Always its own background process, and the only writer to the database. A lock file stops a second engine from starting. Opening the terminal view starts the engine if it isn't running, and `gigawatts service install` adds a systemd user unit on Linux or a launchd agent on macOS so it also starts at login (`gigawatts service uninstall` removes it). Once started, it runs until the machine restarts or `gigawatts stop`. Closing the view never stops it. While Claude Code is idle it sleeps with zero wakeups.
@@ -163,7 +163,7 @@ Claude Code records a dollar cost per session and model, and only when the sessi
 
 On a subscription, these dollars are what the usage would cost at API prices, not what you're charged.
 
-The price table comes from three layers. A built-in table is copied by hand from Anthropic's pricing page, with the date and link, for the first run and offline use. Once a day while Claude Code is in use, Gigawatts downloads `pricing.md`, reads its model pricing table, and maps names like "Claude Opus 5.5" to IDs like `claude-opus-5-5`. If that table can't be read or a price looks implausible, it keeps the last good copy and says so. Overrides in `config.toml` win over both. The pricing rules are prose on the page and change rarely, so they live in code.
+The price table comes from two layers. A built-in table is copied by hand from Anthropic's pricing page, with the date and link. Overrides in `config.toml` win over it, and `gigawatts doctor` names any model without a price. The pricing rules are prose on the page and change rarely, so they live in code. A daily download of `pricing.md` as a third layer is in Later, gated on open question 2.
 
 ## Pace
 
@@ -199,7 +199,7 @@ It shows one account at a time, starting with the one used most recently, with i
 ## Stale data and errors
 
 - **Stale limits.** Every limit shows its age. Opening the view refreshes any account whose reading is over 10 minutes old. `gigawatts status` prints the saved reading and asks the engine to refresh in the background, at most once per 10 minutes. A reading over an hour old is greyed out with "may not include use outside Claude Code," since chat and cloud sessions only show up through limits.
-- **Problems.** Each affected number carries a short marker, like "limits: refresh failing since 2 PM" or "cost estimated: no price for claude-opus-5-6." The footer shows when anything is wrong, and `gigawatts doctor` lists each problem with its cause and what to do. Watched problems include unrecognized transcript lines, unknown models, "adjusted" sessions, failing refreshes, and an unreadable `pricing.md`.
+- **Problems.** Each affected number carries a short marker, like "limits: refresh failing since 2 PM" or "cost estimated: no price for claude-opus-5-6." The footer shows when anything is wrong, and `gigawatts doctor` lists each problem with its cause and what to do. Watched problems include unrecognized transcript lines, unknown models, "adjusted" sessions, and failing refreshes.
 
 ## Settings
 
@@ -216,7 +216,6 @@ Settings live in `~/.config/gigawatts/config.toml` on both platforms, and data (
 | Credit reset, per account | Midnight UTC on the 1st, labeled provisional until set |
 | Price overrides, per model | None |
 | Account switch, per config directory | None. A time and the earlier account ID; requests and `cachedUsageUtilization` readings before it belong to that account |
-| Daily `pricing.md` download | On |
 
 ## Insights skill (version 1.1)
 
@@ -299,6 +298,7 @@ Later:
 - Movie theme looks, one at a time.
 - A one-time import of earlier `/spend` history (`~/.claude/spend/`), so months whose transcripts Claude Code already deleted still appear.
 - The status line integration, for limits that are current to the second, if a use case appears.
+- The daily `pricing.md` download, once open question 2 is settled in its favor. It would read the page's model pricing table, map names like "Claude Opus 5.5" to IDs like `claude-opus-5-5`, keep the last good copy when the table can't be read or a price looks implausible, and sit between the built-in table and the overrides.
 
 ## Existing tools and the gaps Gigawatts fills
 
@@ -331,13 +331,13 @@ Gigawatts targets what none of them do well: history that outlives log deletion,
 
 - **Undocumented formats.** Transcripts, `cachedUsageUtilization`, and `get_usage` can change in any Claude Code release. Each source sits behind its own reader with fixture tests, and `gigawatts doctor` reports what stopped making sense.
 - **`get_usage` rate limits.** It likely hits the same rate-limited endpoint other tools fight. Refreshes stay infrequent, back off on failure, and fall back to the cached copy.
-- **The pricing page changes shape.** If `pricing.md` stops parsing, Gigawatts keeps the last good table and says so, and the check against Claude Code's totals catches wrong prices.
+- **The built-in price table goes stale.** It is copied by hand, so a new model or price change leaves it behind. `gigawatts doctor` names any model without a price, and the check against Claude Code's totals flags a wrong price as an "adjusted" session.
 - **Swift adds a second language.** The view is kept thin so the Swift code stays small.
 
 ## Open questions
 
 1. **Whether per-request costs match Claude Code's totals.** An early build step compares them with the long-prompt, US-only, and fast-mode rules applied. If mismatches stay common, the "adjusted" label needs rethinking.
-2. **Whether Anthropic's docs terms allow automated downloads of `pricing.md`.** To check before building the updater. If not, the built-in table and overrides are the only sources.
+2. **Whether Anthropic's docs terms allow automated downloads of `pricing.md`.** Gates the daily download in Later. Anthropic's consumer terms ban scripted access to "Services" including "associated ... websites", while `robots.txt` and `llms.txt` invite readers. Until it's settled, the built-in table and overrides are the only sources.
 3. **The work Mac's headline numbers.** Settled 2026-11-02: the enterprise account reports monthly credits only (`spend` and `extra_usage`), with no 5-hour or weekly windows and no reset time.
 4. **Repo hosting and license.** Personal account or employer org. An employer IP policy may decide this. Blocks only a release to other people.
 5. **Whether Anthropic is comfortable with scheduled `get_usage` calls.** It runs Claude Code unmodified with the user's own login, which the policy page allows, but nothing public addresses running it on a schedule. Blocks only a release to other people.
