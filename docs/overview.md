@@ -166,7 +166,7 @@ The price table comes from three layers. A built-in table is copied by hand from
 
 ## Pace
 
-- **Limit pace.** Each limit compares how much is used with how much of its window has passed. Used less than has passed means under pace: at your average rate so far, you won't run out before the reset. The 5-hour limit always compares against even pace. Weekly limits start with even pace and switch to your own usual progress at this point in the week once four full weeks of readings exist, and the view labels which comparison it shows.
+- **Limit pace.** Each limit compares how much is used with how much of its window has passed. Used less than has passed means under pace: at your average rate so far, you won't run out before the reset. The 5-hour limit always compares against even pace. Weekly limits start with even pace and switch to your own usual progress at this point in the week once four full weeks of readings exist, and the view labels which comparison it shows. A credit limit with no reset time, like the enterprise account's monthly `spend`, is paced over the month from the account's credit reset setting and labeled provisional until that setting is set.
 - **Dollar pace.** Today's spend so far is compared with your usual spend by this clock time, meaning the median of your last 20 days of the same kind (workdays or weekend days) that had any usage. It flags an unusual day and says nothing about limits.
 - **Fastest-spending session.** Among sessions that wrote to their transcript in the last 15 minutes, the one that spent the most in those 15 minutes, shown with that rate and its total. Subagent requests count toward the session that launched them.
 
@@ -212,6 +212,7 @@ Settings live in `~/.config/gigawatts/config.toml` on both platforms, and data (
 | Tracking, per account | On |
 | Label, per account | The account's email |
 | Store session titles, per account | On. Turning it off offers to delete stored titles |
+| Credit reset, per account | Midnight UTC on the 1st, labeled provisional until set |
 | Price overrides, per model | None |
 | Daily `pricing.md` download | On |
 
