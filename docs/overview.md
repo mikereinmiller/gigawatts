@@ -2,7 +2,7 @@
 
 Gigawatts is a local usage monitor for Claude Code. It shows how much of your usage limits you've used, what your work cost, and where it went, from a terminal window or the menu bar. It spends no Claude tokens, needs no changes to Claude Code's settings, and never handles your login.
 
-Status: version 1 shaped. No code yet.
+Status: version 1 shaped. Slice 1 (`gigawatts check-costs`) is built.
 
 ## Goals
 
