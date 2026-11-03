@@ -5,6 +5,7 @@ use gigawatts::contract::{GroupBy, Range};
 use gigawatts::data::query;
 use gigawatts::pricing::PriceTable;
 use gigawatts::sources::claude_json::Account;
+use gigawatts::sources::git::Resolver;
 use gigawatts::sources::transcript::{Line, Request, RequestDetail, Tokens};
 use gigawatts::store::{FilePosition, Store};
 
@@ -25,7 +26,7 @@ const TOOLS: [&str; 5] = [
 const MODELS: [&str; 3] = ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"];
 const COMBINATIONS: usize = REPOS.len() * SKILLS.len() * MODELS.len();
 
-const MAX_BYTES: u64 = 100 * 1024 * 1024;
+const MAX_BYTES: u64 = 110 * 1024 * 1024;
 const MAX_TODAY: Duration = Duration::from_millis(5);
 const MAX_YEAR: Duration = Duration::from_millis(100);
 
@@ -86,7 +87,7 @@ fn request(random: &mut Random, date: &str, day: usize, n: usize, combination: u
                 random.below(1000)
             )),
             cwd: Some(format!("/Users/someone/Workspace/{repo}")),
-            git_branch: Some(format!("ab/branch-{}", random.below(20))),
+            git_branch: Some(format!("ab/branch-{}", n % SESSIONS_PER_DAY)),
             requested_model: Some(model.to_string()),
             advisor_model: Some("claude-opus-5-5".to_string()),
             effort: Some("medium".to_string()),
@@ -178,7 +179,13 @@ fn a_heavy_year_with_90_day_retention_stays_small_and_fast() {
             offset: 1,
         };
         store
-            .save_file(&position, &lines, &attribution, &table)
+            .save_file(
+                &position,
+                &lines,
+                &attribution,
+                &table,
+                &Resolver::default(),
+            )
             .unwrap();
     }
     let cutoff = shift(LAST_DAY, -(RETENTION_DAYS as i64 - 1));
@@ -194,18 +201,48 @@ fn a_heavy_year_with_90_day_retention_stays_small_and_fast() {
     let store = Store::open(&path).unwrap();
 
     let bytes = database_bytes(&path);
+    let requests = store.request_count().unwrap();
     let today = fastest_of_three(|| {
-        query(&store, Range::Today, GroupBy::Model, LAST_DAY).unwrap();
+        query(&store, Range::Today, GroupBy::Model, &[], LAST_DAY).unwrap();
     });
-    let year = fastest_of_three(|| {
-        query(&store, Range::All, GroupBy::Model, LAST_DAY).unwrap();
+    let year_by = |by: GroupBy| {
+        fastest_of_three(|| {
+            query(&store, Range::All, by, &[], LAST_DAY).unwrap();
+        })
+    };
+    let year = year_by(GroupBy::Model);
+    let year_by_repo = year_by(GroupBy::Repo);
+    let year_by_branch = year_by(GroupBy::Branch);
+    let year_drill = fastest_of_three(|| {
+        query(
+            &store,
+            Range::All,
+            GroupBy::Repo,
+            &[REPOS[0], "ab/branch-0"],
+            LAST_DAY,
+        )
+        .unwrap();
     });
 
     println!(
-        "{:.1} MB, today {today:?}, year {year:?}",
-        bytes as f64 / 1024.0 / 1024.0
+        "{:.1} MB, {} bytes per stored request, today {today:?}, year {year:?}, \
+         by repo {year_by_repo:?}, by branch {year_by_branch:?}, drill {year_drill:?}",
+        bytes as f64 / 1024.0 / 1024.0,
+        bytes / requests
     );
     assert!(bytes <= MAX_BYTES, "database is {bytes} bytes");
     assert!(today <= MAX_TODAY, "today's query took {today:?}");
     assert!(year <= MAX_YEAR, "the yearly report took {year:?}");
+    assert!(
+        year_by_repo <= MAX_YEAR,
+        "the yearly report by repo took {year_by_repo:?}"
+    );
+    assert!(
+        year_by_branch <= MAX_YEAR,
+        "the yearly report by branch took {year_by_branch:?}"
+    );
+    assert!(
+        year_drill <= MAX_YEAR,
+        "the drill to sessions took {year_drill:?}"
+    );
 }

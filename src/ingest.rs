@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use crate::accounts::Attribution;
 use crate::config::epoch_ms_from_text;
 use crate::pricing::PriceTable;
+use crate::sources::git::Resolver;
 use crate::sources::transcript::{Line, Request, parse_line, transcript_files};
 use crate::store::{self, FilePosition, Store};
 
@@ -69,16 +70,18 @@ pub fn ingest_tree(
     root: &Path,
     table: &PriceTable,
     attribution: &Attribution,
+    resolver: &Resolver,
 ) -> Result<Summary, Error> {
     let files = if root.is_file() {
         vec![root.to_path_buf()]
     } else {
         transcript_files(root).map_err(|error| Error::Io(root.to_path_buf(), error))?
     };
+    store.resolve_unplaced_folders(resolver)?;
     let mut summary = Summary::default();
     for path in files.iter().filter(|path| !is_set_aside(path)) {
         summary.files += 1;
-        ingest_file(store, path, table, attribution, &mut summary)?;
+        ingest_file(store, path, table, attribution, resolver, &mut summary)?;
     }
     Ok(summary)
 }
@@ -93,6 +96,7 @@ fn ingest_file(
     path: &Path,
     table: &PriceTable,
     attribution: &Attribution,
+    resolver: &Resolver,
     summary: &mut Summary,
 ) -> Result<(), Error> {
     let io_error = |error| Error::Io(path.to_path_buf(), error);
@@ -142,7 +146,7 @@ fn ingest_file(
         first_line_hash,
         offset: start + read.position as u64,
     };
-    store.save_file(&position, &lines, attribution, table)?;
+    store.save_file(&position, &lines, attribution, table, resolver)?;
     summary.files_with_new_lines += 1;
     Ok(())
 }

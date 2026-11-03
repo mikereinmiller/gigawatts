@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use gigawatts::accounts::Attribution;
 use gigawatts::ingest::ingest_tree;
 use gigawatts::pricing::PriceTable;
+use gigawatts::sources::git::Resolver;
 use gigawatts::sources::transcript::{Corpus, Request};
 use gigawatts::store::Store;
 
@@ -45,7 +46,14 @@ fn the_history_store_matches_the_transcripts_by_model() {
     let dir = tempfile::tempdir().unwrap();
     let mut store = Store::open(&dir.path().join("history.sqlite3")).unwrap();
 
-    ingest_tree(&mut store, &root, &table, &Attribution::default()).expect("ingest");
+    ingest_tree(
+        &mut store,
+        &root,
+        &table,
+        &Attribution::default(),
+        &Resolver::default(),
+    )
+    .expect("ingest");
 
     let mut by_request_id: HashMap<&str, &Request> = HashMap::new();
     for request in corpus.requests.values() {
@@ -64,14 +72,15 @@ fn the_history_store_matches_the_transcripts_by_model() {
         entry.0 += 1;
         entry.1 += table.price(request).unwrap_or(0.0);
     }
-    for row in store.totals_by_model(None).unwrap() {
-        let (requests, cost) = expected[row.key.as_str()];
+    let rows = store.totals_by_model(None).unwrap();
+    for row in rows.iter().filter(|row| !row.not_in_transcript) {
+        let (requests, cost) = expected[row.label.as_str()];
         let stored = row.cost_usd.unwrap_or(0.0);
         println!(
             "{}: {} stored vs {requests} in transcripts, ${stored:.4} vs ${cost:.4}",
-            row.key, row.requests
+            row.label, row.requests
         );
-        assert_eq!(row.requests, requests, "{}", row.key);
-        assert!((stored - cost).abs() < 1e-6, "{}", row.key);
+        assert_eq!(row.requests, requests, "{}", row.label);
+        assert!((stored - cost).abs() < 1e-6, "{}", row.label);
     }
 }

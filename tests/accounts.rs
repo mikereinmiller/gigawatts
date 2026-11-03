@@ -6,6 +6,7 @@ use gigawatts::config::Config;
 use gigawatts::config::Switch;
 use gigawatts::pricing::PriceTable;
 use gigawatts::sources::claude_json::Account;
+use gigawatts::sources::git::Resolver;
 use gigawatts::store::SeenLogin;
 use gigawatts::store::Store;
 
@@ -98,6 +99,7 @@ earlier_account = "{PERSON}/{ENTERPRISE_ORG}"
         &directories,
         &config,
         &PriceTable::built_in(),
+        &Resolver::default(),
     )
     .unwrap();
 
@@ -138,6 +140,7 @@ fn ingest_all(home: &mut Home, config: &Config) {
         &directories,
         config,
         &PriceTable::built_in(),
+        &Resolver::default(),
     )
     .unwrap();
 }
@@ -165,6 +168,7 @@ fn a_directory_whose_accounts_are_all_untracked_is_not_read() {
         &directories,
         &config,
         &PriceTable::built_in(),
+        &Resolver::default(),
     )
     .unwrap();
 

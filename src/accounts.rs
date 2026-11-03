@@ -6,6 +6,7 @@ use crate::config::{AccountSettings, Config, Switch, home_relative};
 use crate::ingest::{self, Summary, ingest_tree};
 use crate::pricing::PriceTable;
 use crate::sources::claude_json::{Account, Login, read_login};
+use crate::sources::git::Resolver;
 use crate::store::{self, LoginChange, SeenLogin, Store};
 
 #[derive(Debug, Clone, Default)]
@@ -181,6 +182,7 @@ pub fn ingest(
     directories: &[Directory],
     config: &Config,
     table: &PriceTable,
+    resolver: &Resolver,
 ) -> Result<Summary, ingest::Error> {
     let mut total = Summary::default();
     let now_ms = now_ms();
@@ -209,7 +211,7 @@ pub fn ingest(
         if !attribution.reads_anything() || !projects.is_dir() {
             continue;
         }
-        let summary = ingest_tree(store, &projects, table, &attribution)?;
+        let summary = ingest_tree(store, &projects, table, &attribution, resolver)?;
         if read_again {
             store.delete_emptied_sessions(&attribution.untracked)?;
         }

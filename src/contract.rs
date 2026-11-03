@@ -14,7 +14,62 @@ pub enum Range {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, clap::ValueEnum)]
 #[serde(rename_all = "lowercase")]
 pub enum GroupBy {
+    Repo,
+    Branch,
+    Skill,
+    Agent,
     Model,
+}
+
+impl GroupBy {
+    pub fn levels(self) -> &'static [Level] {
+        match self {
+            GroupBy::Repo => &[Level::Repo, Level::Branch, Level::Session],
+            GroupBy::Branch => &[Level::Branch, Level::Session],
+            GroupBy::Skill => &[Level::Skill, Level::Session],
+            GroupBy::Agent => &[Level::Agent, Level::Session],
+            GroupBy::Model => &[Level::Model, Level::Session],
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Level {
+    Repo,
+    Branch,
+    Skill,
+    Agent,
+    Model,
+    Session,
+}
+
+impl Level {
+    pub fn name(self) -> &'static str {
+        match self {
+            Level::Repo => "repo",
+            Level::Branch => "branch",
+            Level::Skill => "skill",
+            Level::Agent => "agent",
+            Level::Model => "model",
+            Level::Session => "session",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CostStatus {
+    Estimated,
+    Exact,
+    Adjusted,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct DrillStep {
+    pub level: Level,
+    pub key: String,
+    pub label: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -22,6 +77,8 @@ pub struct DataResponse {
     pub schema_version: u32,
     pub range: Range,
     pub group_by: GroupBy,
+    pub drill: Vec<DrillStep>,
+    pub level: Level,
     pub today: String,
     pub since: Option<String>,
     pub rows: Vec<DataRow>,
@@ -31,7 +88,10 @@ pub struct DataResponse {
 pub struct DataRow {
     pub account: Option<String>,
     pub account_label: String,
-    pub key: String,
+    pub key: Option<String>,
+    pub label: String,
+    pub not_in_transcript: bool,
+    pub status: Option<CostStatus>,
     pub requests: u64,
     pub input_tokens: u64,
     pub output_tokens: u64,

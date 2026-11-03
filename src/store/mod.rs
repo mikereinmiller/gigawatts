@@ -1,4 +1,4 @@
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt;
 use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
 use std::path::Path;
@@ -8,10 +8,16 @@ use rusqlite_migration::{M, Migrations};
 
 use crate::accounts::Attribution;
 use crate::config::{Switch, epoch_ms_from_text};
-use crate::contract::DataRow;
+use crate::contract::{DataRow, Level};
 use crate::pricing::PriceTable;
 use crate::sources::claude_json::{Account, Login};
+use crate::sources::git::{Place, Resolver};
 use crate::sources::transcript::{CostState, Line, Request, Tokens};
+
+mod reconcile;
+mod totals;
+
+pub use totals::Filter;
 
 #[derive(Debug)]
 pub enum Error {
@@ -92,6 +98,7 @@ fn migrations() -> Migrations<'static> {
         M::up(include_str!("migrations/002_accounts.sql")),
         M::up(include_str!("migrations/003_repricing.sql")),
         M::up(include_str!("migrations/004_login_history.sql")),
+        M::up(include_str!("migrations/005_attribution.sql")),
     ])
 }
 
@@ -140,11 +147,13 @@ impl Store {
         lines: &[Line],
         attribution: &Attribution,
         table: &PriceTable,
+        resolver: &Resolver,
     ) -> Result<()> {
         let transaction = self.connection.transaction()?;
         let mut writer = Writer::new(&transaction);
         let mut session_accounts: HashMap<&str, Option<Account>> = HashMap::new();
         let mut moved_sessions: BTreeSet<&str> = BTreeSet::new();
+        let mut partly_untracked_sessions: BTreeSet<&str> = BTreeSet::new();
         for line in lines {
             let Line::Request(request) = line else {
                 continue;
@@ -167,11 +176,15 @@ impl Store {
                 writer.request(request, account_id, table)?;
                 moved
             } else {
+                partly_untracked_sessions.insert(&request.session_id);
                 writer.drop_request(&request.request_id, account_id)?
             };
             if moved {
                 moved_sessions.insert(&request.session_id);
             }
+        }
+        for session_id in partly_untracked_sessions {
+            writer.set_cost_aside(session_id)?;
         }
         for line in lines {
             match line {
@@ -183,6 +196,10 @@ impl Store {
                         attribution,
                     )?;
                     if attribution.tracks(account.as_ref()) {
+                        if let Some(account) = &account {
+                            let account_id = writer.account(account)?;
+                            writer.claim_session(&state.session_id, account_id)?;
+                        }
                         writer.cost_state(state)?;
                     }
                 }
@@ -197,6 +214,11 @@ impl Store {
                 }
                 Line::Request(_) | Line::Unrecognized(_) => {}
             }
+        }
+        writer.resolve_places(resolver)?;
+        for session_id in std::mem::take(&mut writer.touched_sessions) {
+            let changed = reconcile::session(&transaction, session_id, table)?;
+            writer.changed_days.extend(changed);
         }
         for day in &writer.changed_days {
             rebuild_daily_totals(&transaction, day)?;
@@ -313,10 +335,7 @@ impl Store {
         if stored.as_deref().unwrap_or("none") == fingerprint {
             return Ok(false);
         }
-        transaction.execute(
-            "DELETE FROM file_positions WHERE substr(path, 1, length(?1)) = ?1",
-            [format!("{}/", projects.to_string_lossy())],
-        )?;
+        delete_positions_under(&transaction, &format!("{}/", projects.to_string_lossy()))?;
         transaction.execute(
             "INSERT INTO store_settings (key, value) VALUES (?1, ?2)
              ON CONFLICT (key) DO UPDATE SET value = excluded.value",
@@ -344,7 +363,8 @@ impl Store {
                 [&account.account_uuid, &account.organization_uuid],
             )?;
             transaction.execute_batch(
-                "DELETE FROM session_models WHERE session_id IN (SELECT id FROM emptied_sessions);
+                "DELETE FROM not_in_transcript WHERE session_id IN (SELECT id FROM emptied_sessions);
+                 DELETE FROM session_models WHERE session_id IN (SELECT id FROM emptied_sessions);
                  DELETE FROM sessions WHERE id IN (SELECT id FROM emptied_sessions);
                  DROP TABLE emptied_sessions;",
             )?;
@@ -424,6 +444,45 @@ impl Store {
         Ok(deleted as u64)
     }
 
+    pub fn resolve_unplaced_folders(&mut self, resolver: &Resolver) -> Result<()> {
+        let transaction = self.connection.transaction()?;
+        let unplaced: BTreeMap<i64, String> = transaction
+            .prepare(
+                "SELECT DISTINCT cwd.id, cwd.text FROM daily_totals
+                 JOIN labels AS cwd ON cwd.id = daily_totals.cwd_label
+                 WHERE daily_totals.cwd_label NOT IN (SELECT cwd_label FROM directories)",
+            )?
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+            .collect::<rusqlite::Result<_>>()?;
+        let unplaced_labels: Vec<i64> = unplaced.keys().copied().collect();
+        let mut writer = Writer::new(&transaction);
+        writer.cwds = unplaced;
+        writer.resolve_places(resolver)?;
+        let detached = writer.label(Some("detached"))?;
+        drop(writer);
+        let mut changed_days = BTreeSet::new();
+        let mut label_detached = transaction.prepare(
+            "UPDATE requests SET head_branch_label = ?2
+             WHERE cwd_label = ?1 AND head_branch_label IS NULL
+               AND git_branch_label = (SELECT id FROM labels WHERE text = 'HEAD')
+             RETURNING day",
+        )?;
+        for cwd_label in unplaced_labels {
+            let days = label_detached
+                .query_map(params![cwd_label, detached], |row| {
+                    row.get::<_, Option<String>>(0)
+                })?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            changed_days.extend(days.into_iter().flatten());
+        }
+        drop(label_detached);
+        for day in &changed_days {
+            rebuild_daily_totals(&transaction, day)?;
+        }
+        transaction.commit()?;
+        Ok(())
+    }
+
     pub fn forget(&mut self, account: &Account) -> Result<u64> {
         self.without_foreign_keys(|store| store.delete_account_rows(account))
     }
@@ -453,7 +512,8 @@ impl Store {
         };
         transaction.execute(
             "CREATE TEMP TABLE forgotten_sessions AS
-             SELECT DISTINCT session_id AS id FROM requests WHERE account_id = ?1",
+             SELECT session_id AS id FROM requests WHERE account_id = ?1
+             UNION SELECT id FROM sessions WHERE account_id = ?1",
             [account_id],
         )?;
         transaction.execute(
@@ -469,10 +529,19 @@ impl Store {
         let deleted =
             transaction.execute("DELETE FROM requests WHERE account_id = ?1", [account_id])?;
         transaction.execute_batch(
-            "DELETE FROM forgotten_sessions WHERE id IN (SELECT session_id FROM requests);
+            "DELETE FROM not_in_transcript WHERE session_id IN (SELECT id FROM forgotten_sessions);
              DELETE FROM session_models WHERE session_id IN (SELECT id FROM forgotten_sessions);
+             UPDATE sessions SET
+                 account_id = (SELECT account_id FROM requests
+                               WHERE session_id = sessions.id ORDER BY day, id LIMIT 1),
+                 total_cost_usd = NULL,
+                 cost_status = NULL,
+                 cost_forgotten = 1
+             WHERE id IN (SELECT id FROM forgotten_sessions);
+             DELETE FROM forgotten_sessions WHERE id IN (SELECT session_id FROM requests);
              DELETE FROM sessions WHERE id IN (SELECT id FROM forgotten_sessions);
-             DROP TABLE forgotten_sessions;",
+             DROP TABLE forgotten_sessions;
+             DELETE FROM store_settings WHERE key = 'price_table';",
         )?;
         transaction.execute(
             "UPDATE accounts SET email = NULL WHERE id = ?1",
@@ -484,11 +553,9 @@ impl Store {
     }
 
     pub fn forget_positions_under(&mut self, folder: &Path) -> Result<()> {
-        let prefix = format!("{}/", folder.to_string_lossy());
-        self.connection.execute(
-            "DELETE FROM file_positions WHERE substr(path, 1, length(?1)) = ?1",
-            [prefix],
-        )?;
+        let transaction = self.connection.transaction()?;
+        delete_positions_under(&transaction, &format!("{}/", folder.to_string_lossy()))?;
+        transaction.commit()?;
         Ok(())
     }
 
@@ -548,6 +615,13 @@ impl Store {
                 }
             }
         }
+        let reconciled: Vec<i64> = transaction
+            .prepare("SELECT id FROM sessions WHERE total_cost_usd IS NOT NULL")?
+            .query_map([], |row| row.get(0))?
+            .collect::<rusqlite::Result<_>>()?;
+        for session_id in reconciled {
+            changed_days.extend(reconcile::session(&transaction, session_id, table)?);
+        }
         for day in &changed_days {
             rebuild_daily_totals(&transaction, day)?;
         }
@@ -603,35 +677,7 @@ impl Store {
     }
 
     pub fn totals_by_model(&self, since: Option<&str>) -> Result<Vec<DataRow>> {
-        let mut statement = self.connection.prepare_cached(
-            "SELECT accounts.account_uuid || '/' || accounts.organization_uuid,
-                    coalesce(accounts.email, accounts.account_uuid || '/' || accounts.organization_uuid, 'No account'),
-                    model.text, sum(requests), sum(input_tokens), sum(output_tokens),
-                    sum(cache_read_tokens), sum(cache_write_5m_tokens + cache_write_1h_tokens),
-                    sum(web_searches), sum(cost_usd)
-             FROM daily_totals
-             JOIN labels AS model ON model.id = daily_totals.model_label
-             LEFT JOIN accounts ON accounts.id = daily_totals.account_id
-             WHERE day >= coalesce(?1, '')
-             GROUP BY daily_totals.account_id, model.text
-             ORDER BY daily_totals.account_id IS NULL, accounts.account_uuid,
-                      accounts.organization_uuid, sum(cost_usd) DESC, model.text",
-        )?;
-        let rows = statement.query_map([since], |row| {
-            Ok(DataRow {
-                account: row.get(0)?,
-                account_label: row.get(1)?,
-                key: row.get(2)?,
-                requests: row.get::<_, i64>(3)? as u64,
-                input_tokens: row.get::<_, i64>(4)? as u64,
-                output_tokens: row.get::<_, i64>(5)? as u64,
-                cache_read_tokens: row.get::<_, i64>(6)? as u64,
-                cache_write_tokens: row.get::<_, i64>(7)? as u64,
-                web_searches: row.get::<_, i64>(8)? as u64,
-                cost_usd: row.get(9)?,
-            })
-        })?;
-        Ok(rows.collect::<rusqlite::Result<_>>()?)
+        self.totals(Level::Model, since, &[])
     }
 }
 
@@ -641,6 +687,9 @@ struct Writer<'a> {
     sessions: HashMap<String, i64>,
     accounts: HashMap<Account, i64>,
     changed_days: BTreeSet<String>,
+    touched_sessions: BTreeSet<i64>,
+    cwds: BTreeMap<i64, String>,
+    head_requests: BTreeMap<String, Vec<String>>,
 }
 
 impl<'a> Writer<'a> {
@@ -651,6 +700,9 @@ impl<'a> Writer<'a> {
             sessions: HashMap::new(),
             accounts: HashMap::new(),
             changed_days: BTreeSet::new(),
+            touched_sessions: BTreeSet::new(),
+            cwds: BTreeMap::new(),
+            head_requests: BTreeMap::new(),
         }
     }
 
@@ -801,6 +853,16 @@ impl<'a> Writer<'a> {
         {
             self.changed_days.insert(day);
         }
+        self.touched_sessions.insert(session_id);
+        if let (Some(cwd_label), Some(cwd_text)) = (cwd, detail.cwd.as_deref()) {
+            self.cwds.insert(cwd_label, cwd_text.to_string());
+            if detail.git_branch.as_deref() == Some("HEAD") {
+                self.head_requests
+                    .entry(cwd_text.to_string())
+                    .or_default()
+                    .push(request.request_id.clone());
+            }
+        }
         let mut add_tool = self.transaction.prepare_cached(
             "INSERT OR IGNORE INTO request_tools (request_row_id, tool_label)
              SELECT id, ?2 FROM requests WHERE request_id = ?1",
@@ -837,6 +899,32 @@ impl<'a> Writer<'a> {
         Ok(true)
     }
 
+    fn set_cost_aside(&mut self, uuid: &str) -> Result<()> {
+        let session_id: Option<i64> = self
+            .transaction
+            .query_row("SELECT id FROM sessions WHERE uuid = ?1", [uuid], |row| {
+                row.get(0)
+            })
+            .optional()?;
+        self.touched_sessions.extend(session_id);
+        self.transaction.execute(
+            "DELETE FROM not_in_transcript
+             WHERE session_id = (SELECT id FROM sessions WHERE uuid = ?1)",
+            [uuid],
+        )?;
+        self.transaction.execute(
+            "DELETE FROM session_models
+             WHERE session_id = (SELECT id FROM sessions WHERE uuid = ?1)",
+            [uuid],
+        )?;
+        self.transaction.execute(
+            "UPDATE sessions SET total_cost_usd = NULL, cost_status = NULL, cost_set_aside = 1
+             WHERE uuid = ?1",
+            [uuid],
+        )?;
+        Ok(())
+    }
+
     fn reclaim_session(&mut self, uuid: &str, account_id: i64) -> Result<()> {
         let session_id = self.session(uuid)?;
         self.transaction.execute(
@@ -855,15 +943,68 @@ impl<'a> Writer<'a> {
         Ok(())
     }
 
+    fn resolve_places(&mut self, resolver: &Resolver) -> Result<()> {
+        for (cwd_label, cwd) in std::mem::take(&mut self.cwds) {
+            let known: bool = self.transaction.query_row(
+                "SELECT EXISTS (SELECT 1 FROM directories WHERE cwd_label = ?1)",
+                [cwd_label],
+                |row| row.get(0),
+            )?;
+            if known {
+                continue;
+            }
+            let (name, path, remote) = match resolver.place(Path::new(&cwd)) {
+                Place::Repo { name, path, remote } => {
+                    (name, Some(path.to_string_lossy().into_owned()), remote)
+                }
+                Place::Temporary => ("temporary".to_string(), None, None),
+                Place::Unknown => continue,
+                Place::Itself(path) => (
+                    path.file_name()
+                        .map_or_else(|| cwd.clone(), |name| name.to_string_lossy().into_owned()),
+                    Some(cwd.clone()),
+                    None,
+                ),
+            };
+            self.transaction.execute(
+                "INSERT INTO directories (cwd_label, repo_name, repo_path, remote_url)
+                 VALUES (?1, ?2, ?3, ?4)",
+                params![cwd_label, name, path, remote],
+            )?;
+        }
+        for (cwd, request_ids) in std::mem::take(&mut self.head_requests) {
+            let branch = resolver
+                .head_branch(Path::new(&cwd))
+                .unwrap_or_else(|| "detached".to_string());
+            let branch_label = self.label(Some(&branch))?;
+            let mut statement = self.transaction.prepare_cached(
+                "UPDATE requests SET head_branch_label = ?2
+                 WHERE request_id = ?1 AND head_branch_label IS NULL
+                 RETURNING day",
+            )?;
+            for request_id in request_ids {
+                let mut updated = statement.query(params![request_id, branch_label])?;
+                if let Some(row) = updated.next()?
+                    && let Some(day) = row.get::<_, Option<String>>(0)?
+                {
+                    self.changed_days.insert(day);
+                }
+            }
+        }
+        Ok(())
+    }
+
     fn cost_state(&mut self, state: &CostState) -> Result<()> {
         let session_id = self.session(&state.session_id)?;
+        self.touched_sessions.insert(session_id);
         let totals = &state.totals;
         let updated = self.transaction.execute(
             "UPDATE sessions SET
                 total_cost_usd = ?2, start_time_ms = ?3, api_duration_ms = ?4,
                 api_duration_without_retries_ms = ?5, tool_duration_ms = ?6, duration_ms = ?7,
                 lines_added = ?8, lines_removed = ?9, has_unknown_model_cost = ?10
-             WHERE id = ?1 AND (total_cost_usd IS NULL OR total_cost_usd <= ?2)",
+             WHERE id = ?1 AND NOT cost_forgotten AND NOT cost_set_aside
+               AND (total_cost_usd IS NULL OR total_cost_usd <= ?2)",
             params![
                 session_id,
                 state.total_cost_usd,
@@ -931,6 +1072,22 @@ fn projects_prefix(directory: &str) -> String {
 
 fn delete_positions_under(transaction: &Transaction, prefix: &str) -> Result<()> {
     transaction.execute(
+        "UPDATE sessions SET cost_set_aside = 0
+         WHERE cost_set_aside AND EXISTS (
+             SELECT 1 FROM file_positions
+             WHERE substr(path, 1, length(?1)) = ?1 AND instr(path, sessions.uuid) > 0
+         )",
+        [prefix],
+    )?;
+    transaction.execute(
+        "UPDATE sessions SET cost_forgotten = 0, account_id = NULL
+         WHERE cost_forgotten AND EXISTS (
+             SELECT 1 FROM file_positions
+             WHERE substr(path, 1, length(?1)) = ?1 AND instr(path, sessions.uuid) > 0
+         )",
+        [prefix],
+    )?;
+    transaction.execute(
         "DELETE FROM file_positions WHERE substr(path, 1, length(?1)) = ?1",
         [prefix],
     )?;
@@ -942,6 +1099,13 @@ fn logged_out_key(path: &str) -> String {
 }
 
 fn delete_unused_labels(transaction: &Transaction) -> Result<()> {
+    transaction.execute(
+        "DELETE FROM directories WHERE cwd_label NOT IN (
+            SELECT cwd_label FROM requests WHERE cwd_label IS NOT NULL
+            UNION SELECT cwd_label FROM daily_totals WHERE cwd_label IS NOT NULL
+         )",
+        [],
+    )?;
     transaction.execute(
         "DELETE FROM labels WHERE id NOT IN (
             SELECT label FROM (
@@ -959,11 +1123,14 @@ fn delete_unused_labels(transaction: &Transaction) -> Result<()> {
                 UNION SELECT user_type_label FROM requests
                 UNION SELECT cwd_label FROM requests
                 UNION SELECT git_branch_label FROM requests
+                UNION SELECT head_branch_label FROM requests
                 UNION SELECT skill_label FROM requests
                 UNION SELECT agent_label FROM requests
                 UNION SELECT tool_label FROM request_tools
                 UNION SELECT model_label FROM session_models
                 UNION SELECT cwd_label FROM daily_totals
+                UNION SELECT branch_label FROM daily_totals
+                UNION SELECT model_label FROM not_in_transcript
                 UNION SELECT skill_label FROM daily_totals
                 UNION SELECT agent_label FROM daily_totals
                 UNION SELECT model_label FROM daily_totals
@@ -1018,17 +1185,19 @@ fn rebuild_daily_totals(transaction: &Transaction, day: &str) -> Result<()> {
     transaction.execute("DELETE FROM daily_totals WHERE day = ?1", [day])?;
     transaction.execute(
         "INSERT INTO daily_totals (
-            day, account_id, cwd_label, skill_label, agent_label, model_label, requests,
-            input_tokens, output_tokens, thinking_tokens, cache_read_tokens,
+            day, account_id, cwd_label, branch_label, skill_label, agent_label, model_label,
+            requests, input_tokens, output_tokens, thinking_tokens, cache_read_tokens,
             cache_write_5m_tokens, cache_write_1h_tokens, web_searches, web_fetches, cost_usd
          )
-         SELECT day, account_id, cwd_label, skill_label, agent_label, model_label, count(*),
+         SELECT day, account_id, cwd_label, coalesce(head_branch_label, git_branch_label),
+                skill_label, agent_label, model_label, count(*),
                 sum(input_tokens), sum(output_tokens), sum(thinking_tokens), sum(cache_read_tokens),
                 sum(cache_write_5m_tokens), sum(cache_write_1h_tokens), sum(web_searches),
                 sum(web_fetches), sum(cost_usd)
          FROM requests
          WHERE day = ?1
-         GROUP BY account_id, cwd_label, skill_label, agent_label, model_label",
+         GROUP BY account_id, cwd_label, coalesce(head_branch_label, git_branch_label),
+                  skill_label, agent_label, model_label",
         [day],
     )?;
     Ok(())

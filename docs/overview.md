@@ -133,8 +133,10 @@ Rows are written only when something happens, never on a timer.
 | Table | One row per | Kept |
 |---|---|---|
 | Requests | API request, keyed by `requestId` | Forever by default. A setting limits it to a number of days |
-| Daily totals | Day × account × repo × skill × agent × model, updated in place | Forever |
+| Daily totals | Day × account × repo × branch × skill × agent × model, updated in place | Forever |
 | Sessions | Session, updated in place | Forever |
+| Not in transcript | Session × model, rewritten on each `cost-state` | Forever |
+| Directories | Working directory, resolved once | Forever |
 | Limit readings | Change in a limit percentage, per account | Forever |
 | Usage advice | Day × account, from `behaviors` | Forever |
 | File positions | Transcript file, updated in place | While the file exists |
@@ -151,7 +153,7 @@ Measured in an earlier design session (not rerun since):
 | Today's total, 1 million rows | 0.4 ms |
 | A month grouped by skill and model | 18 ms |
 
-Keeping every request with the wider field set, plus its tool names, measured 92 MB for a synthetic heavy year with the retention setting at 90 days, about 200 bytes a request including indexes. That works out to about 25 MB a year at your usage. Size is only a disk cost: SQLite's page cache stays at its fixed size, and reports read daily totals rather than requests. A test in the repo generates that heavy year and fails the build if the database exceeds 100 MB, today's query takes over 5 ms, or a yearly report takes over 100 ms.
+Keeping every request with the wider field set, plus its tool names, measured 92 MB for a synthetic heavy year with the retention setting at 90 days, about 200 bytes a request including indexes. The index on requests by session and the branch column in daily totals, both needed for cost checks and branch history, brought it to 106.3 MB, 248 bytes per stored request. That works out to about 30 MB a year at your usage. Size is only a disk cost: SQLite's page cache stays at its fixed size, and reports read daily totals rather than requests. A test in the repo generates that heavy year and fails the build if the database exceeds 110 MB, today's query takes over 5 ms, or a yearly report takes over 100 ms.
 
 ## Cost
 
@@ -164,7 +166,7 @@ Claude Code records a dollar cost per session and model, and only when the sessi
 
 On a subscription, these dollars are what the usage would cost at API prices, not what you're charged.
 
-The price table comes from two layers. A built-in table is copied by hand from Anthropic's pricing page, with the date and link. Overrides in `config.toml` win over it, and `gigawatts doctor` names any model without a price. When either layer changes, stored history is repriced on the next ingest. The pricing rules are prose on the page and change rarely, so they live in code. A daily download of `pricing.md` as a third layer is in Later, gated on open question 2.
+The price table comes from two layers. A built-in table is copied by hand from Anthropic's pricing page, with the date and link. Overrides in `config.toml` win over it, and `gigawatts doctor` names any model without a price. Until a model has a price, the cost Claude Code recorded for it goes into the "not in transcript" row, so totals still match without guessing which repo spent it. When either layer changes, stored history is repriced on the next ingest. The pricing rules are prose on the page and change rarely, so they live in code. A daily download of `pricing.md` as a third layer is in Later, gated on open question 2.
 
 ## Pace
 

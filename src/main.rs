@@ -8,6 +8,7 @@ use gigawatts::check_costs::CheckReport;
 use gigawatts::config::{self, Config};
 use gigawatts::contract::{GroupBy, Range};
 use gigawatts::scrub::scrub_sessions;
+use gigawatts::sources::git::Resolver;
 use gigawatts::sources::transcript::Corpus;
 use gigawatts::store::Store;
 
@@ -37,6 +38,9 @@ enum Command {
         range: Range,
         #[arg(long, value_enum, default_value = "model")]
         by: GroupBy,
+        /// Narrow to one row, by name or key: a repo, then its branch; any other grouping, its sessions. Repeat to go deeper
+        #[arg(long)]
+        drill: Vec<String>,
     },
     /// List Claude Code config directories, their accounts, and whether each is tracked
     Accounts {
@@ -89,7 +93,7 @@ fn main() -> ExitCode {
     match command {
         Command::CheckCosts { path } => check_costs(path.unwrap_or_else(default_projects_dir)),
         Command::Ingest => ingest(),
-        Command::Data { range, by } => data(range, by),
+        Command::Data { range, by, drill } => data(range, by, &drill),
         Command::Accounts { action } => match action {
             None => list_accounts(),
             Some(AccountsAction::Add { path }) => add_account_path(&path),
@@ -117,7 +121,10 @@ fn ingest() -> ExitCode {
         eprintln!("gigawatts: can't reprice stored requests: {error}");
         return ExitCode::from(2);
     }
-    let summary = match accounts::ingest(&mut store, &directories, &config, &table) {
+    let resolver = Resolver {
+        capture_runs: Some(home().join("gigawatts-enterprise-capture").join("runs")),
+    };
+    let summary = match accounts::ingest(&mut store, &directories, &config, &table, &resolver) {
         Ok(summary) => summary,
         Err(error) => {
             eprintln!("gigawatts: can't ingest: {error}");
@@ -141,7 +148,7 @@ fn ingest() -> ExitCode {
     ExitCode::SUCCESS
 }
 
-fn data(range: Range, by: GroupBy) -> ExitCode {
+fn data(range: Range, by: GroupBy, drill: &[String]) -> ExitCode {
     let config = match load_config() {
         Ok(config) => config,
         Err(code) => return code,
@@ -150,17 +157,23 @@ fn data(range: Range, by: GroupBy) -> ExitCode {
         Ok(store) => store,
         Err(code) => return code,
     };
+    let drill: Vec<&str> = drill.iter().map(String::as_str).collect();
     let response = store
         .local_today()
-        .and_then(|today| gigawatts::data::query(&store, range, by, &today));
+        .map_err(gigawatts::data::Error::from)
+        .and_then(|today| gigawatts::data::query(&store, range, by, &drill, &today));
     match response {
         Ok(mut response) => {
             gigawatts::data::label_accounts(&mut response, &config);
             print!("{}", gigawatts::data::render(&response));
             ExitCode::SUCCESS
         }
-        Err(error) => {
+        Err(gigawatts::data::Error::Store(error)) => {
             eprintln!("gigawatts: can't query the history database: {error}");
+            ExitCode::from(2)
+        }
+        Err(error) => {
+            eprintln!("gigawatts: {error}");
             ExitCode::from(2)
         }
     }

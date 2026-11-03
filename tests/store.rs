@@ -6,6 +6,7 @@ use gigawatts::accounts::Attribution;
 use gigawatts::contract::DataRow;
 use gigawatts::ingest::{Summary, ingest_tree};
 use gigawatts::pricing::PriceTable;
+use gigawatts::sources::git::Resolver;
 use gigawatts::sources::transcript::Corpus;
 use gigawatts::store::Store;
 
@@ -23,6 +24,7 @@ fn ingest(store: &mut Store, projects: &Path) -> Summary {
         projects,
         &PriceTable::built_in(),
         &Attribution::default(),
+        &Resolver::default(),
     )
     .expect("ingest")
 }
@@ -208,7 +210,10 @@ fn total(
     DataRow {
         account: None,
         account_label: "No account".to_string(),
-        key: model.to_string(),
+        key: Some(model.to_string()),
+        label: model.to_string(),
+        not_in_transcript: false,
+        status: None,
         requests,
         input_tokens: input,
         output_tokens: output,
@@ -235,13 +240,14 @@ fn totals_by_model_match_the_fixture_transcripts() {
 
     ingest(&mut scratch.store, Path::new(FIXTURES));
     let mut totals = scratch.store.totals_by_model(None).unwrap();
+    totals.retain(|total| !total.not_in_transcript);
     for total in &mut totals {
-        let expected = priced(&total.key);
+        let expected = priced(&total.label);
         let stored = total.cost_usd.unwrap();
         assert!(
             (stored - expected).abs() < 1e-9,
             "{}: {stored} vs {expected}",
-            total.key
+            total.label
         );
         total.cost_usd = Some(expected);
     }
@@ -410,4 +416,202 @@ fn upgrading_keeps_a_directorys_recorded_login_change() {
         seen,
         vec![(0, "one".to_string()), (1000, "two".to_string())]
     );
+}
+
+#[test]
+fn upgrading_to_attribution_reads_every_transcript_again_and_reconciles_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let projects = dir.path().join("projects");
+    fs::create_dir_all(projects.join("p")).unwrap();
+    let transcript = projects.join("p").join("s1.jsonl");
+    fs::write(
+        &transcript,
+        r#"{"type":"assistant","sessionId":"s1","requestId":"r1","timestamp":"2026-01-08T12:00:00.000Z","cwd":"/Users/nobody/gone","gitBranch":"main","message":{"model":"claude-opus-5-5","usage":{"input_tokens":100000,"output_tokens":10000}}}
+{"type":"cost-state","sessionId":"s1","totalCostUSD":0.6,"modelUsage":{"claude-opus-5-5":{"inputTokens":100000,"outputTokens":10000,"cacheReadInputTokens":0,"cacheCreationInputTokens":0,"webSearchRequests":0,"costUSD":0.6}}}
+"#,
+    )
+    .unwrap();
+    let database = dir.path().join("history.sqlite3");
+    let connection = rusqlite::Connection::open(&database).unwrap();
+    for migration in [
+        "001_history.sql",
+        "002_accounts.sql",
+        "003_repricing.sql",
+        "004_login_history.sql",
+    ] {
+        let sql = fs::read_to_string(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("src/store/migrations")
+                .join(migration),
+        )
+        .unwrap();
+        connection.execute_batch(&sql).unwrap();
+    }
+    connection
+        .execute(
+            "INSERT INTO file_positions (path, device, inode, first_line_hash, offset)
+             VALUES (?1, 1, 1, NULL, 9999)",
+            [transcript.to_string_lossy()],
+        )
+        .unwrap();
+    connection
+        .execute_batch(
+            "PRAGMA user_version = 4;
+             INSERT INTO labels (id, text) VALUES (1, 'claude-opus-5-5'), (2, '/Users/nobody/gone'), (3, 'main');
+             INSERT INTO sessions (id, uuid, total_cost_usd) VALUES (1, 's1', 0.6);
+             INSERT INTO session_models VALUES (1, 1, 100000, 10000, 0, 0, 0, 0, 0, 0, 0, 0.6);
+             INSERT INTO requests (request_id, session_id, day, model_label, cwd_label, git_branch_label,
+                                   is_sidechain, input_tokens, output_tokens, thinking_tokens,
+                                   cache_read_tokens, cache_write_5m_tokens, cache_write_1h_tokens,
+                                   web_searches, web_fetches, cost_usd)
+             VALUES ('r1', 1, '2026-01-08', 1, 2, 3, 0, 100000, 10000, 0, 0, 0, 0, 0, 0, 0.6);
+             INSERT INTO daily_totals (day, cwd_label, model_label, requests, input_tokens, output_tokens,
+                                       thinking_tokens, cache_read_tokens, cache_write_5m_tokens,
+                                       cache_write_1h_tokens, web_searches, web_fetches, cost_usd)
+             VALUES ('2026-01-08', 2, 1, 1, 100000, 10000, 0, 0, 0, 0, 0, 0, 0.6);",
+        )
+        .unwrap();
+    drop(connection);
+
+    let mut store = Store::open(&database).unwrap();
+    assert_eq!(store.position(&transcript.to_string_lossy()).unwrap(), None);
+    ingest(&mut store, &projects);
+
+    assert_eq!(store.request_count().unwrap(), 1);
+    let connection = rusqlite::Connection::open(&database).unwrap();
+    let upgraded: (String, String, String) = connection
+        .query_row(
+            "SELECT directories.repo_name, branch.text, sessions.cost_status
+             FROM daily_totals
+             JOIN directories ON directories.cwd_label = daily_totals.cwd_label
+             JOIN labels AS branch ON branch.id = daily_totals.branch_label
+             JOIN sessions ON sessions.uuid = 's1'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .unwrap();
+    assert_eq!(
+        upgraded,
+        ("gone".to_string(), "main".to_string(), "exact".to_string())
+    );
+}
+
+#[test]
+fn upgrading_to_attribution_reconciles_a_session_whose_transcript_is_gone() {
+    let dir = tempfile::tempdir().unwrap();
+    let projects = dir.path().join("projects");
+    fs::create_dir_all(&projects).unwrap();
+    let database = dir.path().join("history.sqlite3");
+    let connection = rusqlite::Connection::open(&database).unwrap();
+    for migration in [
+        "001_history.sql",
+        "002_accounts.sql",
+        "003_repricing.sql",
+        "004_login_history.sql",
+    ] {
+        let sql = fs::read_to_string(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("src/store/migrations")
+                .join(migration),
+        )
+        .unwrap();
+        connection.execute_batch(&sql).unwrap();
+    }
+    connection
+        .execute(
+            "INSERT INTO store_settings (key, value) VALUES ('price_table', ?1)",
+            [PriceTable::built_in().fingerprint()],
+        )
+        .unwrap();
+    connection
+        .execute_batch(
+            "PRAGMA user_version = 4;
+             INSERT INTO labels (id, text) VALUES (1, 'claude-opus-5-5'), (2, '/Users/nobody/gone'), (3, 'main');
+             INSERT INTO sessions (id, uuid, total_cost_usd) VALUES (1, 's1', 1.0);
+             INSERT INTO session_models VALUES (1, 1, 150000, 12000, 0, 0, 0, 0, 0, 0, 0, 1.0);
+             INSERT INTO requests (request_id, session_id, day, model_label, cwd_label, git_branch_label,
+                                   is_sidechain, input_tokens, output_tokens, thinking_tokens,
+                                   cache_read_tokens, cache_write_5m_tokens, cache_write_1h_tokens,
+                                   web_searches, web_fetches, cost_usd)
+             VALUES ('r1', 1, '2026-01-08', 1, 2, 3, 0, 100000, 10000, 0, 0, 0, 0, 0, 0, 0.6);",
+        )
+        .unwrap();
+    drop(connection);
+
+    let mut store = Store::open(&database).unwrap();
+    store.reprice_if_changed(&PriceTable::built_in()).unwrap();
+    ingest(&mut store, &projects);
+
+    let connection = rusqlite::Connection::open(&database).unwrap();
+    let reconciled: (String, i64) = connection
+        .query_row(
+            "SELECT sessions.cost_status, not_in_transcript.input_tokens
+             FROM sessions JOIN not_in_transcript ON not_in_transcript.session_id = sessions.id",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(reconciled, ("exact".to_string(), 50_000));
+    let repo: String = connection
+        .query_row(
+            "SELECT repo_name FROM directories
+             JOIN labels ON labels.id = directories.cwd_label
+             WHERE labels.text = '/Users/nobody/gone'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(repo, "gone");
+}
+
+#[test]
+fn upgrading_to_attribution_labels_head_from_a_gone_transcript_detached() {
+    let dir = tempfile::tempdir().unwrap();
+    let projects = dir.path().join("projects");
+    fs::create_dir_all(&projects).unwrap();
+    let database = dir.path().join("history.sqlite3");
+    let connection = rusqlite::Connection::open(&database).unwrap();
+    for migration in [
+        "001_history.sql",
+        "002_accounts.sql",
+        "003_repricing.sql",
+        "004_login_history.sql",
+    ] {
+        let sql = fs::read_to_string(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("src/store/migrations")
+                .join(migration),
+        )
+        .unwrap();
+        connection.execute_batch(&sql).unwrap();
+    }
+    connection
+        .execute_batch(
+            "PRAGMA user_version = 4;
+             INSERT INTO labels (id, text) VALUES (1, 'claude-opus-5-5'), (2, '/Users/nobody/gone'), (3, 'HEAD');
+             INSERT INTO sessions (id, uuid) VALUES (1, 's1');
+             INSERT INTO requests (request_id, session_id, day, model_label, cwd_label, git_branch_label,
+                                   is_sidechain, input_tokens, output_tokens, thinking_tokens,
+                                   cache_read_tokens, cache_write_5m_tokens, cache_write_1h_tokens,
+                                   web_searches, web_fetches, cost_usd)
+             VALUES ('r1', 1, '2026-01-08', 1, 2, 3, 0, 100000, 10000, 0, 0, 0, 0, 0, 0, 0.6);",
+        )
+        .unwrap();
+    drop(connection);
+
+    let mut store = Store::open(&database).unwrap();
+    ingest(&mut store, &projects);
+
+    let connection = rusqlite::Connection::open(&database).unwrap();
+    let branches: Vec<String> = connection
+        .prepare(
+            "SELECT branch.text FROM daily_totals
+             JOIN labels AS branch ON branch.id = daily_totals.branch_label",
+        )
+        .unwrap()
+        .query_map([], |row| row.get(0))
+        .unwrap()
+        .collect::<rusqlite::Result<_>>()
+        .unwrap();
+    assert_eq!(branches, vec!["detached".to_string()]);
 }
