@@ -205,12 +205,31 @@ impl PriceTable {
     }
 
     pub fn price(&self, request: &Request) -> Option<f64> {
-        let prices = self.model(&request.model)?.for_request(
+        self.price_tokens(
+            &request.model,
             &request.tokens,
             request.inference_geo.as_deref(),
             request.speed.as_deref(),
-        );
-        Some(prices.cost(&request.tokens))
+        )
+    }
+
+    pub fn price_tokens(
+        &self,
+        model: &str,
+        tokens: &Tokens,
+        inference_geo: Option<&str>,
+        speed: Option<&str>,
+    ) -> Option<f64> {
+        let prices = self.model(model)?.for_request(tokens, inference_geo, speed);
+        Some(prices.cost(tokens))
+    }
+
+    pub fn fingerprint(&self) -> String {
+        let mut built_in: Vec<_> = self.built_in.iter().collect();
+        built_in.sort_by_key(|(model, _)| *model);
+        let mut overrides: Vec<_> = self.overrides.iter().collect();
+        overrides.sort_by_key(|(model, _)| model.as_str());
+        format!("{TABLE_DATE} {built_in:?} {overrides:?}")
     }
 }
 

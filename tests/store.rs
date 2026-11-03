@@ -1,0 +1,413 @@
+use std::fs::{self, OpenOptions};
+use std::io::Write;
+use std::path::Path;
+
+use gigawatts::accounts::Attribution;
+use gigawatts::contract::DataRow;
+use gigawatts::ingest::{Summary, ingest_tree};
+use gigawatts::pricing::PriceTable;
+use gigawatts::sources::transcript::Corpus;
+use gigawatts::store::Store;
+
+const PLAIN: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/tests/fixtures/projects/plain/00000001-0000-4000-8000-194e1652b207.jsonl"
+);
+const PLAIN_UNIQUE_REQUEST_IDS: u64 = 27;
+
+const FIXTURES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/projects");
+
+fn ingest(store: &mut Store, projects: &Path) -> Summary {
+    ingest_tree(
+        store,
+        projects,
+        &PriceTable::built_in(),
+        &Attribution::default(),
+    )
+    .expect("ingest")
+}
+
+fn request_line(request_id: &str, output_tokens: u64) -> String {
+    format!(
+        r#"{{"type":"assistant","sessionId":"s1","requestId":"{request_id}","timestamp":"2026-01-08T12:00:00.000Z","message":{{"model":"claude-opus-5-5","usage":{{"input_tokens":2,"output_tokens":{output_tokens}}}}}}}"#
+    ) + "\n"
+}
+
+struct Scratch {
+    _dir: tempfile::TempDir,
+    projects: std::path::PathBuf,
+    store: Store,
+}
+
+fn scratch() -> Scratch {
+    let dir = tempfile::tempdir().unwrap();
+    let projects = dir.path().join("projects");
+    fs::create_dir_all(projects.join("p")).unwrap();
+    let store = Store::open(&dir.path().join("history.sqlite3")).unwrap();
+    Scratch {
+        _dir: dir,
+        projects,
+        store,
+    }
+}
+
+fn opus_output(store: &Store) -> u64 {
+    let totals = store.totals_by_model(None).unwrap();
+    totals.iter().map(|total| total.output_tokens).sum()
+}
+
+#[test]
+fn ingesting_again_after_an_append_stores_each_request_id_once() {
+    let dir = tempfile::tempdir().unwrap();
+    let projects = dir.path().join("projects");
+    fs::create_dir_all(projects.join("p")).unwrap();
+    let transcript = projects.join("p").join("s.jsonl");
+    let bytes = fs::read(PLAIN).unwrap();
+    let cut = bytes.len() / 2;
+    fs::write(&transcript, &bytes[..cut]).unwrap();
+    let mut store = Store::open(&dir.path().join("history.sqlite3")).unwrap();
+
+    ingest(&mut store, &projects);
+    OpenOptions::new()
+        .append(true)
+        .open(&transcript)
+        .unwrap()
+        .write_all(&bytes[cut..])
+        .unwrap();
+    ingest(&mut store, &projects);
+
+    assert_eq!(store.request_count().unwrap(), PLAIN_UNIQUE_REQUEST_IDS);
+}
+
+#[test]
+fn an_unchanged_file_is_not_read_again() {
+    let mut scratch = scratch();
+    fs::write(
+        scratch.projects.join("p").join("s.jsonl"),
+        request_line("r1", 10),
+    )
+    .unwrap();
+
+    let first = ingest(&mut scratch.store, &scratch.projects);
+    let second = ingest(&mut scratch.store, &scratch.projects);
+
+    assert_eq!(
+        (first.files_with_new_lines, second.files_with_new_lines),
+        (1, 0)
+    );
+}
+
+#[test]
+fn a_partial_last_line_is_read_once_it_is_complete() {
+    let mut scratch = scratch();
+    let transcript = scratch.projects.join("p").join("s.jsonl");
+    let line = request_line("r1", 10);
+    fs::write(&transcript, &line[..line.len() / 2]).unwrap();
+
+    ingest(&mut scratch.store, &scratch.projects);
+    let before = scratch.store.request_count().unwrap();
+    fs::write(&transcript, &line).unwrap();
+    ingest(&mut scratch.store, &scratch.projects);
+
+    assert_eq!((before, scratch.store.request_count().unwrap()), (0, 1));
+}
+
+#[test]
+fn a_request_streamed_over_several_lines_keeps_its_final_output() {
+    let mut scratch = scratch();
+    let lines = [
+        request_line("r1", 6),
+        request_line("r1", 133),
+        request_line("r1", 133),
+    ]
+    .concat();
+    fs::write(scratch.projects.join("p").join("s.jsonl"), lines).unwrap();
+
+    ingest(&mut scratch.store, &scratch.projects);
+
+    assert_eq!(scratch.store.request_count().unwrap(), 1);
+    assert_eq!(opus_output(&scratch.store), 133);
+}
+
+#[test]
+fn a_repeated_request_in_another_file_counts_once() {
+    let mut scratch = scratch();
+    fs::write(
+        scratch.projects.join("p").join("s.jsonl"),
+        request_line("r1", 50),
+    )
+    .unwrap();
+    fs::write(
+        scratch.projects.join("p").join("t.jsonl"),
+        request_line("r1", 50),
+    )
+    .unwrap();
+
+    ingest(&mut scratch.store, &scratch.projects);
+
+    assert_eq!(opus_output(&scratch.store), 50);
+}
+
+#[test]
+fn skips_transcripts_claude_code_set_aside() {
+    let mut scratch = scratch();
+    let folder = scratch.projects.join("p");
+    fs::write(folder.join("s.jsonl"), request_line("r1", 10)).unwrap();
+    fs::write(
+        folder.join("s.superseded-1767916011592.jsonl"),
+        request_line("r2", 10),
+    )
+    .unwrap();
+    fs::write(
+        folder.join("s.jsonl.orphaned-1767916011592.jsonl"),
+        request_line("r3", 10),
+    )
+    .unwrap();
+
+    let summary = ingest(&mut scratch.store, &scratch.projects);
+
+    assert_eq!(summary.files, 1);
+    assert_eq!(scratch.store.request_count().unwrap(), 1);
+}
+
+#[test]
+fn a_rewritten_file_is_read_from_the_start() {
+    let mut scratch = scratch();
+    let transcript = scratch.projects.join("p").join("s.jsonl");
+    fs::write(
+        &transcript,
+        [request_line("r1", 10), request_line("r2", 10)].concat(),
+    )
+    .unwrap();
+    ingest(&mut scratch.store, &scratch.projects);
+
+    fs::write(
+        &transcript,
+        [
+            request_line("r3", 10),
+            request_line("r4", 10),
+            request_line("r5", 10),
+        ]
+        .concat(),
+    )
+    .unwrap();
+    ingest(&mut scratch.store, &scratch.projects);
+
+    assert_eq!(scratch.store.request_count().unwrap(), 5);
+}
+
+fn total(
+    model: &str,
+    requests: u64,
+    input: u64,
+    output: u64,
+    cache_read: u64,
+    cache_write: u64,
+    cost_usd: f64,
+) -> DataRow {
+    DataRow {
+        account: None,
+        account_label: "No account".to_string(),
+        key: model.to_string(),
+        requests,
+        input_tokens: input,
+        output_tokens: output,
+        cache_read_tokens: cache_read,
+        cache_write_tokens: cache_write,
+        web_searches: 0,
+        cost_usd: Some(cost_usd),
+    }
+}
+
+#[test]
+fn totals_by_model_match_the_fixture_transcripts() {
+    let mut scratch = scratch();
+    let corpus = Corpus::read(Path::new(FIXTURES)).unwrap();
+    let table = PriceTable::built_in();
+    let priced = |model: &str| -> f64 {
+        corpus
+            .requests
+            .values()
+            .filter(|request| request.model == model)
+            .map(|request| table.price(request).unwrap())
+            .sum()
+    };
+
+    ingest(&mut scratch.store, Path::new(FIXTURES));
+    let mut totals = scratch.store.totals_by_model(None).unwrap();
+    for total in &mut totals {
+        let expected = priced(&total.key);
+        let stored = total.cost_usd.unwrap();
+        assert!(
+            (stored - expected).abs() < 1e-9,
+            "{}: {stored} vs {expected}",
+            total.key
+        );
+        total.cost_usd = Some(expected);
+    }
+
+    assert_eq!(
+        totals,
+        vec![
+            total(
+                "claude-opus-5-5",
+                322,
+                662,
+                252107,
+                100950580,
+                1262266,
+                priced("claude-opus-5-5")
+            ),
+            total(
+                "claude-fable-5-1",
+                45,
+                1232,
+                113351,
+                1843991,
+                518733,
+                priced("claude-fable-5-1")
+            ),
+            total(
+                "claude-haiku-5-5",
+                6,
+                12,
+                11548,
+                334050,
+                110697,
+                priced("claude-haiku-5-5")
+            ),
+        ]
+    );
+}
+
+fn tool_line(request_id: &str, output_tokens: u64, tool: &str) -> String {
+    request_line(request_id, output_tokens).replace(
+        r#""usage":"#,
+        &format!(
+            r#""content":[{{"type":"tool_use","id":"t","name":"{tool}","input":{{}}}}],"usage":"#
+        ),
+    )
+}
+
+#[test]
+fn a_request_keeps_the_tools_from_each_of_its_lines() {
+    let mut scratch = scratch();
+    let lines = [
+        tool_line("r1", 10, "Read"),
+        tool_line("r1", 10, "Bash"),
+        tool_line("r1", 10, "Read"),
+    ]
+    .concat();
+    fs::write(scratch.projects.join("p").join("s.jsonl"), lines).unwrap();
+
+    ingest(&mut scratch.store, &scratch.projects);
+
+    assert_eq!(
+        scratch.store.request_tools("r1").unwrap(),
+        vec!["Bash", "Read"]
+    );
+}
+
+#[test]
+fn a_new_price_override_reprices_requests_already_stored() {
+    let mut scratch = scratch();
+    let line = request_line("r1", 10).replace("claude-opus-5-5", "claude-opus-5-6");
+    fs::write(scratch.projects.join("p").join("s.jsonl"), line).unwrap();
+    ingest(&mut scratch.store, &scratch.projects);
+    let before = scratch.store.totals_by_model(None).unwrap()[0].cost_usd;
+    let config = gigawatts::config::Config::parse(
+        "[prices.claude-opus-5-6]\ninput = 6.0\ncache_write_5m = 7.5\ncache_write_1h = 12.0\ncache_read = 0.6\noutput = 30.0",
+        Path::new("/home/me"),
+    )
+    .unwrap();
+
+    let repriced = scratch
+        .store
+        .reprice_if_changed(&config.price_table())
+        .unwrap();
+    let again = scratch
+        .store
+        .reprice_if_changed(&config.price_table())
+        .unwrap();
+
+    let after = scratch.store.totals_by_model(None).unwrap()[0]
+        .cost_usd
+        .unwrap();
+    assert_eq!(before, None);
+    assert_eq!((repriced, again), (true, false));
+    assert!((after - 0.000312).abs() < 1e-12, "{after}");
+}
+
+#[test]
+fn the_database_and_its_folder_are_readable_only_by_the_owner() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().unwrap();
+    let folder = dir.path().join("share").join("gigawatts");
+    let path = folder.join("history.sqlite3");
+
+    let store = Store::open(&path).unwrap();
+    store.request_count().unwrap();
+
+    let mode = |path: &Path| fs::metadata(path).unwrap().permissions().mode() & 0o777;
+    assert_eq!((mode(&folder), mode(&path)), (0o700, 0o600));
+}
+
+#[test]
+fn a_request_without_a_usable_timestamp_is_counted_as_unrecognized() {
+    let mut scratch = scratch();
+    let lines = [
+        r#"{"type":"assistant","sessionId":"s1","requestId":"r-none","message":{"model":"claude-opus-5-5","usage":{"input_tokens":2,"output_tokens":5}}}"#,
+        r#"{"type":"assistant","sessionId":"s1","requestId":"r-bad","timestamp":"yesterday","message":{"model":"claude-opus-5-5","usage":{"input_tokens":2,"output_tokens":5}}}"#,
+    ];
+    fs::write(
+        scratch.projects.join("p").join("s.jsonl"),
+        lines.join("\n") + "\n",
+    )
+    .unwrap();
+
+    let summary = ingest(&mut scratch.store, &scratch.projects);
+
+    assert_eq!(scratch.store.request_count().unwrap(), 0);
+    assert_eq!(
+        summary.unrecognized.get("assistant without a timestamp"),
+        Some(&2)
+    );
+}
+
+#[test]
+fn upgrading_keeps_a_directorys_recorded_login_change() {
+    let dir = tempfile::tempdir().unwrap();
+    let database = dir.path().join("history.sqlite3");
+    let connection = rusqlite::Connection::open(&database).unwrap();
+    for migration in ["001_history.sql", "002_accounts.sql", "003_repricing.sql"] {
+        let sql = fs::read_to_string(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("src/store/migrations")
+                .join(migration),
+        )
+        .unwrap();
+        connection.execute_batch(&sql).unwrap();
+    }
+    connection
+        .execute_batch(
+            "PRAGMA user_version = 3;
+             INSERT INTO accounts (id, account_uuid, organization_uuid) VALUES (1, 'a', 'one'), (2, 'a', 'two');
+             INSERT INTO directory_logins (path, account_id, previous_account_id, changed_at_ms)
+             VALUES ('/home/me/.claude', 2, 1, 1000);",
+        )
+        .unwrap();
+    drop(connection);
+
+    let store = Store::open(&database).unwrap();
+
+    let seen: Vec<(i64, String)> = store
+        .seen_logins("/home/me/.claude")
+        .unwrap()
+        .into_iter()
+        .map(|login| (login.from_ms, login.account.organization_uuid))
+        .collect();
+    assert_eq!(
+        seen,
+        vec![(0, "one".to_string()), (1000, "two".to_string())]
+    );
+}

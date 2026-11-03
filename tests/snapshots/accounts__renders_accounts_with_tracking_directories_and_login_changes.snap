@@ -1,0 +1,15 @@
+---
+source: tests/accounts.rs
+assertion_line: 461
+expression: "accounts::render(&rows, &[change], &directories, &home.path)"
+---
+Enterprise, not tracked, 0 requests
+  ID 00000000-0000-4000-8000-00000000000a/00000000-0000-4000-8000-0000000000e0
+  No config directory here is logged in to it now
+
+me@example.com, tracked, 15 requests
+  ID 00000000-0000-4000-8000-00000000000a/00000000-0000-4000-8000-0000000000f0
+  ~/.claude
+
+~/.claude-spare isn't logged in. Its requests are stored without an account.
+~/.claude changed login from Enterprise to me@example.com. Requests from before Gigawatts saw the change stay under Enterprise. To split at the exact time, set switched_at and earlier_account for this directory in config.toml.

@@ -88,7 +88,7 @@ Sources considered and rejected:
 An account is one Claude Code config directory (`~/.claude`, or wherever `CLAUDE_CONFIG_DIR` points), identified by the account ID inside its `.claude.json`, not by the folder's name. An account ID is the `accountUuid` and `organizationUuid` pair, because Claude Code keys a login by both and one person can have the same account in two organizations. Everything is stored per account from day one, and accounts are never added together.
 
 - **Finding accounts.** Gigawatts always checks `~/.claude`. At engine start it scans one level into the home folder for any directory shaped like a config directory (a `projects/` folder and a `.claude.json`), whatever it's named. Extra paths go in the config. `gigawatts accounts` shows what was found and whether each is tracked.
-- **Tracking versus displaying.** Tracking means the engine reads an account's transcripts and limits into history. It runs whether or not anything is on screen, because a gap can't be filled after Claude Code deletes the transcripts. Tracking is on by default for every account found, a newly found account is announced in the view, and it can be turned off per account. Off means Gigawatts never reads that directory. Turning it off keeps existing history, and `gigawatts accounts forget` deletes it.
+- **Tracking versus displaying.** Tracking means the engine reads an account's transcripts and limits into history. It runs whether or not anything is on screen, because a gap can't be filled after Claude Code deletes the transcripts. Tracking is on by default for every account found, a newly found account is announced in the view, and it can be turned off per account. Off means Gigawatts never reads that directory. Turning it off keeps existing history, and `gigawatts accounts forget` deletes it. Forgetting keeps the record of how far each transcript file was read, so a later login change can't read the deleted history back in under another account.
 - **Limits belong to the account.** If two directories are ever logged into the same account, they share one set of limits and keep separate cost history.
 - **A changed login.** If the account ID inside a directory changes, Gigawatts says so instead of mixing the two accounts' history.
 - **A switch Gigawatts didn't see.** Transcripts don't record which account made a request, so a directory that changed accounts before Gigawatts first ran (the work Mac moving from enterprise to Ultra in the same `~/.claude`) would otherwise put all its history under the newer account. Each config directory can carry a switch setting: a time and the earlier account ID. Requests before that time, and `cachedUsageUtilization` readings whose `fetchedAtMs` is before it, belong to the earlier account.
@@ -114,9 +114,9 @@ Claude Code's files ──▶ engine ──▶ SQLite history ──▶ snapshot
 | Area | Choice | Alternative considered |
 |---|---|---|
 | File watching | [`notify`](https://docs.rs/notify) 8.2 with `notify-debouncer-full` 0.7. Events only trigger a re-check of that file. A full scan runs at startup, when the watcher reports dropped events, and every few minutes as a safety net while Claude Code is active. The safety-net scans stop 10 minutes after the last file event, so nothing wakes while Claude Code is idle | A stat loop over known files, which wakes the machine constantly |
-| Reading transcripts | Per file: byte offset, file identity, and a hash of the first line, so only complete new lines are read. The offset is saved in the same transaction as the parsed data. Requests are stored by `requestId` and a repeated one is ignored, because Claude Code sometimes sets a transcript aside and writes a new one for the same session. Files named `*.superseded-*` or `*.orphaned-*` are skipped | `linemux`, last released 2022 |
+| Reading transcripts | Per file: byte offset, file identity, and a hash of the first line, so only complete new lines are read. The offset is saved in the same transaction as the parsed data. Requests are stored by `requestId`, and a repeated one keeps the line with the most output tokens, because Claude Code writes a streamed request over several lines and sometimes sets a transcript aside and writes a new one for the same session. Files named `*.superseded-*` or `*.orphaned-*` are skipped | `linemux`, last released 2022 |
 | Parsing | `serde_json` into narrow borrowed structs, skipping lines without `"usage"`, `"cost-state"`, or `"ai-title"` before parsing | `sonic-rs` or `simd-json`, only if the first full read proves slow |
-| Storage | `rusqlite` 0.41 (bundled SQLite), WAL mode, migrations with `rusqlite_migration`, retention below | `sqlx` needs an async runtime. `redb` has no SQL for rollups |
+| Storage | `rusqlite` 0.40 (bundled SQLite, the newest `rusqlite_migration` supports), WAL mode, migrations with `rusqlite_migration`, retention below | `sqlx` needs an async runtime. `redb` has no SQL for rollups |
 | Concurrency | Plain threads and channels, all blocking while idle | `tokio`, unnecessary without async networking |
 | Tests | `insta` snapshot tests over trimmed real transcripts, and `proptest` checks that the same bytes split into arbitrary appends produce the same totals. Unrecognized record types are counted, so format drift shows up instead of reading as zero | Hand-written unit tests only |
 
@@ -151,7 +151,7 @@ Measured in an earlier design session (not rerun since):
 | Today's total, 1 million rows | 0.4 ms |
 | A month grouped by skill and model | 18 ms |
 
-Keeping every request with the wider field set is estimated at 10 to 15 MB a year at your usage, not yet measured. A test in the repo generates a synthetic heavy year and fails the build if the database exceeds 50 MB with the retention setting at 90 days, today's query takes over 5 ms, or a yearly report takes over 100 ms.
+Keeping every request with the wider field set, plus its tool names, measured 92 MB for a synthetic heavy year with the retention setting at 90 days, about 200 bytes a request including indexes. That works out to about 25 MB a year at your usage. Size is only a disk cost: SQLite's page cache stays at its fixed size, and reports read daily totals rather than requests. A test in the repo generates that heavy year and fails the build if the database exceeds 100 MB, today's query takes over 5 ms, or a yearly report takes over 100 ms.
 
 ## Cost
 
@@ -164,7 +164,7 @@ Claude Code records a dollar cost per session and model, and only when the sessi
 
 On a subscription, these dollars are what the usage would cost at API prices, not what you're charged.
 
-The price table comes from two layers. A built-in table is copied by hand from Anthropic's pricing page, with the date and link. Overrides in `config.toml` win over it, and `gigawatts doctor` names any model without a price. The pricing rules are prose on the page and change rarely, so they live in code. A daily download of `pricing.md` as a third layer is in Later, gated on open question 2.
+The price table comes from two layers. A built-in table is copied by hand from Anthropic's pricing page, with the date and link. Overrides in `config.toml` win over it, and `gigawatts doctor` names any model without a price. When either layer changes, stored history is repriced on the next ingest. The pricing rules are prose on the page and change rarely, so they live in code. A daily download of `pricing.md` as a third layer is in Later, gated on open question 2.
 
 ## Pace
 

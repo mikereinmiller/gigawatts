@@ -1,0 +1,12 @@
+---
+source: tests/data.rs
+assertion_line: 109
+expression: render(&response)
+---
+Cost by model, all history, estimated from transcript prices
+
+No account
+model                         requests       input      output     cache read  cache write       cost
+claude-opus-5-5                    322         662      252107      100950580      1262266     $35.21
+claude-fable-5-1                    45        1232      113351        1843991       518733     $12.63
+claude-haiku-5-5                     6          12       11548         334050       110697      $0.05
