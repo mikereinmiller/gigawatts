@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use gigawatts::cost::{Cause, Verdict, reconcile};
 use gigawatts::pricing::PriceTable;
-use gigawatts::sources::transcript::{CostState, ModelCost, Request, Tokens};
+use gigawatts::sources::transcript::{CostState, ModelCost, Request, SessionTotals, Tokens};
 
 const SONNET: &str = "claude-sonnet-5-5";
 
@@ -21,6 +21,7 @@ fn request(model: &str, tokens: Tokens) -> Request {
         tokens,
         inference_geo: Some("global".to_string()),
         speed: Some("standard".to_string()),
+        ..Request::default()
     }
 }
 
@@ -34,8 +35,11 @@ fn cost_state(model: &str, tokens: Tokens, cost_usd: f64) -> CostState {
                 tokens,
                 has_cache_write_split: true,
                 cost_usd,
+                thinking_tokens: 0,
+                web_fetches: 0,
             },
         )]),
+        totals: SessionTotals::default(),
     }
 }
 

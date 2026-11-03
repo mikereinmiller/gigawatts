@@ -21,6 +21,7 @@ fn request(model: &str, tokens: Tokens, inference_geo: &str, speed: &str) -> Req
         tokens,
         inference_geo: Some(inference_geo.to_string()),
         speed: Some(speed.to_string()),
+        ..Request::default()
     }
 }
 

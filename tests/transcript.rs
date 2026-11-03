@@ -1,4 +1,6 @@
-use gigawatts::sources::transcript::{Corpus, Line, Tokens, parse_line};
+use gigawatts::sources::transcript::{
+    Corpus, Line, RequestDetail, SessionTotals, Tokens, parse_line,
+};
 
 const BLOCK: &str = r#"{"type":"assistant","sessionId":"s1","requestId":"r1","message":{"id":"m1","model":"claude-opus-5-5","usage":{"input_tokens":2,"output_tokens":10,"cache_read_input_tokens":100,"cache_creation_input_tokens":30,"cache_creation":{"ephemeral_5m_input_tokens":20,"ephemeral_1h_input_tokens":10}}}}"#;
 
@@ -132,4 +134,86 @@ fn a_file_that_cannot_be_read_names_itself_in_the_error() {
         "{error}"
     );
     std::fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
+fn reads_every_numeric_and_categorical_request_field() {
+    let line = r#"{"type":"assistant","sessionId":"s1","requestId":"r1","timestamp":"2026-01-08T23:47:05.959Z","cwd":"/Users/dir-1/dir-2","gitBranch":"branch-1","requestedModel":"claude-opus-5-5","advisorModel":"claude-fable-5-1","effort":"medium","perTurnEffort":"high","entrypoint":"cli","version":"2.1.295","userType":"external","isSidechain":true,"agentId":"a1","attributionSkill":"skill-1","attributionAgent":"agent-1","thinkingDurationMs":590,"message":{"model":"claude-opus-5-5","stop_reason":"tool_use","content":[{"type":"text","text":"x"},{"type":"tool_use","id":"t1","name":"Read","input":{"file_path":"/a"}},{"type":"tool_use","id":"t2","name":"mcp__server-1__tool-1","input":{}}],"usage":{"input_tokens":2,"output_tokens":178,"output_tokens_details":{"thinking_tokens":29},"server_tool_use":{"web_search_requests":1,"web_fetch_requests":3},"service_tier":"standard","inference_geo":"not_available","speed":"standard"}}}"#;
+    let Some(Line::Request(request)) = parse_line(line) else {
+        panic!("expected a request")
+    };
+
+    assert_eq!(
+        request.detail,
+        RequestDetail {
+            timestamp: Some("2026-01-08T23:47:05.959Z".to_string()),
+            cwd: Some("/Users/dir-1/dir-2".to_string()),
+            git_branch: Some("branch-1".to_string()),
+            requested_model: Some("claude-opus-5-5".to_string()),
+            advisor_model: Some("claude-fable-5-1".to_string()),
+            effort: Some("medium".to_string()),
+            per_turn_effort: Some("high".to_string()),
+            service_tier: Some("standard".to_string()),
+            stop_reason: Some("tool_use".to_string()),
+            entrypoint: Some("cli".to_string()),
+            version: Some("2.1.295".to_string()),
+            user_type: Some("external".to_string()),
+            is_sidechain: true,
+            agent_id: Some("a1".to_string()),
+            attribution_skill: Some("skill-1".to_string()),
+            attribution_agent: Some("agent-1".to_string()),
+            thinking_duration_ms: Some(590),
+            thinking_tokens: 29,
+            web_fetches: 3,
+            tools: vec!["Read".to_string(), "mcp__server-1__tool-1".to_string()],
+        }
+    );
+    assert_eq!(request.tokens.web_searches, 1);
+}
+
+#[test]
+fn reads_session_totals_from_a_cost_state() {
+    let line = r#"{"type":"cost-state","sessionId":"s1","startTime":1767916011592,"totalAPIDuration":232195,"totalAPIDurationWithoutRetries":180238,"totalCostUSD":0.5,"totalDuration":5491096,"totalLinesAdded":12,"totalLinesRemoved":3,"totalToolDuration":29233,"hasUnknownModelCost":false,"modelUsage":{"claude-haiku-5-5":{"inputTokens":1176,"outputTokens":21,"thinkingTokens":7,"webFetchRequests":2,"costUSD":0.5}}}"#;
+    let Some(Line::CostState(state)) = parse_line(line) else {
+        panic!("expected a cost-state")
+    };
+
+    assert_eq!(
+        state.totals,
+        SessionTotals {
+            start_time_ms: Some(1767916011592),
+            api_duration_ms: Some(232195),
+            api_duration_without_retries_ms: Some(180238),
+            tool_duration_ms: Some(29233),
+            duration_ms: Some(5491096),
+            lines_added: Some(12),
+            lines_removed: Some(3),
+            has_unknown_model_cost: Some(false),
+        }
+    );
+    let haiku = &state.models["claude-haiku-5-5"];
+    assert_eq!((haiku.thinking_tokens, haiku.web_fetches), (7, 2));
+}
+
+#[test]
+fn reads_the_session_title() {
+    let line = r#"{"type":"ai-title","sessionId":"s1","aiTitle":"Title 1"}"#;
+
+    assert_eq!(
+        parse_line(line),
+        Some(Line::Title {
+            session_id: "s1".to_string(),
+            title: "Title 1".to_string()
+        })
+    );
+}
+
+#[test]
+fn a_request_whose_content_is_text_has_no_tools() {
+    let line = r#"{"type":"assistant","sessionId":"s1","requestId":"r1","message":{"model":"claude-opus-5-5","content":"plain text","usage":{"input_tokens":2,"output_tokens":10}}}"#;
+    let Some(Line::Request(request)) = parse_line(line) else {
+        panic!("expected a request")
+    };
+
+    assert!(request.detail.tools.is_empty());
 }
