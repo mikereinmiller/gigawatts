@@ -139,7 +139,7 @@ Rows are written only when something happens, never on a timer.
 | Usage advice | Day × account, from `behaviors` | Forever |
 | File positions | Transcript file, updated in place | While the file exists |
 
-Request costs are provisional until Claude Code writes the session's `cost-state` when the session ends. Then the session's requests are checked and their daily totals recomputed. If request detail is limited by the setting, a daily cleanup deletes expired rows and runs SQLite's incremental vacuum so the file actually shrinks, and reports fall back to the daily totals and session rows.
+Request costs are provisional until Claude Code writes the session's `cost-state` when the session ends. Then the session's requests are checked, any spend not in the transcript is stored as its own row, and the daily totals are recomputed. If request detail is limited by the setting, a daily cleanup deletes expired rows and runs SQLite's incremental vacuum so the file actually shrinks, and reports fall back to the daily totals and session rows.
 
 Measured in an earlier design session (not rerun since):
 
@@ -159,7 +159,8 @@ Claude Code records a dollar cost per session and model, and only when the sessi
 
 1. Each request is priced from its tokens by type and the price table, applying the pricing rules its line records (long prompts on Haiku 5.5, `inference_geo` of `us`, fast mode). Until the session ends, that cost is labeled "estimated."
 2. When the `cost-state` arrives, the requests of each model are added up and compared with Claude Code's figure. If they match, the costs are exact and carry no label.
-3. If they don't match, the requests are scaled to Claude Code's total so every breakdown still adds up to it, the session is labeled "adjusted," and the gap is recorded. A gap means a price or a pricing rule is out of date, and `gigawatts doctor` names the model.
+3. If Claude Code counted more tokens than the transcript holds, usually because it billed requests it never wrote there, the request costs stay exact, and the difference is stored as a "not in transcript" row for that session and model, so every breakdown still adds up to Claude Code's total without guessing which repo, skill, or agent spent it. On the work Mac's history this is about 14% of spend.
+4. If the tokens match and the cost doesn't, a price or a pricing rule is out of date. The requests are scaled to Claude Code's total, the session is labeled "adjusted," the gap is recorded, and `gigawatts doctor` names the model.
 
 On a subscription, these dollars are what the usage would cost at API prices, not what you're charged.
 
@@ -199,7 +200,7 @@ It shows one account at a time, starting with the one used most recently, with i
 ## Stale data and errors
 
 - **Stale limits.** Every limit shows its age. Opening the view refreshes any account whose reading is over 10 minutes old. `gigawatts status` prints the saved reading and asks the engine to refresh in the background, at most once per 10 minutes. A reading over an hour old is greyed out with "may not include use outside Claude Code," since chat and cloud sessions only show up through limits.
-- **Problems.** Each affected number carries a short marker, like "limits: refresh failing since 2 PM" or "cost estimated: no price for claude-opus-5-6." The footer shows when anything is wrong, and `gigawatts doctor` lists each problem with its cause and what to do. Watched problems include unrecognized transcript lines, unknown models, "adjusted" sessions, and failing refreshes.
+- **Problems.** Each affected number carries a short marker, like "limits: refresh failing since 2 PM" or "cost estimated: no price for claude-opus-5-6." The footer shows when anything is wrong, and `gigawatts doctor` lists each problem with its cause and what to do. Watched problems include unrecognized transcript lines, unknown models, "adjusted" sessions (a price gap, not spend missing from the transcript), and failing refreshes.
 
 ## Settings
 
@@ -336,7 +337,7 @@ Gigawatts targets what none of them do well: history that outlives log deletion,
 
 ## Open questions
 
-1. **Whether per-request costs match Claude Code's totals.** An early build step compares them with the long-prompt, US-only, and fast-mode rules applied. If mismatches stay common, the "adjusted" label needs rethinking.
+1. **Whether per-request costs match Claude Code's totals.** Settled 2026-11-02 by `gigawatts check-costs` on the work Mac: every session and model whose transcript tokens equal Claude Code's matches (67 of 67). The rest differ because Claude Code bills requests it never writes to the transcript, about 14% of spend, which [Cost](#cost) now stores as its own row.
 2. **Whether Anthropic's docs terms allow automated downloads of `pricing.md`.** Gates the daily download in Later. Anthropic's consumer terms ban scripted access to "Services" including "associated ... websites", while `robots.txt` and `llms.txt` invite readers. Until it's settled, the built-in table and overrides are the only sources.
 3. **The work Mac's headline numbers.** Settled 2026-11-02: the enterprise account reports monthly credits only (`spend` and `extra_usage`), with no 5-hour or weekly windows and no reset time.
 4. **Repo hosting and license.** Personal account or employer org. An employer IP policy may decide this. Blocks only a release to other people.
