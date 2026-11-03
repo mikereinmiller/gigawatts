@@ -135,6 +135,8 @@ enum Kind {
     Title,
     Skill,
     AgentName,
+    McpServer,
+    McpTool,
 }
 
 impl Kind {
@@ -149,6 +151,8 @@ impl Kind {
             Kind::Title => format!("Title {n}"),
             Kind::Skill => format!("skill-{n}"),
             Kind::AgentName => format!("agent-{n}"),
+            Kind::McpServer => format!("server-{n}"),
+            Kind::McpTool => format!("tool-{n}"),
         }
     }
 }
@@ -225,7 +229,32 @@ impl Scrubber {
         if let Some(Value::Object(usage)) = source.get("usage") {
             out.insert("usage".into(), usage_object(usage).into());
         }
+        if let Some(Value::Array(content)) = source.get("content") {
+            let tool_uses = self.tool_uses(content);
+            if !tool_uses.is_empty() {
+                out.insert("content".into(), tool_uses.into());
+            }
+        }
         out
+    }
+
+    fn tool_uses(&mut self, content: &[Value]) -> Vec<Value> {
+        content
+            .iter()
+            .filter(|block| block["type"] == "tool_use")
+            .filter_map(|block| block["name"].as_str())
+            .map(|name| serde_json::json!({"type": "tool_use", "name": self.tool_name(name)}))
+            .collect()
+    }
+
+    fn tool_name(&mut self, name: &str) -> String {
+        let Some(qualified) = name.strip_prefix("mcp__") else {
+            return name.to_string();
+        };
+        let (server, tool) = qualified.split_once("__").unwrap_or((qualified, ""));
+        let server = self.rename(Kind::McpServer, server);
+        let tool = self.rename(Kind::McpTool, tool);
+        format!("mcp__{server}__{tool}")
     }
 
     fn rename_field(
