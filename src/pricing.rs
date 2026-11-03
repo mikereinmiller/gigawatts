@@ -80,7 +80,7 @@ pub struct ModelPrices {
 }
 
 impl ModelPrices {
-    const fn standard(prices: Prices) -> Self {
+    pub const fn standard(prices: Prices) -> Self {
         ModelPrices {
             standard: prices,
             long_prompt: None,
@@ -182,8 +182,19 @@ impl PriceTable {
     }
 
     pub fn with_overrides(overrides: HashMap<String, ModelPrices>) -> Self {
+        let built_in = built_in_models();
+        let mut overrides: HashMap<String, ModelPrices> = overrides
+            .into_iter()
+            .map(|(model, prices)| (without_date_suffix(&model).to_string(), prices))
+            .collect();
+        for (model, prices) in &mut overrides {
+            if let Some(known) = built_in.get(model.as_str()) {
+                prices.long_prompt = prices.long_prompt.or(known.long_prompt);
+                prices.fast = prices.fast.or(known.fast);
+            }
+        }
         PriceTable {
-            built_in: built_in_models(),
+            built_in,
             overrides,
         }
     }
