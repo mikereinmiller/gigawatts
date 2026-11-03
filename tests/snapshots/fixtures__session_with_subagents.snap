@@ -1,0 +1,13 @@
+---
+source: tests/fixtures.rs
+expression: "check_costs(\"subagents\")"
+---
+Checked 1 session-model pairs in 1 sessions from 2 files. 0 sessions have no cost-state and were skipped.
+Prices: built-in table copied 2026-11-02 from https://platform.claude.com/docs/en/about-claude/pricing.md
+
+model                         pairs  exact    rate    same-token exact       priced     recorded    share
+claude-opus-5-5                   1      0    0.0%           0/0              $0.98        $1.09    89.4%
+        1 transcript has fewer tokens than the cost-state
+
+Gate: FAIL. 0 of 0 pairs whose transcript tokens equal the cost-state's (0.0%) match within max(0.1%, $0.001); the gate needs 95%.
+All pairs: 0 of 1 match (0.0%). The rest is mostly spend Claude Code billed outside the transcript.

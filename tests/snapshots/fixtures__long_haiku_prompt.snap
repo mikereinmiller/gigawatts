@@ -1,0 +1,16 @@
+---
+source: tests/fixtures.rs
+expression: "check_costs(\"long-prompt\")"
+---
+Checked 3 session-model pairs in 1 sessions from 10 files. 0 sessions have no cost-state and were skipped.
+Prices: built-in table copied 2026-11-02 from https://platform.claude.com/docs/en/about-claude/pricing.md
+
+model                         pairs  exact    rate    same-token exact       priced     recorded    share
+claude-fable-5-1                  1      0    0.0%           0/0             $12.63       $15.08    83.7%
+        1 transcript has fewer tokens than the cost-state
+claude-haiku-5-5                  1      0    0.0%           0/0              $0.05        $0.09    56.1%
+        1 transcript has fewer tokens than the cost-state
+claude-opus-5-5                   1      1  100.0%           1/1             $32.37       $32.37   100.0%
+
+Gate: PASS. 1 of 1 pairs whose transcript tokens equal the cost-state's (100.0%) match within max(0.1%, $0.001); the gate needs 95%.
+All pairs: 1 of 3 match (33.3%). The rest is mostly spend Claude Code billed outside the transcript.
