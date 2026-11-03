@@ -335,7 +335,7 @@ Gigawatts targets what none of them do well: history that outlives log deletion,
 
 1. **Whether per-request costs match Claude Code's totals.** An early build step compares them with the long-prompt, US-only, and fast-mode rules applied. If mismatches stay common, the "adjusted" label needs rethinking.
 2. **Whether Anthropic's docs terms allow automated downloads of `pricing.md`.** To check before building the updater. If not, the built-in table and overrides are the only sources.
-3. **The work Mac's headline numbers.** Whether the work account reports 5-hour and weekly windows or monthly credits. Running `get_usage` on that machine settles it.
+3. **The work Mac's headline numbers.** Settled 2026-11-02: the enterprise account reports monthly credits only (`spend` and `extra_usage`), with no 5-hour or weekly windows and no reset time.
 4. **Repo hosting and license.** Personal account or employer org. An employer IP policy may decide this. Blocks only a release to other people.
 5. **Whether Anthropic is comfortable with scheduled `get_usage` calls.** It runs Claude Code unmodified with the user's own login, which the policy page allows, but nothing public addresses running it on a schedule. Blocks only a release to other people.
 6. **The Windows view technology.** Decided when Windows work starts.
