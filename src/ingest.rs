@@ -68,6 +68,16 @@ pub struct Summary {
     pub unrecognized: BTreeMap<String, usize>,
 }
 
+impl Summary {
+    pub fn add(&mut self, other: Summary) {
+        self.files += other.files;
+        self.files_with_new_lines += other.files_with_new_lines;
+        for (kind, count) in other.unrecognized {
+            *self.unrecognized.entry(kind).or_default() += count;
+        }
+    }
+}
+
 pub fn ingest_tree(
     store: &mut Store,
     root: &Path,

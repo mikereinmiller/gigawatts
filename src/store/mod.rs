@@ -94,15 +94,17 @@ pub struct Store {
     connection: Connection,
 }
 
+pub const MIGRATIONS: [&str; 6] = [
+    include_str!("migrations/001_history.sql"),
+    include_str!("migrations/002_accounts.sql"),
+    include_str!("migrations/003_repricing.sql"),
+    include_str!("migrations/004_login_history.sql"),
+    include_str!("migrations/005_attribution.sql"),
+    include_str!("migrations/006_problems.sql"),
+];
+
 fn migrations() -> Migrations<'static> {
-    Migrations::new(vec![
-        M::up(include_str!("migrations/001_history.sql")),
-        M::up(include_str!("migrations/002_accounts.sql")),
-        M::up(include_str!("migrations/003_repricing.sql")),
-        M::up(include_str!("migrations/004_login_history.sql")),
-        M::up(include_str!("migrations/005_attribution.sql")),
-        M::up(include_str!("migrations/006_problems.sql")),
-    ])
+    Migrations::new(MIGRATIONS.iter().map(|sql| M::up(sql)).collect())
 }
 
 impl Store {

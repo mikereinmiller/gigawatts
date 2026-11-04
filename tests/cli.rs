@@ -55,6 +55,33 @@ fn editing_a_symlinked_config_writes_through_the_link() {
 }
 
 #[test]
+fn schema_prints_the_snapshot_and_data_schemas() {
+    let dir = tempfile::tempdir().unwrap();
+
+    let output = gigawatts(Some(dir.path()), dir.path(), &["schema"]);
+
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    let schemas: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(schemas["snapshot"]["title"], "Snapshot");
+    assert_eq!(schemas["data"]["title"], "DataResponse");
+    for name in ["snapshot", "data"] {
+        let required = schemas[name]["required"].as_array().unwrap();
+        assert!(required.contains(&"schema_version".into()), "{name}");
+    }
+    assert_eq!(
+        schemas["snapshot"]["properties"]["engine_version"]["type"],
+        "string"
+    );
+    let account_fields = schemas["snapshot"]["$defs"]["AccountToday"]["required"]
+        .as_array()
+        .unwrap();
+    assert!(
+        account_fields.contains(&"account".into()),
+        "{account_fields:?}"
+    );
+}
+
+#[test]
 fn ingest_says_it_read_the_rest_when_one_transcript_is_unreadable() {
     use std::os::unix::fs::PermissionsExt as _;
     let dir = tempfile::tempdir().unwrap();

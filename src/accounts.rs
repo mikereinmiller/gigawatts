@@ -196,47 +196,142 @@ pub fn ingest(
         .iter()
         .filter(|directory| directory.unreadable.is_none())
     {
-        let mut attribution = attribution_for(&directory.path, directories, config);
-        let path = directory.path.to_string_lossy();
-        if let Some(login) = &directory.login {
-            let recorded = Login {
-                account: login.account.clone(),
-                email: login
-                    .email
-                    .clone()
-                    .filter(|_| attribution.tracks(Some(&login.account))),
-            };
-            store.record_login(&path, &recorded, now_ms)?;
-        } else {
-            store.record_logged_out(&path)?;
-        }
-        attribution.seen_logins = store.seen_logins(&path)?;
-        let projects = directory.projects();
-        let read_again =
-            store.read_again_if_switch_changed(&path, &projects, config.switch(&directory.path))?;
-        if !attribution.reads_anything() || !projects.is_dir() {
-            continue;
-        }
-        let summary = match ingest_tree(store, &projects, table, &attribution, resolver) {
-            Ok(summary) => summary,
-            Err(error) => {
-                kept_folders.push(projects);
-                first_error.get_or_insert(error);
-                continue;
+        let read = ingest_directory(
+            store,
+            directory,
+            directories,
+            config,
+            table,
+            resolver,
+            now_ms,
+            None,
+        );
+        match read {
+            Ok(Some(summary)) => {
+                kept_folders.push(directory.projects());
+                total.add(summary);
             }
-        };
-        kept_folders.push(projects);
-        if read_again {
-            store.delete_emptied_sessions(&attribution.untracked)?;
-        }
-        total.files += summary.files;
-        total.files_with_new_lines += summary.files_with_new_lines;
-        for (kind, count) in summary.unrecognized {
-            *total.unrecognized.entry(kind).or_default() += count;
+            Ok(None) => {}
+            Err(error) => {
+                kept_folders.push(directory.projects());
+                first_error.get_or_insert(error);
+            }
         }
     }
     store.forget_unrecognized_outside_folders(&kept_folders)?;
     first_error.map_or(Ok(total), Err)
+}
+
+pub fn ingest_files(
+    store: &mut Store,
+    directories: &[Directory],
+    config: &Config,
+    table: &PriceTable,
+    resolver: &Resolver,
+    files: &[PathBuf],
+) -> Result<Summary, ingest::Error> {
+    let mut total = Summary::default();
+    let mut first_error = None;
+    let now_ms = now_ms();
+    for directory in directories
+        .iter()
+        .filter(|directory| directory.unreadable.is_none())
+    {
+        let inside = files_inside(&directory.projects(), files);
+        if inside.is_empty() {
+            continue;
+        }
+        let read = ingest_directory(
+            store,
+            directory,
+            directories,
+            config,
+            table,
+            resolver,
+            now_ms,
+            Some(&inside),
+        );
+        match read {
+            Ok(Some(summary)) => total.add(summary),
+            Ok(None) => {}
+            Err(error) => {
+                first_error.get_or_insert(error);
+            }
+        }
+    }
+    first_error.map_or(Ok(total), Err)
+}
+
+fn files_inside(projects: &Path, files: &[PathBuf]) -> Vec<PathBuf> {
+    let canonical = projects.canonicalize().ok();
+    files
+        .iter()
+        .filter_map(|file| {
+            let relative = file
+                .strip_prefix(projects)
+                .ok()
+                .or_else(|| file.strip_prefix(canonical.as_ref()?).ok())?;
+            Some(projects.join(relative))
+        })
+        .filter(|file| file.is_file())
+        .collect()
+}
+
+#[allow(clippy::too_many_arguments)]
+fn ingest_directory(
+    store: &mut Store,
+    directory: &Directory,
+    directories: &[Directory],
+    config: &Config,
+    table: &PriceTable,
+    resolver: &Resolver,
+    now_ms: i64,
+    only: Option<&[PathBuf]>,
+) -> Result<Option<Summary>, ingest::Error> {
+    let mut attribution = attribution_for(&directory.path, directories, config);
+    let path = directory.path.to_string_lossy();
+    if let Some(login) = &directory.login {
+        let recorded = Login {
+            account: login.account.clone(),
+            email: login
+                .email
+                .clone()
+                .filter(|_| attribution.tracks(Some(&login.account))),
+        };
+        store.record_login(&path, &recorded, now_ms)?;
+    } else {
+        store.record_logged_out(&path)?;
+    }
+    attribution.seen_logins = store.seen_logins(&path)?;
+    let projects = directory.projects();
+    let read_again =
+        store.read_again_if_switch_changed(&path, &projects, config.switch(&directory.path))?;
+    if !attribution.reads_anything() || !projects.is_dir() {
+        return Ok(None);
+    }
+    let summary = match only {
+        Some(files) if !read_again => {
+            let mut summary = Summary::default();
+            let mut first_error = None;
+            for file in files {
+                match ingest_tree(store, file, table, &attribution, resolver) {
+                    Ok(read) => summary.add(read),
+                    Err(error) => {
+                        first_error.get_or_insert(error);
+                    }
+                }
+            }
+            if let Some(error) = first_error {
+                return Err(error);
+            }
+            summary
+        }
+        _ => ingest_tree(store, &projects, table, &attribution, resolver)?,
+    };
+    if read_again {
+        store.delete_emptied_sessions(&attribution.untracked)?;
+    }
+    Ok(Some(summary))
 }
 
 pub fn read_again_for(

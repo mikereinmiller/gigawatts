@@ -6,10 +6,10 @@ use clap::{Parser, Subcommand, ValueEnum};
 use gigawatts::accounts::{self, Directory};
 use gigawatts::check_costs::CheckReport;
 use gigawatts::config::{self, Config};
-use gigawatts::contract::{GroupBy, Range};
+use gigawatts::contract::{DataResponse, GroupBy, Range, Snapshot};
+use gigawatts::engine;
 use gigawatts::problems;
 use gigawatts::scrub::scrub_sessions;
-use gigawatts::sources::git::Resolver;
 use gigawatts::sources::transcript::Corpus;
 use gigawatts::store::Store;
 
@@ -31,7 +31,7 @@ enum Command {
         /// A transcript file or a folder of them (default: ~/.claude/projects)
         path: Option<PathBuf>,
     },
-    /// Read new transcript lines into the history database (temporary, until the engine does it)
+    /// Read new transcript lines into the history database, or ask the running engine to
     Ingest,
     /// Print cost history from the history database
     Data {
@@ -49,6 +49,17 @@ enum Command {
     Accounts {
         #[command(subcommand)]
         action: Option<AccountsAction>,
+    },
+    /// Stop the background engine
+    Stop,
+    /// Print the JSON Schema for the snapshot and `data` responses
+    Schema,
+    /// Start the background engine if it isn't running, replacing an older one
+    #[command(hide = true)]
+    Engine {
+        /// Run the engine in this process instead of in the background
+        #[arg(long)]
+        foreground: bool,
     },
     /// Write allowlisted copies of transcripts and their subagents for use as one test fixture
     #[command(hide = true)]
@@ -105,6 +116,15 @@ fn main() -> ExitCode {
             Some(AccountsAction::Titles { account, state }) => set_titles(&account, state.is_on()),
             Some(AccountsAction::Forget { account }) => forget(&account),
         },
+        Command::Stop => stop(),
+        Command::Schema => schema(),
+        Command::Engine { foreground } => {
+            if foreground {
+                run_engine()
+            } else {
+                start_engine()
+            }
+        }
         Command::Scrub { out, transcripts } => scrub(&transcripts, &out),
     }
 }
@@ -114,21 +134,24 @@ fn ingest() -> ExitCode {
         Ok(config) => config,
         Err(code) => return code,
     };
+    let directories = accounts::discover(&home(), &config);
+    report_unreadable(&directories);
+    match engine::refresh_if_running(&paths(), &executable()) {
+        Ok(true) => {
+            println!("The engine is running, so it read the new transcript lines.");
+            return ExitCode::SUCCESS;
+        }
+        Ok(false) => {}
+        Err(error) => {
+            eprintln!("gigawatts: {error}");
+            return ExitCode::from(2);
+        }
+    }
     let mut store = match open_store() {
         Ok(store) => store,
         Err(code) => return code,
     };
-    let directories = accounts::discover(&home(), &config);
-    report_unreadable(&directories);
-    let table = config.price_table();
-    if let Err(error) = store.reprice_if_changed(&table) {
-        eprintln!("gigawatts: can't reprice stored requests: {error}");
-        return ExitCode::from(2);
-    }
-    let resolver = Resolver {
-        capture_runs: Some(home().join("gigawatts-enterprise-capture").join("runs")),
-    };
-    let summary = match accounts::ingest(&mut store, &directories, &config, &table, &resolver) {
+    let summary = match engine::read_all(&mut store, &directories, &config, &paths().resolver()) {
         Ok(summary) => summary,
         Err(error @ gigawatts::ingest::Error::Store(_)) => {
             eprintln!("gigawatts: can't ingest: {error}");
@@ -172,6 +195,7 @@ fn data(range: Range, by: GroupBy, drill: &[String]) -> ExitCode {
         .and_then(|today| gigawatts::data::query(&store, range, by, &drill, &today))
         .and_then(|mut response| {
             response.problems = problems::collect(&store, &config.price_table())?;
+            response.problems.extend(engine::running_problems(&paths()));
             Ok(response)
         });
     match response {
@@ -196,7 +220,8 @@ fn doctor() -> ExitCode {
         return ExitCode::from(2);
     };
     match problems::collect(&store, &config.price_table()) {
-        Ok(problems) => {
+        Ok(mut problems) => {
+            problems.extend(engine::running_problems(&paths()));
             print!("{}", problems::render(&problems));
             if problems.is_empty() {
                 ExitCode::SUCCESS
@@ -255,6 +280,7 @@ fn add_account_path(path: &Path) -> ExitCode {
             path.display(),
             config_path().display()
         );
+        refresh_running_engine();
     }
     edited.map_or_else(|code| code, |()| ExitCode::SUCCESS)
 }
@@ -269,25 +295,35 @@ fn set_tracking(name: &str, on: bool) -> ExitCode {
         return code;
     }
     if !on {
+        refresh_running_engine();
         println!("Turned tracking off for {}. Its history stays.", row.label);
         return ExitCode::SUCCESS;
     }
-    let (Ok(config), Ok(mut store)) = (load_config(), open_store()) else {
-        return ExitCode::from(2);
-    };
-    let directories = accounts::discover(&home(), &config);
-    match accounts::read_again_for(&mut store, &row.account, &directories, &config) {
-        Ok(()) => {
-            println!(
-                "Turned tracking on for {}. The next ingest reads its transcripts from the start.",
-                row.label
-            );
-            ExitCode::SUCCESS
-        }
-        Err(error) => {
+    let read_again = with_engine_paused(|| {
+        let config = load_config()?;
+        let mut store = open_store()?;
+        let directories = accounts::discover(&home(), &config);
+        accounts::read_again_for(&mut store, &row.account, &directories, &config).map_err(|error| {
             eprintln!("gigawatts: can't reset read positions: {error}");
             ExitCode::from(2)
+        })
+    });
+    match read_again {
+        Ok(((), engine_read)) => {
+            if engine_read {
+                println!(
+                    "Turned tracking on for {}. The engine read its transcripts from the start.",
+                    row.label
+                );
+            } else {
+                println!(
+                    "Turned tracking on for {}. The next ingest reads its transcripts from the start.",
+                    row.label
+                );
+            }
+            ExitCode::SUCCESS
         }
+        Err(code) => code,
     }
 }
 
@@ -317,14 +353,14 @@ fn set_titles(name: &str, on: bool) -> ExitCode {
     )) {
         return ExitCode::SUCCESS;
     }
-    let deleted = open_store().and_then(|mut store| {
-        store.delete_titles(&row.account).map_err(|error| {
+    let deleted = with_engine_paused(|| {
+        open_store()?.delete_titles(&row.account).map_err(|error| {
             eprintln!("gigawatts: can't delete titles: {error}");
             ExitCode::from(2)
         })
     });
     match deleted {
-        Ok(count) => {
+        Ok((count, _)) => {
             println!("Deleted {count} session titles.");
             ExitCode::SUCCESS
         }
@@ -348,14 +384,14 @@ fn forget(name: &str) -> ExitCode {
     {
         return code;
     }
-    let forgotten = open_store().and_then(|mut store| {
-        store.forget(&row.account).map_err(|error| {
+    let forgotten = with_engine_paused(|| {
+        open_store()?.forget(&row.account).map_err(|error| {
             eprintln!("gigawatts: tracking is off, but deleting the history failed: {error}");
             ExitCode::from(2)
         })
     });
     match forgotten {
-        Ok(count) => {
+        Ok((count, _)) => {
             println!(
                 "Deleted {count} requests for {} and turned its tracking off.",
                 row.label
@@ -436,7 +472,7 @@ fn load_config() -> Result<Config, ExitCode> {
 }
 
 fn config_path() -> PathBuf {
-    home().join(".config").join("gigawatts").join("config.toml")
+    paths().config()
 }
 
 fn report_unreadable(directories: &[Directory]) {
@@ -450,6 +486,10 @@ fn report_unreadable(directories: &[Directory]) {
 }
 
 fn open_store() -> Result<Store, ExitCode> {
+    if let Err(error) = engine::replace_if_older(&paths(), &executable()) {
+        eprintln!("gigawatts: {error}");
+        return Err(ExitCode::from(2));
+    }
     let path = database_path();
     Store::open(&path).map_err(|error| {
         eprintln!("gigawatts: can't open {}: {error}", path.display());
@@ -458,11 +498,114 @@ fn open_store() -> Result<Store, ExitCode> {
 }
 
 fn database_path() -> PathBuf {
-    home()
-        .join(".local")
-        .join("share")
-        .join("gigawatts")
-        .join("history.sqlite3")
+    paths().database()
+}
+
+fn paths() -> engine::Paths {
+    engine::Paths::new(&home())
+}
+
+fn stop() -> ExitCode {
+    match engine::stop(&paths()) {
+        Ok(true) => {
+            println!("Stopped the engine.");
+            ExitCode::SUCCESS
+        }
+        Ok(false) => {
+            println!("The engine isn't running.");
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("gigawatts: {error}");
+            ExitCode::from(2)
+        }
+    }
+}
+
+fn schema() -> ExitCode {
+    let for_output = || {
+        schemars::generate::SchemaSettings::default()
+            .for_serialize()
+            .into_generator()
+    };
+    let schemas = serde_json::json!({
+        "snapshot": for_output().into_root_schema_for::<Snapshot>(),
+        "data": for_output().into_root_schema_for::<DataResponse>(),
+    });
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&schemas).expect("a JSON value always serializes")
+    );
+    ExitCode::SUCCESS
+}
+
+fn run_engine() -> ExitCode {
+    match engine::run(&paths()) {
+        Ok(engine::Outcome::AlreadyRunning) => {
+            eprintln!("gigawatts: an engine is already running.");
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("gigawatts engine: {error}");
+            ExitCode::from(2)
+        }
+    }
+}
+
+fn with_engine_paused<T>(
+    write: impl FnOnce() -> Result<T, ExitCode>,
+) -> Result<(T, bool), ExitCode> {
+    let paths = paths();
+    let was_running = match engine::stop_unless_newer(&paths) {
+        Ok(was_running) => was_running,
+        Err(error) => {
+            eprintln!("gigawatts: {error}");
+            return Err(ExitCode::from(2));
+        }
+    };
+    let written = write();
+    if was_running && let Err(error) = engine::ensure_running(&paths, &executable()) {
+        eprintln!("gigawatts: can't start the engine again: {error}");
+    }
+    written.map(|value| (value, refresh_running_engine()))
+}
+
+fn refresh_running_engine() -> bool {
+    match engine::refresh_if_running(&paths(), &executable()) {
+        Ok(refreshed) => refreshed,
+        Err(engine::Error::RefreshFailed { reply }) => {
+            eprintln!(
+                "gigawatts: the engine read the change, but not every transcript: {reply}. `gigawatts doctor` lists what failed."
+            );
+            true
+        }
+        Err(error) => {
+            eprintln!("gigawatts: the running engine didn't read the change: {error}");
+            false
+        }
+    }
+}
+
+fn executable() -> PathBuf {
+    std::env::current_exe().unwrap_or_else(|_| PathBuf::from("gigawatts"))
+}
+
+fn start_engine() -> ExitCode {
+    match engine::ensure_running(&paths(), &executable()) {
+        Ok(engine::Started::AlreadyRunning) => println!("The engine is already running."),
+        Ok(engine::Started::Started) => println!("Started the engine."),
+        Ok(engine::Started::Replaced { old }) => {
+            println!(
+                "Stopped engine version {old} and started {}.",
+                engine::version()
+            )
+        }
+        Err(error) => {
+            eprintln!("gigawatts: {error}");
+            return ExitCode::from(2);
+        }
+    }
+    ExitCode::SUCCESS
 }
 
 fn scrub(transcripts: &[PathBuf], out: &std::path::Path) -> ExitCode {

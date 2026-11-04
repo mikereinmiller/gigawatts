@@ -1,8 +1,9 @@
-use serde::Serialize;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 
 pub const SCHEMA_VERSION: u32 = 1;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, clap::ValueEnum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema, clap::ValueEnum)]
 #[serde(rename_all = "lowercase")]
 pub enum Range {
     Today,
@@ -11,7 +12,7 @@ pub enum Range {
     All,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, clap::ValueEnum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema, clap::ValueEnum)]
 #[serde(rename_all = "lowercase")]
 pub enum GroupBy {
     Repo,
@@ -33,7 +34,7 @@ impl GroupBy {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum Level {
     Repo,
@@ -57,7 +58,7 @@ impl Level {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum CostStatus {
     Estimated,
@@ -65,14 +66,14 @@ pub enum CostStatus {
     Adjusted,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
 pub struct DrillStep {
     pub level: Level,
     pub key: String,
     pub label: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
 pub struct DataResponse {
     pub schema_version: u32,
     pub range: Range,
@@ -85,7 +86,7 @@ pub struct DataResponse {
     pub problems: Vec<Problem>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
 pub struct DataRow {
     pub account: Option<String>,
     pub account_label: String,
@@ -102,19 +103,41 @@ pub struct DataRow {
     pub cost_usd: Option<f64>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum ProblemKind {
     UnrecognizedLines,
     NoPrice,
     PriceGap,
+    WatchFailing,
+    ReadFailing,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct Problem {
     pub kind: ProblemKind,
     pub affects: String,
     pub since: Option<String>,
     pub cause: String,
     pub fix: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
+pub struct Snapshot {
+    pub schema_version: u32,
+    pub engine_version: String,
+    pub written_at_ms: i64,
+    pub today: String,
+    pub accounts: Vec<AccountToday>,
+    pub problems: Vec<Problem>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
+pub struct AccountToday {
+    pub account: Option<String>,
+    pub account_label: String,
+    pub requests: u64,
+    pub cost_usd: f64,
 }

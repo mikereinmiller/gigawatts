@@ -4,6 +4,7 @@ pub mod config;
 pub mod contract;
 pub mod cost;
 pub mod data;
+pub mod engine;
 pub mod ingest;
 pub mod pricing;
 pub mod problems;

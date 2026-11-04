@@ -213,7 +213,7 @@ impl Store {
         Ok(labels)
     }
 
-    fn local_datetime(&self, ms: i64) -> Result<Option<String>> {
+    pub fn local_datetime(&self, ms: i64) -> Result<Option<String>> {
         Ok(self.connection.query_row(
             "SELECT datetime(?1 / 1000, 'unixepoch', 'localtime')",
             [ms],
