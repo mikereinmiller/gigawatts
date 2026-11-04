@@ -73,6 +73,9 @@ enum Command {
         /// The project folder to write the scrubbed sessions into
         out: PathBuf,
         /// Session transcripts, `<session id>.jsonl`, renamed with one shared map
+        /// Scrub `get_usage` responses and `cachedUsageUtilization` readings instead of transcripts
+        #[arg(long)]
+        usage: bool,
         #[arg(required = true)]
         transcripts: Vec<PathBuf>,
     },
@@ -143,7 +146,16 @@ fn main() -> ExitCode {
                 start_engine()
             }
         }
-        Command::Scrub { out, transcripts } => scrub(&transcripts, &out),
+        Command::Scrub {
+            usage: false,
+            out,
+            transcripts,
+        } => scrub(&transcripts, &out),
+        Command::Scrub {
+            usage: true,
+            out,
+            transcripts,
+        } => scrub_usage(&transcripts, &out),
     }
 }
 
@@ -759,3 +771,13 @@ fn home() -> PathBuf {
         .map(PathBuf::from)
         .expect("main exits before any command when HOME isn't set")
 }
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("gigawatts: can't scrub into {}: {error}", out.display());
+            ExitCode::from(2)
+        }
+    }
+}
+
+fn scrub_usage(files: &[PathBuf], out: &std::path::Path) -> ExitCode {
+    match gigawatts::scrub::scrub_usage_files(files, out) {

@@ -91,6 +91,89 @@ const CACHE_CREATION_FIELDS: [&str; 2] = ["ephemeral_5m_input_tokens", "ephemera
 const SERVER_TOOL_USE_FIELDS: [&str; 2] = ["web_search_requests", "web_fetch_requests"];
 const OUTPUT_DETAIL_FIELDS: [&str; 1] = ["thinking_tokens"];
 
+const USAGE_SESSION_FIELDS: [&str; 5] = [
+    "total_cost_usd",
+    "total_api_duration_ms",
+    "total_duration_ms",
+    "total_lines_added",
+    "total_lines_removed",
+];
+
+const LIMIT_WINDOWS: [&str; 26] = [
+    "five_hour",
+    "seven_day",
+    "seven_day_oauth_apps",
+    "seven_day_opus",
+    "seven_day_sonnet",
+    "seven_day_cowork",
+    "seven_day_omelette",
+    "tangelo",
+    "iguana_necktie",
+    "omelette_promotional",
+    "nimbus_quill",
+    "cinder_cove",
+    "copper_kite",
+    "brass_thimble",
+    "harbor_lantern",
+    "wattle_ember",
+    "promo_credits",
+    "amber_ladder",
+    "granite_teacup",
+    "amber_cistern",
+    "amber_cistern_offer",
+    "juniper_tide",
+    "cedar_ember",
+    "starry_waterfall",
+    "amber_gauge",
+    "pace",
+];
+
+const WINDOW_FIELDS: [&str; 6] = [
+    "utilization",
+    "resets_at",
+    "limit_dollars",
+    "used_dollars",
+    "remaining_dollars",
+    "locked_reason",
+];
+
+const LIMIT_FIELDS: [&str; 6] = [
+    "kind",
+    "group",
+    "percent",
+    "severity",
+    "resets_at",
+    "is_active",
+];
+
+const MONEY_FIELDS: [&str; 3] = ["amount_minor", "currency", "exponent"];
+
+const SPEND_FIELDS: [&str; 8] = [
+    "percent",
+    "severity",
+    "enabled",
+    "disabled_reason",
+    "balance",
+    "auto_reload",
+    "can_purchase_credits",
+    "can_toggle",
+];
+
+const EXTRA_USAGE_FIELDS: [&str; 12] = [
+    "is_enabled",
+    "monthly_limit",
+    "used_credits",
+    "utilization",
+    "currency",
+    "decimal_places",
+    "disabled_reason",
+    "user_disabled",
+    "spend_limit_reached",
+    "credits_ever_enabled",
+    "daily",
+    "weekly",
+];
+
 const KEPT_BRANCHES: [&str; 4] = ["main", "master", "HEAD", ""];
 const KEPT_PATH_PARTS: [&str; 9] = [
     "",
@@ -137,6 +220,7 @@ enum Kind {
     AgentName,
     McpServer,
     McpTool,
+    Plugin,
 }
 
 impl Kind {
@@ -153,6 +237,7 @@ impl Kind {
             Kind::AgentName => format!("agent-{n}"),
             Kind::McpServer => format!("server-{n}"),
             Kind::McpTool => format!("tool-{n}"),
+            Kind::Plugin => format!("plugin-{n}"),
         }
     }
 }
@@ -313,6 +398,82 @@ impl Scrubber {
         })
     }
 
+    pub fn scrub_usage(&mut self, source: &Value) -> Value {
+        let Value::Object(source) = source else {
+            return Value::Null;
+        };
+        let mut out = Map::new();
+        copy_scalars(
+            source,
+            &mut out,
+            &["fetchedAtMs", "subscription_type", "rate_limits_available"],
+        );
+        self.rename_field(source, &mut out, "accountUuid", Kind::Uuid);
+        if let Some(Value::Object(session)) = source.get("session") {
+            let mut copy = Map::new();
+            copy_scalars(session, &mut copy, &USAGE_SESSION_FIELDS);
+            out.insert("session".into(), copy.into());
+        }
+        for field in ["rate_limits", "utilization"] {
+            if let Some(Value::Object(limits)) = source.get(field) {
+                out.insert(field.into(), rate_limits(limits).into());
+            }
+        }
+        match source.get("behaviors") {
+            Some(Value::Object(periods)) => {
+                let mut copy = Map::new();
+                for (period, behaviors) in periods {
+                    if let Value::Object(behaviors) = behaviors {
+                        copy.insert(period.clone(), self.behaviors(behaviors).into());
+                    }
+                }
+                out.insert("behaviors".into(), copy.into());
+            }
+            Some(Value::Null) => {
+                out.insert("behaviors".into(), Value::Null);
+            }
+            _ => {}
+        }
+        Value::Object(out)
+    }
+
+    fn behaviors(&mut self, source: &Map<String, Value>) -> Map<String, Value> {
+        let mut out = Map::new();
+        copy_scalars(source, &mut out, &["request_count", "session_count"]);
+        copy_list(source, &mut out, "recommendations", &["key", "pct"]);
+        copy_list(source, &mut out, "behaviors", &["key", "pct", "count"]);
+        if let Some(Value::Object(fix)) = source.get("fix") {
+            let mut copy = Map::new();
+            if let Some(Value::Array(keys)) = fix.get("keys") {
+                let keys: Vec<Value> = keys.iter().filter(|key| key.is_string()).cloned().collect();
+                copy.insert("keys".into(), keys.into());
+            }
+            out.insert("fix".into(), copy.into());
+        }
+        for (list, kind) in [
+            ("agents", Kind::AgentName),
+            ("skills", Kind::Skill),
+            ("plugins", Kind::Plugin),
+            ("mcp_servers", Kind::McpServer),
+        ] {
+            let Some(Value::Array(items)) = source.get(list) else {
+                continue;
+            };
+            let items: Vec<Value> = items
+                .iter()
+                .filter_map(Value::as_object)
+                .map(|item| {
+                    let mut copy = Map::new();
+                    copy_scalars(item, &mut copy, &["pct"]);
+                    self.rename_field(item, &mut copy, "name", kind);
+                    Value::Object(copy)
+                })
+                .collect();
+            out.insert(list.into(), items.into());
+        }
+        out
+    }
+
     pub fn file_stem(&mut self, stem: &str) -> String {
         match stem.strip_prefix("agent-") {
             Some(agent) => format!("agent-{}", self.rename(Kind::Agent, agent)),
@@ -345,6 +506,118 @@ fn copy_scalars(source: &Map<String, Value>, out: &mut Map<String, Value>, field
         {
             out.insert((*field).into(), value.clone());
         }
+    }
+}
+
+fn rate_limits(source: &Map<String, Value>) -> Map<String, Value> {
+    let mut out = Map::new();
+    copy_scalars(source, &mut out, &["member_dashboard_available"]);
+    for window in LIMIT_WINDOWS {
+        match source.get(window) {
+            Some(Value::Object(fields)) => {
+                let mut copy = Map::new();
+                copy_scalars(fields, &mut copy, &WINDOW_FIELDS);
+                out.insert(window.into(), copy.into());
+            }
+            Some(Value::Null) => {
+                out.insert(window.into(), Value::Null);
+            }
+            _ => {}
+        }
+    }
+    if let Some(Value::Array(limits)) = source.get("limits") {
+        let limits: Vec<Value> = limits
+            .iter()
+            .filter_map(Value::as_object)
+            .map(|limit| {
+                let mut copy = Map::new();
+                copy_scalars(limit, &mut copy, &LIMIT_FIELDS);
+                match limit.get("scope") {
+                    Some(Value::Object(scope)) => {
+                        let mut scope_copy = Map::new();
+                        copy_nested(scope, &mut scope_copy, "model", &["id", "display_name"]);
+                        copy_scalars(scope, &mut scope_copy, &["surface"]);
+                        copy.insert("scope".into(), scope_copy.into());
+                    }
+                    Some(Value::Null) => {
+                        copy.insert("scope".into(), Value::Null);
+                    }
+                    _ => {}
+                }
+                Value::Object(copy)
+            })
+            .collect();
+        out.insert("limits".into(), limits.into());
+    }
+    if let Some(Value::Object(spend)) = source.get("spend") {
+        let mut copy = Map::new();
+        copy_scalars(spend, &mut copy, &SPEND_FIELDS);
+        copy_scalars(spend, &mut copy, &["used", "limit", "cap"]);
+        copy_nested(spend, &mut copy, "used", &MONEY_FIELDS);
+        copy_nested(spend, &mut copy, "limit", &MONEY_FIELDS);
+        if let Some(Value::Object(cap)) = spend.get("cap") {
+            let mut cap_copy = Map::new();
+            copy_scalars(cap, &mut cap_copy, &["money", "credits"]);
+            copy_nested(cap, &mut cap_copy, "money", &MONEY_FIELDS);
+            copy_nested(cap, &mut cap_copy, "credits", &MONEY_FIELDS);
+            copy.insert("cap".into(), cap_copy.into());
+        }
+        out.insert("spend".into(), copy.into());
+    }
+    if let Some(Value::Object(extra_usage)) = source.get("extra_usage") {
+        let mut copy = Map::new();
+        copy_scalars(extra_usage, &mut copy, &EXTRA_USAGE_FIELDS);
+        out.insert("extra_usage".into(), copy.into());
+    }
+    copy_scalars(source, &mut out, &["seven_day_breakdown"]);
+    if let Some(Value::Object(breakdown)) = source.get("seven_day_breakdown") {
+        let mut copy = Map::new();
+        copy_scalars(breakdown, &mut copy, &["as_of", "window_started_at"]);
+        copy_list(
+            breakdown,
+            &mut copy,
+            "rows",
+            &["key", "display_name", "percent"],
+        );
+        out.insert("seven_day_breakdown".into(), copy.into());
+    }
+    copy_scalars(source, &mut out, &["weekly_scoped_shares", "model_scoped"]);
+    copy_list(
+        source,
+        &mut out,
+        "weekly_scoped_shares",
+        &[
+            "limit_index",
+            "used_percent_of_weekly",
+            "allowance_percent_of_weekly",
+        ],
+    );
+    copy_list(
+        source,
+        &mut out,
+        "model_scoped",
+        &["display_name", "utilization", "resets_at"],
+    );
+    out
+}
+
+fn copy_list(
+    source: &Map<String, Value>,
+    out: &mut Map<String, Value>,
+    field: &str,
+    fields: &[&str],
+) {
+    if let Some(Value::Array(items)) = source.get(field) {
+        let items: Vec<Value> = items
+            .iter()
+            .filter_map(Value::as_object)
+            .map(|item| {
+                let mut copy = Map::new();
+                copy_scalars(item, &mut copy, fields);
+                Value::Object(copy)
+            })
+            .collect();
+        out.insert(field.into(), items.into());
     }
 }
 
@@ -429,6 +702,28 @@ pub fn scrub_sessions(transcripts: &[PathBuf], out: &Path) -> io::Result<()> {
     let mut scrubber = Scrubber::for_fixture(fixture);
     for transcript in transcripts {
         scrub_session(&mut scrubber, transcript, out)?;
+    }
+    Ok(())
+}
+
+pub fn scrub_usage_files(files: &[PathBuf], out: &Path) -> io::Result<()> {
+    let fixture = out
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or_default();
+    let mut scrubber = Scrubber::for_fixture(fixture);
+    fs::create_dir_all(out)?;
+    for file in files {
+        let source: Value = serde_json::from_slice(&fs::read(file)?)?;
+        let name = file
+            .file_name()
+            .ok_or_else(|| io::Error::other(format!("{}: not a file name", file.display())))?;
+        let target = out.join(name);
+        let mut created = fs::File::create_new(&target).map_err(|error| {
+            io::Error::new(error.kind(), format!("{}: {error}", target.display()))
+        })?;
+        serde_json::to_writer_pretty(&mut created, &scrubber.scrub_usage(&source))?;
+        created.write_all(b"\n")?;
     }
     Ok(())
 }

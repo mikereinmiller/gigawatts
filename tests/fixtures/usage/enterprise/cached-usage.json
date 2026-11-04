@@ -1,0 +1,77 @@
+{
+  "accountUuid": "00000001-0000-4000-8000-7171d5ca7ac2",
+  "fetchedAtMs": 1793666192807,
+  "utilization": {
+    "amber_cistern": null,
+    "amber_cistern_offer": null,
+    "amber_gauge": null,
+    "amber_ladder": null,
+    "brass_thimble": null,
+    "cedar_ember": null,
+    "cinder_cove": null,
+    "copper_kite": null,
+    "extra_usage": {
+      "credits_ever_enabled": true,
+      "currency": "USD",
+      "daily": null,
+      "decimal_places": 2,
+      "disabled_reason": null,
+      "is_enabled": true,
+      "monthly_limit": 220000,
+      "spend_limit_reached": false,
+      "used_credits": 43760,
+      "user_disabled": false,
+      "utilization": 19.89090909090909,
+      "weekly": null
+    },
+    "five_hour": null,
+    "granite_teacup": null,
+    "harbor_lantern": null,
+    "iguana_necktie": null,
+    "juniper_tide": null,
+    "limits": [],
+    "member_dashboard_available": true,
+    "nimbus_quill": null,
+    "omelette_promotional": null,
+    "pace": null,
+    "promo_credits": null,
+    "seven_day": null,
+    "seven_day_breakdown": null,
+    "seven_day_cowork": null,
+    "seven_day_oauth_apps": null,
+    "seven_day_omelette": null,
+    "seven_day_opus": null,
+    "seven_day_sonnet": null,
+    "spend": {
+      "auto_reload": null,
+      "balance": null,
+      "can_purchase_credits": false,
+      "can_toggle": false,
+      "cap": {
+        "credits": {
+          "amount_minor": 220000,
+          "exponent": 2
+        },
+        "money": null
+      },
+      "disabled_reason": null,
+      "enabled": true,
+      "limit": {
+        "amount_minor": 220000,
+        "currency": "USD",
+        "exponent": 2
+      },
+      "percent": 20,
+      "severity": "normal",
+      "used": {
+        "amount_minor": 43760,
+        "currency": "USD",
+        "exponent": 2
+      }
+    },
+    "starry_waterfall": null,
+    "tangelo": null,
+    "wattle_ember": null,
+    "weekly_scoped_shares": null
+  }
+}

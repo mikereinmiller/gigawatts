@@ -1,0 +1,342 @@
+{
+  "behaviors": {
+    "day": {
+      "agents": [
+        {
+          "name": "agent-1",
+          "pct": 50
+        },
+        {
+          "name": "agent-2",
+          "pct": 4
+        },
+        {
+          "name": "agent-3",
+          "pct": 3
+        },
+        {
+          "name": "agent-4",
+          "pct": 2
+        }
+      ],
+      "behaviors": [
+        {
+          "count": 12,
+          "key": "subagent_heavy",
+          "pct": 100
+        },
+        {
+          "count": 786,
+          "key": "long_context",
+          "pct": 34
+        },
+        {
+          "count": 1511,
+          "key": "large_tool_results",
+          "pct": 17
+        },
+        {
+          "count": 1100,
+          "key": "always_on_context",
+          "pct": 12
+        }
+      ],
+      "fix": {
+        "keys": [
+          "subagent_heavy",
+          "large_tool_results",
+          "skill",
+          "always_on_context"
+        ]
+      },
+      "mcp_servers": [],
+      "plugins": [],
+      "recommendations": [
+        {
+          "key": "subagent_heavy",
+          "pct": 100
+        },
+        {
+          "key": "long_context",
+          "pct": 34
+        },
+        {
+          "key": "large_tool_results",
+          "pct": 17
+        },
+        {
+          "key": "skill",
+          "pct": 14
+        },
+        {
+          "key": "always_on_context",
+          "pct": 12
+        }
+      ],
+      "request_count": 2319,
+      "session_count": 13,
+      "skills": [
+        {
+          "name": "skill-1",
+          "pct": 14
+        },
+        {
+          "name": "skill-2",
+          "pct": 3
+        },
+        {
+          "name": "skill-3",
+          "pct": 1
+        }
+      ]
+    },
+    "week": {
+      "agents": [
+        {
+          "name": "agent-1",
+          "pct": 48
+        },
+        {
+          "name": "agent-2",
+          "pct": 4
+        },
+        {
+          "name": "agent-3",
+          "pct": 3
+        },
+        {
+          "name": "agent-4",
+          "pct": 2
+        }
+      ],
+      "behaviors": [
+        {
+          "count": 17,
+          "key": "subagent_heavy",
+          "pct": 98
+        },
+        {
+          "count": 1238,
+          "key": "long_context",
+          "pct": 36
+        },
+        {
+          "count": 1963,
+          "key": "large_tool_results",
+          "pct": 17
+        },
+        {
+          "count": 1793,
+          "key": "always_on_context",
+          "pct": 13
+        }
+      ],
+      "fix": {
+        "keys": [
+          "subagent_heavy",
+          "skill",
+          "large_tool_results",
+          "always_on_context"
+        ]
+      },
+      "mcp_servers": [],
+      "plugins": [],
+      "recommendations": [
+        {
+          "key": "subagent_heavy",
+          "pct": 98
+        },
+        {
+          "key": "long_context",
+          "pct": 36
+        },
+        {
+          "key": "skill",
+          "pct": 18
+        },
+        {
+          "key": "large_tool_results",
+          "pct": 17
+        },
+        {
+          "key": "always_on_context",
+          "pct": 13
+        }
+      ],
+      "request_count": 3457,
+      "session_count": 20,
+      "skills": [
+        {
+          "name": "skill-1",
+          "pct": 18
+        },
+        {
+          "name": "skill-2",
+          "pct": 3
+        },
+        {
+          "name": "skill-3",
+          "pct": 1
+        }
+      ]
+    }
+  },
+  "rate_limits": {
+    "amber_cistern": null,
+    "amber_cistern_offer": null,
+    "amber_gauge": null,
+    "amber_ladder": null,
+    "brass_thimble": null,
+    "cedar_ember": null,
+    "cinder_cove": null,
+    "copper_kite": null,
+    "extra_usage": {
+      "credits_ever_enabled": true,
+      "currency": null,
+      "daily": null,
+      "decimal_places": null,
+      "disabled_reason": null,
+      "is_enabled": false,
+      "monthly_limit": null,
+      "spend_limit_reached": false,
+      "used_credits": null,
+      "user_disabled": true,
+      "utilization": null,
+      "weekly": null
+    },
+    "five_hour": {
+      "limit_dollars": null,
+      "locked_reason": null,
+      "remaining_dollars": null,
+      "resets_at": "2026-11-04T23:59:59.945577+00:00",
+      "used_dollars": null,
+      "utilization": 2
+    },
+    "granite_teacup": null,
+    "harbor_lantern": null,
+    "iguana_necktie": null,
+    "juniper_tide": null,
+    "limits": [
+      {
+        "group": "session",
+        "is_active": false,
+        "kind": "session",
+        "percent": 2,
+        "resets_at": "2026-11-04T23:59:59.945577+00:00",
+        "scope": null,
+        "severity": "normal"
+      },
+      {
+        "group": "weekly",
+        "is_active": false,
+        "kind": "weekly_all",
+        "percent": 63,
+        "resets_at": "2026-11-08T02:59:59.945600+00:00",
+        "scope": null,
+        "severity": "normal"
+      },
+      {
+        "group": "weekly",
+        "is_active": true,
+        "kind": "weekly_scoped",
+        "percent": 90,
+        "resets_at": "2026-11-08T02:59:59.945750+00:00",
+        "scope": {
+          "model": {
+            "display_name": "Fable",
+            "id": null
+          },
+          "surface": null
+        },
+        "severity": "critical"
+      }
+    ],
+    "member_dashboard_available": false,
+    "model_scoped": [
+      {
+        "display_name": "Fable",
+        "resets_at": "2026-11-08T02:59:59.945750+00:00",
+        "utilization": 90
+      }
+    ],
+    "nimbus_quill": null,
+    "omelette_promotional": null,
+    "pace": null,
+    "promo_credits": null,
+    "seven_day": {
+      "limit_dollars": null,
+      "locked_reason": null,
+      "remaining_dollars": null,
+      "resets_at": "2026-11-08T02:59:59.945600+00:00",
+      "used_dollars": null,
+      "utilization": 63
+    },
+    "seven_day_breakdown": {
+      "as_of": "2026-11-04T19:30:57.983062+00:00",
+      "rows": [
+        {
+          "display_name": "Claude Code",
+          "key": "claude_code",
+          "percent": 100
+        },
+        {
+          "display_name": "Chats",
+          "key": "chat",
+          "percent": 0
+        },
+        {
+          "display_name": "Cowork",
+          "key": "cowork",
+          "percent": 0
+        },
+        {
+          "display_name": "Other",
+          "key": "other",
+          "percent": 0
+        }
+      ],
+      "window_started_at": "2026-11-01T02:59:59.945600+00:00"
+    },
+    "seven_day_cowork": null,
+    "seven_day_oauth_apps": null,
+    "seven_day_omelette": null,
+    "seven_day_opus": null,
+    "seven_day_sonnet": null,
+    "spend": {
+      "auto_reload": null,
+      "balance": null,
+      "can_purchase_credits": false,
+      "can_toggle": false,
+      "cap": null,
+      "disabled_reason": null,
+      "enabled": false,
+      "limit": null,
+      "percent": 0,
+      "severity": "normal",
+      "used": {
+        "amount_minor": 0,
+        "currency": "USD",
+        "exponent": 2
+      }
+    },
+    "starry_waterfall": null,
+    "tangelo": null,
+    "wattle_ember": null,
+    "weekly_scoped_shares": [
+      {
+        "allowance_percent_of_weekly": 50,
+        "limit_index": 2,
+        "used_percent_of_weekly": 45
+      }
+    ]
+  },
+  "rate_limits_available": true,
+  "session": {
+    "total_api_duration_ms": 0,
+    "total_cost_usd": 0,
+    "total_duration_ms": 655,
+    "total_lines_added": 0,
+    "total_lines_removed": 0
+  },
+  "subscription_type": "max"
+}
