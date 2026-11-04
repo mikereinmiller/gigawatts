@@ -86,6 +86,7 @@ impl Attribution {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Directory {
     pub path: PathBuf,
+    pub claude_json: PathBuf,
     pub login: Option<Login>,
     pub unreadable: Option<String>,
 }
@@ -98,6 +99,7 @@ impl Directory {
         };
         Directory {
             path,
+            claude_json: claude_json.to_path_buf(),
             login,
             unreadable,
         }
@@ -107,7 +109,14 @@ impl Directory {
         self.path.join("projects")
     }
 
-    fn account(&self) -> Option<&Account> {
+    // Claude Code reads ~/.claude.json only when CLAUDE_CONFIG_DIR is unset.
+    pub fn claude_config_dir(&self) -> Option<&Path> {
+        self.claude_json
+            .starts_with(&self.path)
+            .then_some(self.path.as_path())
+    }
+
+    pub fn account(&self) -> Option<&Account> {
         self.login.as_ref().map(|login| &login.account)
     }
 }
@@ -260,6 +269,10 @@ pub fn ingest_files(
         }
     }
     first_error.map_or(Ok(total), Err)
+}
+
+pub fn has_files_inside(projects: &Path, files: &[PathBuf]) -> bool {
+    !files_inside(projects, files).is_empty()
 }
 
 fn files_inside(projects: &Path, files: &[PathBuf]) -> Vec<PathBuf> {

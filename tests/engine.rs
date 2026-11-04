@@ -4,18 +4,35 @@ use std::os::unix::fs::PermissionsExt as _;
 use std::os::unix::net::UnixListener;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use gigawatts::engine::control::{self, Command as EngineCommand};
 use gigawatts::engine::lock::EngineLock;
 use gigawatts::engine::{Paths, version};
 
 fn gigawatts(home: &Path, args: &[&str]) -> Output {
+    gigawatts_with_claude_in(home, &stand_in_bin(), args)
+}
+
+fn stand_in_bin() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/bin")
+}
+
+fn gigawatts_with_claude_in(home: &Path, claude_dir: &Path, args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_gigawatts"))
         .args(args)
         .env("HOME", home)
+        .env("PATH", path_with_claude_in(claude_dir))
         .output()
         .unwrap()
+}
+
+fn path_with_claude_in(claude_dir: &Path) -> String {
+    format!(
+        "{}:{}",
+        claude_dir.display(),
+        std::env::var("PATH").unwrap_or_default()
+    )
 }
 
 fn stdout(output: &Output) -> String {
@@ -364,6 +381,7 @@ fn gigawatts_answering(home: &Path, args: &[&str], answer: &str) -> Output {
     let mut child = Command::new(env!("CARGO_BIN_EXE_gigawatts"))
         .args(args)
         .env("HOME", home)
+        .env("PATH", path_with_claude_in(&stand_in_bin()))
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -673,4 +691,334 @@ fn a_cleanup_that_fails_shows_as_a_problem() {
         .filter_map(|problem| problem["kind"].as_str())
         .collect();
     assert_eq!(kinds, vec!["cleanup_failing"]);
+}
+
+fn logged_in_home() -> Home {
+    let dir = tempfile::tempdir().unwrap();
+    let home = Home {
+        path: dir.path().join("h"),
+        _dir: dir,
+    };
+    fs::create_dir_all(home.path.join(".claude").join("projects").join("p")).unwrap();
+    fs::write(
+        home.path.join(".claude.json"),
+        r#"{"oauthAccount":{"accountUuid":"00000000-0000-4000-8000-00000000000a","organizationUuid":"00000000-0000-4000-8000-0000000000f0"}}"#,
+    )
+    .unwrap();
+    home
+}
+
+fn answering_claude(dir: &Path) -> PathBuf {
+    fs::create_dir_all(dir).unwrap();
+    let fixture =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/usage/ultra/get-usage.json");
+    let response: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(fixture).unwrap()).unwrap();
+    let stream = dir.join("stream.jsonl");
+    fs::write(
+        &stream,
+        serde_json::json!({"type":"control_response","response":{"subtype":"success","request_id":"gigawatts-usage","response":response}}).to_string() + "\n",
+    )
+    .unwrap();
+    let bin = dir.join("bin");
+    fs::create_dir_all(&bin).unwrap();
+    let claude = bin.join("claude");
+    fs::write(
+        &claude,
+        format!("#!/bin/sh\ncat > /dev/null\ncat '{}'\n", stream.display()),
+    )
+    .unwrap();
+    fs::set_permissions(&claude, fs::Permissions::from_mode(0o755)).unwrap();
+    bin
+}
+
+fn wait_for_snapshot(
+    snapshot: &Path,
+    what: &str,
+    found: impl Fn(&serde_json::Value) -> bool,
+) -> serde_json::Value {
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while Instant::now() < deadline {
+        if let Some(value) = fs::read_to_string(snapshot)
+            .ok()
+            .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+            .filter(|value| found(value))
+        {
+            return value;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    panic!(
+        "the snapshot never showed {what}: {:?}",
+        fs::read_to_string(snapshot)
+    );
+}
+
+#[test]
+fn activity_refreshes_limits_through_claude_into_the_snapshot() {
+    let home = logged_in_home();
+    let bin = answering_claude(&home.path.parent().unwrap().join("claude"));
+    let transcript = home.path.join(".claude/projects/p/s1.jsonl");
+    append_request(&transcript, "req_1");
+    let paths = Paths::new(&home.path);
+    let started = gigawatts_with_claude_in(&home.path, &bin, &["engine"]);
+    assert_eq!(stdout(&started), "Started the engine.\n", "{started:?}");
+    wait_for_requests(&paths.snapshot(), 1);
+
+    append_request(&transcript, "req_2");
+
+    let snapshot = wait_for_snapshot(&paths.snapshot(), "limits", |value| {
+        !value["accounts"][0]["limits"].is_null()
+    });
+    let limits = &snapshot["accounts"][0]["limits"];
+    assert_eq!(limits["source"], "get_usage");
+    let kinds: Vec<&str> = limits["limits"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|limit| limit["kind"].as_str().unwrap())
+        .collect();
+    assert_eq!(kinds, vec!["session", "weekly_all", "weekly_scoped"]);
+}
+
+#[test]
+fn a_failing_refresh_shows_as_a_problem() {
+    let home = logged_in_home();
+    let transcript = home.path.join(".claude/projects/p/s1.jsonl");
+    append_request(&transcript, "req_1");
+    let paths = Paths::new(&home.path);
+    gigawatts(&home.path, &["engine"]);
+    wait_for_requests(&paths.snapshot(), 1);
+
+    append_request(&transcript, "req_2");
+
+    let snapshot = wait_for_snapshot(&paths.snapshot(), "a refresh problem", |value| {
+        value["problems"].as_array().is_some_and(|problems| {
+            problems
+                .iter()
+                .any(|problem| problem["kind"] == "refresh_failing")
+        })
+    });
+    let problem = snapshot["problems"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|problem| problem["kind"] == "refresh_failing")
+        .unwrap();
+    assert_eq!(
+        problem["cause"],
+        "Gigawatts can't refresh limits through `claude -p`: `claude -p` exited (exit status: 1) without answering: the test suite stands in for claude"
+    );
+    assert_eq!(
+        problem["affects"],
+        "limits for 00000000-0000-4000-8000-00000000000a/00000000-0000-4000-8000-0000000000f0: no reading yet"
+    );
+}
+
+#[test]
+fn a_refresh_problem_clears_once_the_account_logs_out() {
+    let home = logged_in_home();
+    let transcript = home.path.join(".claude/projects/p/s1.jsonl");
+    append_request(&transcript, "req_1");
+    let paths = Paths::new(&home.path);
+    gigawatts(&home.path, &["engine"]);
+    wait_for_requests(&paths.snapshot(), 1);
+    append_request(&transcript, "req_2");
+    wait_for_snapshot(&paths.snapshot(), "a refresh problem", |value| {
+        problem_kinds(value).contains(&"refresh_failing".to_string())
+    });
+
+    fs::write(home.path.join(".claude.json"), "{}").unwrap();
+    append_request(&transcript, "req_3");
+
+    wait_for_snapshot(&paths.snapshot(), "the refresh problem gone", |value| {
+        !problem_kinds(value).contains(&"refresh_failing".to_string())
+    });
+}
+
+fn problem_kinds(snapshot: &serde_json::Value) -> Vec<String> {
+    snapshot["problems"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|problem| problem["kind"].as_str().map(str::to_string))
+        .collect()
+}
+
+#[test]
+fn data_limits_prints_the_saved_readings_when_no_engine_runs() {
+    let home = logged_in_home();
+    let paths = Paths::new(&home.path);
+    let mut store = gigawatts::store::Store::open(&paths.database()).unwrap();
+    let response = fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/usage/ultra/get-usage.json"),
+    )
+    .unwrap();
+    store
+        .record_limits(
+            &"00000000-0000-4000-8000-00000000000a/00000000-0000-4000-8000-0000000000f0"
+                .parse()
+                .unwrap(),
+            &gigawatts::store::LimitsReading {
+                fetched_at_ms: 1_793_820_000_000,
+                source: gigawatts::contract::LimitSource::GetUsage,
+                limits: gigawatts::sources::get_usage::parse_usage(&response)
+                    .unwrap()
+                    .limits,
+            },
+        )
+        .unwrap();
+    drop(store);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_gigawatts"))
+        .args(["data", "--limits"])
+        .env("HOME", &home.path)
+        .env("TZ", "UTC")
+        .env("PATH", path_with_claude_in(&stand_in_bin()))
+        .output()
+        .unwrap();
+
+    let printed = stdout(&output);
+    let lines: Vec<&str> = printed.lines().collect();
+    assert!(
+        lines[0].starts_with(
+            "00000000-0000-4000-8000-00000000000a/00000000-0000-4000-8000-0000000000f0, from get_usage at 2026-11-04 19:20 ("
+        ),
+        "{output:?}"
+    );
+    assert_eq!(
+        &lines[1..],
+        [
+            "  Session                2%  resets 2026-11-04 23:59",
+            "  Weekly, all models    63%  resets 2026-11-08 02:59",
+            "  Weekly, Fable         90%  resets 2026-11-08 02:59, critical",
+        ]
+    );
+}
+
+#[test]
+fn data_limits_asks_a_running_engine_for_fresh_readings() {
+    let home = logged_in_home();
+    let bin = answering_claude(&home.path.parent().unwrap().join("claude"));
+    let started = gigawatts_with_claude_in(&home.path, &bin, &["engine"]);
+    assert_eq!(stdout(&started), "Started the engine.\n", "{started:?}");
+
+    let output = gigawatts_with_claude_in(&home.path, &bin, &["data", "--limits"]);
+
+    assert!(output.status.success(), "{output:?}");
+    assert!(
+        stdout(&output).starts_with(
+            "00000000-0000-4000-8000-00000000000a/00000000-0000-4000-8000-0000000000f0, from get_usage at "
+        ),
+        "{output:?}"
+    );
+}
+
+#[test]
+fn data_limits_warns_about_a_failing_refresh_each_time_it_asks() {
+    let home = logged_in_home();
+    gigawatts(&home.path, &["engine"]);
+
+    let first = gigawatts(&home.path, &["data", "--limits"]);
+    let second = gigawatts(&home.path, &["data", "--limits"]);
+
+    let warning = "gigawatts: the engine couldn't refresh limits: `claude -p` exited (exit status: 1) without answering: the test suite stands in for claude. Showing the saved readings.\n";
+    for (call, output) in [("first", first), ("second", second)] {
+        assert!(output.status.success(), "{output:?}");
+        assert_eq!(
+            String::from_utf8_lossy(&output.stderr),
+            warning,
+            "{call}: {output:?}"
+        );
+    }
+}
+
+#[test]
+fn a_cached_reading_that_doesnt_parse_shows_as_a_problem() {
+    let home = logged_in_home();
+    let claude_json = home.path.join(".claude.json");
+    fs::write(
+        &claude_json,
+        r#"{"oauthAccount":{"accountUuid":"00000000-0000-4000-8000-00000000000a","organizationUuid":"00000000-0000-4000-8000-0000000000f0"},
+"cachedUsageUtilization":{"accountUuid":"00000000-0000-4000-8000-00000000000a","fetchedAtMs":1793820000000,"utilization":{"limits":[{"kind":"session","percent":null}]}}}"#,
+    )
+    .unwrap();
+    let paths = Paths::new(&home.path);
+
+    gigawatts(&home.path, &["engine"]);
+
+    let snapshot = wait_for_snapshot(&paths.snapshot(), "a read problem", |value| {
+        problem_kinds(value).contains(&"read_failing".to_string())
+    });
+    let problem = snapshot["problems"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|problem| problem["kind"] == "read_failing")
+        .unwrap();
+    assert_eq!(
+        problem["affects"],
+        format!(
+            "limits from {}: the saved reading isn't updated",
+            claude_json.display()
+        )
+    );
+    assert!(
+        problem["cause"].as_str().unwrap().starts_with(&format!(
+            "Gigawatts can't read `cachedUsageUtilization` in {}: invalid type: null, expected f64",
+            claude_json.display()
+        )),
+        "{problem}"
+    );
+}
+
+#[test]
+fn data_limits_doesnt_ask_claude_while_the_saved_reading_is_fresh() {
+    let home = logged_in_home();
+    let claude_dir = home.path.parent().unwrap().join("claude");
+    let bin = answering_claude(&claude_dir);
+    let runs = claude_dir.join("runs");
+    fs::write(
+        bin.join("claude"),
+        format!(
+            "#!/bin/sh\ncat > /dev/null\necho run >> '{}'\ncat '{}'\n",
+            runs.display(),
+            claude_dir.join("stream.jsonl").display()
+        ),
+    )
+    .unwrap();
+    let paths = Paths::new(&home.path);
+    let mut store = gigawatts::store::Store::open(&paths.database()).unwrap();
+    let five_minutes_ago = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as i64
+        - 5 * 60_000;
+    store
+        .record_limits(
+            &"00000000-0000-4000-8000-00000000000a/00000000-0000-4000-8000-0000000000f0"
+                .parse()
+                .unwrap(),
+            &gigawatts::store::LimitsReading {
+                fetched_at_ms: five_minutes_ago,
+                source: gigawatts::contract::LimitSource::CachedUsageUtilization,
+                limits: vec![],
+            },
+        )
+        .unwrap();
+    drop(store);
+    gigawatts_with_claude_in(&home.path, &bin, &["engine"]);
+
+    let output = gigawatts_with_claude_in(&home.path, &bin, &["data", "--limits"]);
+
+    assert!(output.status.success(), "{output:?}");
+    assert!(
+        stdout(&output).contains("from cachedUsageUtilization at"),
+        "{output:?}"
+    );
+    assert!(
+        !runs.exists(),
+        "claude ran: {:?}",
+        fs::read_to_string(&runs)
+    );
 }

@@ -14,11 +14,13 @@ use crate::sources::claude_json::{Account, Login};
 use crate::sources::git::{Place, Resolver};
 use crate::sources::transcript::{CostState, Line, READER_VERSION, Request, Tokens};
 
+mod limits;
 mod problems;
 mod reconcile;
 mod retention;
 mod totals;
 
+pub use limits::{LimitPoint, LimitsReading, UsageAdvice};
 pub use problems::{ModelSighting, PriceGap, UnrecognizedKind};
 pub use totals::Filter;
 
@@ -95,7 +97,7 @@ pub struct Store {
     connection: Connection,
 }
 
-pub const MIGRATIONS: [&str; 8] = [
+pub const MIGRATIONS: [&str; 9] = [
     include_str!("migrations/001_history.sql"),
     include_str!("migrations/002_accounts.sql"),
     include_str!("migrations/003_repricing.sql"),
@@ -104,6 +106,7 @@ pub const MIGRATIONS: [&str; 8] = [
     include_str!("migrations/006_problems.sql"),
     include_str!("migrations/007_retention.sql"),
     include_str!("migrations/008_expired_requests.sql"),
+    include_str!("migrations/009_limits.sql"),
 ];
 
 fn migrations() -> Migrations<'static> {
@@ -572,6 +575,7 @@ impl Store {
             "UPDATE accounts SET email = NULL WHERE id = ?1",
             [account_id],
         )?;
+        limits::delete_account(&transaction, account_id)?;
         delete_unused_labels(&transaction)?;
         transaction.commit()?;
         Ok(deleted as u64)

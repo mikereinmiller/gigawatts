@@ -12,6 +12,7 @@ const FULL_SCAN_ANSWER: Duration = Duration::from_secs(600);
 pub enum Command {
     Version,
     Refresh,
+    Limits,
     Stop,
 }
 
@@ -20,19 +21,25 @@ impl Command {
         match self {
             Command::Version => "version",
             Command::Refresh => "refresh",
+            Command::Limits => "limits",
             Command::Stop => "stop",
         }
     }
 
     fn from_word(word: &str) -> Option<Command> {
-        [Command::Version, Command::Refresh, Command::Stop]
-            .into_iter()
-            .find(|command| command.word() == word)
+        [
+            Command::Version,
+            Command::Refresh,
+            Command::Limits,
+            Command::Stop,
+        ]
+        .into_iter()
+        .find(|command| command.word() == word)
     }
 
     fn answer_within(self) -> Duration {
         match self {
-            Command::Refresh => FULL_SCAN_ANSWER,
+            Command::Refresh | Command::Limits => FULL_SCAN_ANSWER,
             Command::Version | Command::Stop => QUICK_ANSWER,
         }
     }

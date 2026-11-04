@@ -4,7 +4,9 @@ use std::os::unix::fs::OpenOptionsExt as _;
 use std::path::Path;
 
 use crate::config::Config;
-use crate::contract::{AccountToday, GroupBy, Problem, Range, SCHEMA_VERSION, Snapshot};
+use crate::contract::{
+    AccountLimits, AccountToday, GroupBy, Problem, Range, SCHEMA_VERSION, Snapshot,
+};
 use crate::data;
 use crate::problems;
 use crate::sources::claude_json::Account;
@@ -32,6 +34,7 @@ pub fn build(
                 .unwrap_or_else(|| stored.account.to_string()),
             requests: 0,
             cost_usd: 0.0,
+            limits: None,
         })
         .collect();
     for row in response
@@ -50,12 +53,23 @@ pub fn build(
                     account_label: row.account_label.clone(),
                     requests: 0,
                     cost_usd: 0.0,
+                    limits: None,
                 });
                 accounts.last_mut().expect("just pushed")
             }
         };
         account.requests += row.requests;
         account.cost_usd += row.cost_usd.unwrap_or_default();
+    }
+    for (stored, reading) in store.latest_limits()? {
+        let id = Some(stored.to_string());
+        if let Some(account) = accounts.iter_mut().find(|account| account.account == id) {
+            account.limits = Some(AccountLimits {
+                source: reading.source,
+                fetched_at_ms: reading.fetched_at_ms,
+                limits: reading.limits,
+            });
+        }
     }
     Ok(Snapshot {
         schema_version: SCHEMA_VERSION,

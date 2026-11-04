@@ -441,6 +441,7 @@ fn gigawatts(home: &Path, args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_gigawatts"))
         .args(args)
         .env("HOME", home)
+        .env("PATH", path_with_stand_in_claude())
         .output()
         .unwrap()
 }
@@ -718,7 +719,10 @@ fn upgrading_to_problems_reports_lines_already_read_and_drops_gaps_on_no_cost() 
     );
     scratch.ingest();
     scratch.execute(
-        "ALTER TABLE sessions DROP COLUMN requests_skipped;
+        "DROP TABLE limit_fetches;
+         DROP TABLE limit_readings;
+         DROP TABLE usage_advice;
+         ALTER TABLE sessions DROP COLUMN requests_skipped;
          DROP TABLE expired_requests;
          ALTER TABLE sessions DROP COLUMN requests_expired;
          DROP INDEX requests_without_price;
@@ -747,4 +751,12 @@ fn upgrading_to_problems_reports_lines_already_read_and_drops_gaps_on_no_cost() 
         problems[0].cause,
         "Lines of type \"assistant-v2\" that carry usage (1 in 1 file)"
     );
+}
+
+fn path_with_stand_in_claude() -> String {
+    format!(
+        "{}/tests/bin:{}",
+        env!("CARGO_MANIFEST_DIR"),
+        std::env::var("PATH").unwrap_or_default()
+    )
 }

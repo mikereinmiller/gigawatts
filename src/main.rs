@@ -43,6 +43,9 @@ enum Command {
         /// Narrow to one row, by name or key: a repo, then its branch; any other grouping, its sessions. Repeat to go deeper
         #[arg(long)]
         drill: Vec<String>,
+        /// Print each account's latest limits instead, after the running engine refreshes any over 10 minutes old
+        #[arg(long, conflicts_with_all = ["range", "by", "drill"])]
+        limits: bool,
     },
     /// List every current problem with its cause and fix, and exit 1 if there are any
     Doctor,
@@ -70,12 +73,12 @@ enum Command {
     /// Write allowlisted copies of transcripts and their subagents for use as one test fixture
     #[command(hide = true)]
     Scrub {
-        /// The project folder to write the scrubbed sessions into
-        out: PathBuf,
-        /// Session transcripts, `<session id>.jsonl`, renamed with one shared map
         /// Scrub `get_usage` responses and `cachedUsageUtilization` readings instead of transcripts
         #[arg(long)]
         usage: bool,
+        /// The project folder to write the scrubbed sessions into
+        out: PathBuf,
+        /// Session transcripts, `<session id>.jsonl`, renamed with one shared map
         #[arg(required = true)]
         transcripts: Vec<PathBuf>,
     },
@@ -124,7 +127,10 @@ fn main() -> ExitCode {
     match command {
         Command::CheckCosts { path } => check_costs(path.unwrap_or_else(default_projects_dir)),
         Command::Ingest => ingest(),
-        Command::Data { range, by, drill } => data(range, by, &drill),
+        Command::Data { limits: true, .. } => limits(),
+        Command::Data {
+            range, by, drill, ..
+        } => data(range, by, &drill),
         Command::Doctor => doctor(),
         Command::Accounts { action } => match action {
             None => list_accounts(),
@@ -181,8 +187,14 @@ fn ingest() -> ExitCode {
         Ok(store) => store,
         Err(code) => return code,
     };
-    let summary = match engine::read_all(&mut store, &directories, &config, &paths().resolver()) {
-        Ok(summary) => summary,
+    let read = engine::read_all(&mut store, &directories, &config, &paths().resolver());
+    let cached = gigawatts::limits::read_cached(&mut store, &directories, &config)
+        .map_err(gigawatts::ingest::Error::from);
+    let summary = match cached.and_then(|unreadable| read.map(|summary| (summary, unreadable))) {
+        Ok((summary, unreadable)) => {
+            report_unreadable_usage(&unreadable);
+            summary
+        }
         Err(error @ gigawatts::ingest::Error::Store(_)) => {
             eprintln!("gigawatts: can't ingest: {error}");
             return ExitCode::from(2);
@@ -243,6 +255,36 @@ fn data(range: Range, by: GroupBy, drill: &[String]) -> ExitCode {
             ExitCode::from(2)
         }
     }
+}
+
+fn limits() -> ExitCode {
+    let config = match load_config() {
+        Ok(config) => config,
+        Err(code) => return code,
+    };
+    if let Err(error) = engine::refresh_limits_if_running(&paths(), &executable()) {
+        eprintln!("gigawatts: {error}. Showing the saved readings.");
+    }
+    let store = match open_store() {
+        Ok(store) => store,
+        Err(code) => return code,
+    };
+    match gigawatts::limits::rows(&store, &config) {
+        Ok(rows) => {
+            print!("{}", gigawatts::limits::render(&rows, now_ms()));
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("gigawatts: can't read limits from the history database: {error}");
+            ExitCode::from(2)
+        }
+    }
+}
+
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |elapsed| elapsed.as_millis() as i64)
 }
 
 fn doctor() -> ExitCode {
@@ -515,6 +557,16 @@ fn report_unreadable(directories: &[Directory]) {
     }
 }
 
+fn report_unreadable_usage(unreadable: &[gigawatts::limits::UnreadableUsage]) {
+    for unreadable in unreadable {
+        eprintln!(
+            "gigawatts: can't read `cachedUsageUtilization` in {}: {}. Keeping the limits saved before.",
+            unreadable.claude_json.display(),
+            unreadable.error
+        );
+    }
+}
+
 fn open_store() -> Result<Store, ExitCode> {
     if let Err(error) = engine::replace_if_older(&paths(), &executable()) {
         eprintln!("gigawatts: {error}");
@@ -741,6 +793,16 @@ fn scrub(transcripts: &[PathBuf], out: &std::path::Path) -> ExitCode {
     }
 }
 
+fn scrub_usage(files: &[PathBuf], out: &std::path::Path) -> ExitCode {
+    match gigawatts::scrub::scrub_usage_files(files, out) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("gigawatts: can't scrub into {}: {error}", out.display());
+            ExitCode::from(2)
+        }
+    }
+}
+
 fn check_costs(path: PathBuf) -> ExitCode {
     let corpus = match Corpus::read(&path) {
         Ok(corpus) => corpus,
@@ -771,13 +833,3 @@ fn home() -> PathBuf {
         .map(PathBuf::from)
         .expect("main exits before any command when HOME isn't set")
 }
-        Ok(()) => ExitCode::SUCCESS,
-        Err(error) => {
-            eprintln!("gigawatts: can't scrub into {}: {error}", out.display());
-            ExitCode::from(2)
-        }
-    }
-}
-
-fn scrub_usage(files: &[PathBuf], out: &std::path::Path) -> ExitCode {
-    match gigawatts::scrub::scrub_usage_files(files, out) {

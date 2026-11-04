@@ -4,7 +4,11 @@ use std::process::{Command, Output};
 
 fn gigawatts(home: Option<&Path>, cwd: &Path, args: &[&str]) -> Output {
     let mut command = Command::new(env!("CARGO_BIN_EXE_gigawatts"));
-    command.args(args).current_dir(cwd).env_remove("HOME");
+    command
+        .args(args)
+        .current_dir(cwd)
+        .env_remove("HOME")
+        .env("PATH", path_with_stand_in_claude());
     if let Some(home) = home {
         command.env("HOME", home);
     }
@@ -107,4 +111,12 @@ fn ingest_says_it_read_the_rest_when_one_transcript_is_unreadable() {
             && stderr.contains("a.jsonl"),
         "{stderr}"
     );
+}
+
+fn path_with_stand_in_claude() -> String {
+    format!(
+        "{}/tests/bin:{}",
+        env!("CARGO_MANIFEST_DIR"),
+        std::env::var("PATH").unwrap_or_default()
+    )
 }

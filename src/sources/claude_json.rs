@@ -5,6 +5,8 @@ use std::str::FromStr;
 
 use serde::Deserialize;
 
+use crate::sources::get_usage::RateLimits;
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Account {
     pub account_uuid: String,
@@ -70,5 +72,40 @@ pub fn read_login(path: &Path) -> io::Result<Option<Login>> {
             },
             email: oauth.email_address,
         })
+    }))
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct CachedUsage {
+    pub account_uuid: String,
+    pub fetched_at_ms: i64,
+    pub limits: Vec<crate::contract::Limit>,
+}
+
+#[derive(Deserialize)]
+struct RawCachedUsageJson {
+    #[serde(rename = "cachedUsageUtilization")]
+    cached_usage: Option<RawCachedUsage>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RawCachedUsage {
+    account_uuid: String,
+    fetched_at_ms: i64,
+    utilization: RateLimits,
+}
+
+pub fn read_cached_usage(path: &Path) -> io::Result<Option<CachedUsage>> {
+    let bytes = match std::fs::read(path) {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error),
+    };
+    let raw: RawCachedUsageJson = serde_json::from_slice(&bytes)?;
+    Ok(raw.cached_usage.map(|cached| CachedUsage {
+        account_uuid: cached.account_uuid,
+        fetched_at_ms: cached.fetched_at_ms,
+        limits: cached.utilization.limits(),
     }))
 }

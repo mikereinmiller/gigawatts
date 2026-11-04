@@ -1,0 +1,3 @@
+#!/bin/sh
+echo "the test suite stands in for claude" >&2
+exit 1

@@ -102,3 +102,25 @@ fn the_earlier_of_a_read_and_a_scan_comes_first() {
         })
     );
 }
+
+#[test]
+fn a_limit_refresh_runs_while_active_and_never_once_idle() {
+    let mut schedule = Schedule::started_at(seconds(0));
+    schedule.file_event(seconds(0));
+    schedule.read_changed_files();
+    schedule.scanned(minutes(2));
+
+    schedule.limits_due(Some(minutes(2) + seconds(30)));
+    assert_eq!(
+        next_deadline(&schedule, minutes(2)),
+        Some(Deadline {
+            at: minutes(2) + seconds(30),
+            work: Work::RefreshLimits
+        })
+    );
+
+    schedule.limits_due(Some(minutes(12)));
+    schedule.scanned(minutes(9));
+    assert_eq!(next_deadline(&schedule, minutes(9)), None);
+    assert_eq!(next_deadline(&schedule, minutes(60)), None);
+}

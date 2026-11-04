@@ -2,13 +2,15 @@ use std::fs;
 
 use gigawatts::accounts::Attribution;
 use gigawatts::config::Config;
-use gigawatts::contract::{AccountToday, Problem, ProblemKind, SCHEMA_VERSION, Snapshot};
+use gigawatts::contract::{
+    AccountLimits, AccountToday, Limit, LimitSource, Problem, ProblemKind, SCHEMA_VERSION, Snapshot,
+};
 use gigawatts::engine::snapshot;
 use gigawatts::ingest::ingest_tree;
 use gigawatts::pricing::PriceTable;
 use gigawatts::sources::claude_json::Account;
 use gigawatts::sources::git::Resolver;
-use gigawatts::store::Store;
+use gigawatts::store::{LimitsReading, Store};
 
 const ACCOUNT: &str = "00000000-0000-4000-8000-00000000000a/00000000-0000-4000-8000-0000000000f0";
 const IDLE_ACCOUNT: &str =
@@ -73,6 +75,28 @@ fn the_snapshot_carries_each_tracked_accounts_spend_today_and_the_engines_proble
         dir.path(),
     )
     .unwrap();
+    let weekly = Limit {
+        kind: "weekly_all".to_string(),
+        group: Some("weekly".to_string()),
+        scope: None,
+        percent: 63.0,
+        severity: Some("normal".to_string()),
+        resets_at: Some("2026-11-08T02:59:59.945600+00:00".to_string()),
+        active: false,
+        credits: None,
+    };
+    for account in [ACCOUNT, UNTRACKED_ACCOUNT] {
+        store
+            .record_limits(
+                &account.parse().unwrap(),
+                &LimitsReading {
+                    fetched_at_ms: 1_699_999_400_000,
+                    source: LimitSource::GetUsage,
+                    limits: vec![weekly.clone()],
+                },
+            )
+            .unwrap();
+    }
     let watch_failing = Problem {
         kind: ProblemKind::WatchFailing,
         affects: "a".to_string(),
@@ -102,12 +126,18 @@ fn the_snapshot_carries_each_tracked_accounts_spend_today_and_the_engines_proble
                     account_label: "personal".to_string(),
                     requests: 2,
                     cost_usd: 0.028,
+                    limits: Some(AccountLimits {
+                        source: LimitSource::GetUsage,
+                        fetched_at_ms: 1_699_999_400_000,
+                        limits: vec![weekly],
+                    }),
                 },
                 AccountToday {
                     account: Some(IDLE_ACCOUNT.to_string()),
                     account_label: IDLE_ACCOUNT.to_string(),
                     requests: 0,
                     cost_usd: 0.0,
+                    limits: None,
                 },
             ],
             problems: vec![watch_failing],

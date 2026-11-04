@@ -8,6 +8,7 @@ pub const IDLE_AFTER: Duration = Duration::from_secs(10 * 60);
 pub enum Work {
     ReadChangedFiles,
     SafetyScan,
+    RefreshLimits,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -21,6 +22,7 @@ pub struct Schedule {
     last_scan: Duration,
     last_event: Option<Duration>,
     first_unread_event: Option<Duration>,
+    limits_due: Option<Duration>,
 }
 
 impl Schedule {
@@ -29,7 +31,12 @@ impl Schedule {
             last_scan: now,
             last_event: None,
             first_unread_event: None,
+            limits_due: None,
         }
+    }
+
+    pub fn limits_due(&mut self, at: Option<Duration>) {
+        self.limits_due = at;
     }
 
     pub fn file_event(&mut self, now: Duration) {
@@ -68,7 +75,14 @@ pub fn next_deadline(schedule: &Schedule, now: Duration) -> Option<Deadline> {
             work: Work::SafetyScan,
         })
     });
-    [read, scan]
+    let limits = schedule.limits_due.and_then(|due| {
+        let idle_at = schedule.idle_at()?;
+        (now < idle_at && due < idle_at).then_some(Deadline {
+            at: due,
+            work: Work::RefreshLimits,
+        })
+    });
+    [read, scan, limits]
         .into_iter()
         .flatten()
         .min_by_key(|deadline| deadline.at)
