@@ -113,6 +113,7 @@ pub enum ProblemKind {
     PriceGap,
     WatchFailing,
     ReadFailing,
+    CleanupFailing,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

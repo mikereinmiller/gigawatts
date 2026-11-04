@@ -210,3 +210,26 @@ output = 1.0
         })
     );
 }
+
+#[test]
+fn request_detail_is_kept_forever_unless_a_number_of_days_is_set() {
+    let unset = Config::parse("", Path::new(HOME)).unwrap();
+    let set = Config::parse("request_detail_days = 90\n", Path::new(HOME)).unwrap();
+
+    assert_eq!(
+        (unset.request_detail_days, set.request_detail_days),
+        (None, Some(90))
+    );
+}
+
+#[test]
+fn keeping_zero_days_of_request_detail_is_refused() {
+    let error = Config::parse("request_detail_days = 0\n", Path::new(HOME)).unwrap_err();
+
+    assert!(
+        error
+            .to_string()
+            .contains("request_detail_days must be 1 or more"),
+        "{error}"
+    );
+}

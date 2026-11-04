@@ -626,3 +626,51 @@ fn a_command_that_pauses_the_engine_stops_an_older_one_and_starts_this_version_a
     assert_eq!(old.heard(), vec!["version", "stop"]);
     assert_eq!(running_version(&paths).as_deref(), Some(version().as_str()));
 }
+
+#[test]
+fn the_engine_deletes_request_detail_older_than_the_setting_and_keeps_the_totals() {
+    let home = home_with_login();
+    let paths = Paths::new(&home.path);
+    fs::create_dir_all(paths.config().parent().unwrap()).unwrap();
+    fs::write(paths.config(), "request_detail_days = 30\n").unwrap();
+    let projects = home.path.join(".claude").join("projects").join("p");
+    fs::create_dir_all(&projects).unwrap();
+    let old = r#"{"type":"assistant","sessionId":"s0","requestId":"req_old","timestamp":"2020-01-01T12:00:00.000Z","message":{"model":"claude-opus-5-5","usage":{"input_tokens":1000,"output_tokens":500}}}"#;
+    fs::write(projects.join("s0.jsonl"), format!("{old}\n")).unwrap();
+    append_request(&projects.join("s1.jsonl"), "req_1");
+
+    gigawatts(&home.path, &["engine"]);
+    wait_for_requests(&paths.snapshot(), 1);
+
+    let stored = gigawatts::store::Store::open(&paths.database())
+        .unwrap()
+        .request_count()
+        .unwrap();
+    assert_eq!(stored, 1);
+    let all = stdout(&gigawatts(&home.path, &["data", "--range", "all"]));
+    assert!(all.contains("$0.03"), "{all}");
+}
+
+#[test]
+fn a_cleanup_that_fails_shows_as_a_problem() {
+    let home = home_with_login();
+    let paths = Paths::new(&home.path);
+    fs::create_dir_all(paths.config().parent().unwrap()).unwrap();
+    fs::write(paths.config(), "request_detail_days = 4294967295\n").unwrap();
+    let projects = home.path.join(".claude").join("projects").join("p");
+    fs::create_dir_all(&projects).unwrap();
+    append_request(&projects.join("s1.jsonl"), "req_1");
+
+    gigawatts(&home.path, &["engine"]);
+
+    wait_for_requests(&paths.snapshot(), 1);
+    let snapshot: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(paths.snapshot()).unwrap()).unwrap();
+    let kinds: Vec<&str> = snapshot["problems"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|problem| problem["kind"].as_str())
+        .collect();
+    assert_eq!(kinds, vec!["cleanup_failing"]);
+}

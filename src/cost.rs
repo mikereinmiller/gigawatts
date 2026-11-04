@@ -62,7 +62,22 @@ pub fn matches(priced: f64, recorded: f64) -> bool {
     (priced - recorded).abs() <= tolerance
 }
 
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Expired {
+    pub tokens: Tokens,
+    pub cost_usd: f64,
+}
+
 pub fn reconcile(state: &CostState, requests: &[&Request], table: &PriceTable) -> Vec<PairCheck> {
+    reconcile_with_expired(state, requests, &BTreeMap::new(), table)
+}
+
+pub fn reconcile_with_expired(
+    state: &CostState,
+    requests: &[&Request],
+    expired: &BTreeMap<String, Expired>,
+    table: &PriceTable,
+) -> Vec<PairCheck> {
     let mut by_model: BTreeMap<&str, Vec<&Request>> = BTreeMap::new();
     for request in requests {
         by_model
@@ -70,13 +85,15 @@ pub fn reconcile(state: &CostState, requests: &[&Request], table: &PriceTable) -
             .or_default()
             .push(request);
     }
-    for model in state.models.keys() {
+    for model in state.models.keys().chain(expired.keys()) {
         by_model.entry(model.as_str()).or_default();
     }
 
     by_model
         .into_iter()
-        .map(|(model, model_requests)| check_pair(state, model, &model_requests, table))
+        .map(|(model, model_requests)| {
+            check_pair(state, model, &model_requests, expired.get(model), table)
+        })
         .collect()
 }
 
@@ -84,15 +101,21 @@ fn check_pair(
     state: &CostState,
     model: &str,
     requests: &[&Request],
+    expired: Option<&Expired>,
     table: &PriceTable,
 ) -> PairCheck {
     let mut transcript_tokens = Tokens::default();
     for request in requests {
         transcript_tokens.add(&request.tokens);
     }
+    if let Some(expired) = expired {
+        transcript_tokens.add(&expired.tokens);
+    }
+    let expired_cost = expired.map_or(0.0, |expired| expired.cost_usd);
     let priced = table
         .model(model)
-        .and_then(|_| requests.iter().map(|r| table.price(r)).sum());
+        .and_then(|_| requests.iter().map(|r| table.price(r)).sum::<Option<f64>>())
+        .map(|kept| kept + expired_cost);
     let recorded = state.models.get(model);
     let recorded_cost = recorded.map_or(0.0, |m| m.cost_usd);
     let recorded_tokens = recorded.map(|m| m.tokens.clone()).unwrap_or_default();

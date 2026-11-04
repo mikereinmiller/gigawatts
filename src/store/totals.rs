@@ -15,6 +15,9 @@ const DAILY_TOTALS: &str = "
     FROM daily_totals
     WHERE day >= coalesce(?1, '')";
 
+const BEFORE_KEPT_REQUESTS: &str =
+    "AND day < (SELECT value FROM store_settings WHERE key = 'requests_kept_from')";
+
 const NOT_IN_TRANSCRIPT: &str = "
     SELECT sessions.account_id, NULL, NULL, NULL, NULL, missing.model_label,
            missing.session_id, 1, 0, missing.input_tokens, missing.output_tokens,
@@ -72,7 +75,9 @@ fn filter_sql(level: Level, n: usize) -> String {
 fn label_sql(level: Level) -> &'static str {
     match level {
         Level::Repo => "coalesce(dir.repo_name, cwd.text, 'unknown folder')",
-        Level::Session => "coalesce(session.title, session.uuid)",
+        Level::Session => {
+            "coalesce(session.title, session.uuid, 'older sessions, detail not kept')"
+        }
         _ => key_sql(level),
     }
 }
@@ -160,15 +165,15 @@ impl Store {
         filters: &[Filter],
     ) -> Result<Vec<DataRow>> {
         let spend = if level == Level::Session {
-            REQUESTS
+            format!("{REQUESTS} UNION ALL {DAILY_TOTALS} {BEFORE_KEPT_REQUESTS}")
         } else {
-            DAILY_TOTALS
+            DAILY_TOTALS.to_string()
         };
         let only_models = filters.iter().all(|filter| filter.level == Level::Model);
         let source = if only_models {
             format!("{spend} UNION ALL {NOT_IN_TRANSCRIPT}")
         } else {
-            spend.to_string()
+            spend
         };
         let (missing_key, missing_label) = match level {
             Level::Model | Level::Session => (key_sql(level), label_sql(level)),
@@ -200,7 +205,8 @@ impl Store {
              {where_clause}
              GROUP BY spend.account_id, spend.missing, row_key
              ORDER BY spend.account_id IS NULL, accounts.account_uuid,
-                      accounts.organization_uuid, spend.missing, sum(cost_usd) DESC, 4",
+                      accounts.organization_uuid, spend.missing, row_key IS NULL,
+                      sum(cost_usd) DESC, 4",
             key = key_sql(level),
             label = label_sql(level),
         );
@@ -208,15 +214,16 @@ impl Store {
         values.extend(filters.iter().map(|filter| Some(filter.key.as_str())));
         let mut statement = self.connection.prepare_cached(&sql)?;
         let rows = statement.query_map(rusqlite::params_from_iter(values), |row| {
+            let key: Option<String> = row.get(2)?;
             let status: Option<String> = row.get(5)?;
             Ok(DataRow {
                 account: row.get(0)?,
                 account_label: row.get(1)?,
-                key: row.get(2)?,
+                status: (level == Level::Session && key.is_some())
+                    .then(|| reconcile::status_from_name(status.as_deref())),
+                key,
                 label: row.get(3)?,
                 not_in_transcript: row.get(4)?,
-                status: (level == Level::Session)
-                    .then(|| reconcile::status_from_name(status.as_deref())),
                 requests: row.get::<_, i64>(6)? as u64,
                 input_tokens: row.get::<_, i64>(7)? as u64,
                 output_tokens: row.get::<_, i64>(8)? as u64,

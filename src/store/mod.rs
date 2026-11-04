@@ -16,6 +16,7 @@ use crate::sources::transcript::{CostState, Line, READER_VERSION, Request, Token
 
 mod problems;
 mod reconcile;
+mod retention;
 mod totals;
 
 pub use problems::{ModelSighting, PriceGap, UnrecognizedKind};
@@ -94,13 +95,15 @@ pub struct Store {
     connection: Connection,
 }
 
-pub const MIGRATIONS: [&str; 6] = [
+pub const MIGRATIONS: [&str; 8] = [
     include_str!("migrations/001_history.sql"),
     include_str!("migrations/002_accounts.sql"),
     include_str!("migrations/003_repricing.sql"),
     include_str!("migrations/004_login_history.sql"),
     include_str!("migrations/005_attribution.sql"),
     include_str!("migrations/006_problems.sql"),
+    include_str!("migrations/007_retention.sql"),
+    include_str!("migrations/008_expired_requests.sql"),
 ];
 
 fn migrations() -> Migrations<'static> {
@@ -158,7 +161,7 @@ impl Store {
     ) -> Result<()> {
         let transaction = self.connection.transaction()?;
         problems::record_unrecognized(&transaction, &position.path, from_start, lines)?;
-        let mut writer = Writer::new(&transaction);
+        let mut writer = Writer::new(&transaction)?;
         let mut session_accounts: HashMap<&str, Option<Account>> = HashMap::new();
         let mut moved_sessions: BTreeSet<&str> = BTreeSet::new();
         let mut partly_untracked_sessions: BTreeSet<&str> = BTreeSet::new();
@@ -178,6 +181,9 @@ impl Store {
             let account_id = account.map(|account| writer.account(account)).transpose()?;
             if let Some(account_id) = account_id {
                 writer.claim_session(&request.session_id, account_id)?;
+            }
+            if attribution.tracks(account) && writer.expired(request)? {
+                continue;
             }
             let moved = if attribution.tracks(account) {
                 let moved = writer.reattribute(&request.request_id, account_id)?;
@@ -367,7 +373,8 @@ impl Store {
                  SELECT sessions.id FROM sessions
                  JOIN accounts ON accounts.id = sessions.account_id
                  WHERE accounts.account_uuid = ?1 AND accounts.organization_uuid = ?2
-                   AND sessions.id NOT IN (SELECT session_id FROM requests)",
+                   AND sessions.id NOT IN (SELECT session_id FROM requests)
+                   AND NOT sessions.requests_expired",
                 [&account.account_uuid, &account.organization_uuid],
             )?;
             transaction.execute_batch(
@@ -410,7 +417,8 @@ impl Store {
     pub fn accounts(&self) -> Result<Vec<StoredAccount>> {
         let mut statement = self.connection.prepare_cached(
             "SELECT account_uuid, organization_uuid, email,
-                    (SELECT count(*) FROM requests WHERE requests.account_id = accounts.id)
+                    (SELECT coalesce(sum(requests), 0) FROM daily_totals
+                     WHERE daily_totals.account_id = accounts.id)
              FROM accounts
              ORDER BY account_uuid, organization_uuid",
         )?;
@@ -446,6 +454,10 @@ impl Store {
                 SELECT requests.session_id FROM requests
                 JOIN accounts ON accounts.id = requests.account_id
                 WHERE accounts.account_uuid = ?1 AND accounts.organization_uuid = ?2
+                UNION
+                SELECT sessions.id FROM sessions
+                JOIN accounts ON accounts.id = sessions.account_id
+                WHERE accounts.account_uuid = ?1 AND accounts.organization_uuid = ?2
              )",
             [&account.account_uuid, &account.organization_uuid],
         )?;
@@ -463,7 +475,7 @@ impl Store {
             .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
             .collect::<rusqlite::Result<_>>()?;
         let unplaced_labels: Vec<i64> = unplaced.keys().copied().collect();
-        let mut writer = Writer::new(&transaction);
+        let mut writer = Writer::new(&transaction)?;
         writer.cwds = unplaced;
         writer.resolve_places(resolver)?;
         let detached = writer.label(Some("detached"))?;
@@ -524,6 +536,11 @@ impl Store {
              UNION SELECT id FROM sessions WHERE account_id = ?1",
             [account_id],
         )?;
+        let deleted: i64 = transaction.query_row(
+            "SELECT coalesce(sum(requests), 0) FROM daily_totals WHERE account_id = ?1",
+            [account_id],
+            |row| row.get(0),
+        )?;
         transaction.execute(
             "DELETE FROM daily_totals WHERE account_id = ?1",
             [account_id],
@@ -534,10 +551,10 @@ impl Store {
              )",
             [account_id],
         )?;
-        let deleted =
-            transaction.execute("DELETE FROM requests WHERE account_id = ?1", [account_id])?;
+        transaction.execute("DELETE FROM requests WHERE account_id = ?1", [account_id])?;
         transaction.execute_batch(
             "DELETE FROM not_in_transcript WHERE session_id IN (SELECT id FROM forgotten_sessions);
+             DELETE FROM expired_requests WHERE session_id IN (SELECT id FROM forgotten_sessions);
              DELETE FROM session_models WHERE session_id IN (SELECT id FROM forgotten_sessions);
              UPDATE sessions SET
                  account_id = (SELECT account_id FROM requests
@@ -698,11 +715,19 @@ struct Writer<'a> {
     touched_sessions: BTreeSet<i64>,
     cwds: BTreeMap<i64, String>,
     head_requests: BTreeMap<String, Vec<String>>,
+    requests_kept_from: Option<String>,
 }
 
 impl<'a> Writer<'a> {
-    fn new(transaction: &'a Transaction<'a>) -> Self {
-        Writer {
+    fn new(transaction: &'a Transaction<'a>) -> Result<Self> {
+        let requests_kept_from = transaction
+            .query_row(
+                "SELECT value FROM store_settings WHERE key = 'requests_kept_from'",
+                [],
+                |row| row.get(0),
+            )
+            .optional()?;
+        Ok(Writer {
             transaction,
             labels: HashMap::new(),
             sessions: HashMap::new(),
@@ -711,7 +736,36 @@ impl<'a> Writer<'a> {
             touched_sessions: BTreeSet::new(),
             cwds: BTreeMap::new(),
             head_requests: BTreeMap::new(),
+            requests_kept_from,
+        })
+    }
+
+    fn expired(&mut self, request: &Request) -> Result<bool> {
+        let Some(kept_from) = self.requests_kept_from.clone() else {
+            return Ok(false);
+        };
+        let expired: bool = self
+            .transaction
+            .prepare_cached("SELECT coalesce(date(?1, 'localtime') < ?2, 0)")?
+            .query_row(params![request.detail.timestamp, kept_from], |row| {
+                row.get(0)
+            })?;
+        if expired {
+            let session_id = self.session(&request.session_id)?;
+            self.transaction
+                .prepare_cached(
+                    "UPDATE sessions SET
+                         requests_expired = 1,
+                         requests_skipped = requests_skipped OR NOT EXISTS (
+                             SELECT 1 FROM expired_requests
+                             JOIN labels ON labels.id = expired_requests.model_label
+                             WHERE expired_requests.session_id = ?1 AND labels.text = ?2
+                         )
+                     WHERE id = ?1",
+                )?
+                .execute(params![session_id, request.model])?;
         }
+        Ok(expired)
     }
 
     fn account(&mut self, account: &Account) -> Result<i64> {
@@ -1162,6 +1216,7 @@ fn delete_unused_labels(transaction: &Transaction) -> Result<()> {
                 UNION SELECT cwd_label FROM daily_totals
                 UNION SELECT branch_label FROM daily_totals
                 UNION SELECT model_label FROM not_in_transcript
+                UNION SELECT model_label FROM expired_requests
                 UNION SELECT skill_label FROM daily_totals
                 UNION SELECT agent_label FROM daily_totals
                 UNION SELECT model_label FROM daily_totals

@@ -4,7 +4,7 @@ use rusqlite::{OptionalExtension, Transaction, params};
 
 use super::Result;
 use crate::contract::CostStatus;
-use crate::cost::{self, Cause};
+use crate::cost::{self, Cause, Expired};
 use crate::pricing::PriceTable;
 use crate::sources::transcript::{CostState, ModelCost, Request, Tokens};
 
@@ -24,20 +24,33 @@ pub(super) fn session(
     let Some(state) = cost_state(transaction, session_id)? else {
         return reset_to_table_prices(transaction, &requests, table);
     };
+    let expired = expired(transaction, session_id)?;
+    let fully_expired = requests.is_empty() && !expired.is_empty();
+    if fully_expired || requests_skipped(transaction, session_id)? {
+        return Ok(BTreeSet::new());
+    }
     let request_refs: Vec<&Request> = requests.iter().map(|stored| &stored.request).collect();
-    let checks = cost::reconcile(&state, &request_refs, table);
+    let checks = cost::reconcile_with_expired(&state, &request_refs, &expired, table);
 
-    transaction.execute(
-        "DELETE FROM not_in_transcript WHERE session_id = ?1",
-        [session_id],
-    )?;
     let mut changed_days = BTreeSet::new();
-    for check in &checks {
+    for check in checks
+        .iter()
+        .filter(|check| !only_expired(&requests, &expired, &check.model))
+    {
+        transaction.execute(
+            "DELETE FROM not_in_transcript
+             WHERE session_id = ?1
+               AND model_label = (SELECT id FROM labels WHERE text = ?2)",
+            params![session_id, check.model],
+        )?;
+        let expired_cost = expired
+            .get(&check.model)
+            .map_or(0.0, |expired| expired.cost_usd);
         let scale = match (check.cause, check.priced) {
             (Some(Cause::PriceOrRule), Some(priced))
-                if priced > 0.0 && !recorded_no_cost(check) =>
+                if priced - expired_cost > 0.0 && !recorded_no_cost(check) =>
             {
-                check.recorded / priced
+                (check.recorded - expired_cost) / (priced - expired_cost)
             }
             _ => 1.0,
         };
@@ -76,6 +89,14 @@ pub(super) fn session(
         params![session_id, status_name(status(&checks))],
     )?;
     Ok(changed_days)
+}
+
+fn only_expired(
+    requests: &[StoredRequest],
+    expired: &BTreeMap<String, Expired>,
+    model: &str,
+) -> bool {
+    expired.contains_key(model) && requests.iter().all(|stored| stored.request.model != model)
 }
 
 fn reset_to_table_prices(
@@ -233,6 +254,44 @@ fn cost_state(transaction: &Transaction, session_id: i64) -> Result<Option<CostS
         models,
         totals: Default::default(),
     }))
+}
+
+fn requests_skipped(transaction: &Transaction, session_id: i64) -> Result<bool> {
+    let skipped = transaction.query_row(
+        "SELECT requests_skipped FROM sessions WHERE id = ?1",
+        [session_id],
+        |row| row.get(0),
+    )?;
+    Ok(skipped)
+}
+
+fn expired(transaction: &Transaction, session_id: i64) -> Result<BTreeMap<String, Expired>> {
+    let mut statement = transaction.prepare_cached(
+        "SELECT model.text, input_tokens, output_tokens, cache_read_tokens,
+                cache_write_5m_tokens, cache_write_1h_tokens, web_searches, cost_usd
+         FROM expired_requests
+         JOIN labels AS model ON model.id = expired_requests.model_label
+         WHERE session_id = ?1",
+    )?;
+    let expired = statement
+        .query_map([session_id], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                Expired {
+                    tokens: Tokens {
+                        input: row.get::<_, i64>(1)? as u64,
+                        output: row.get::<_, i64>(2)? as u64,
+                        cache_read: row.get::<_, i64>(3)? as u64,
+                        cache_write_5m: row.get::<_, i64>(4)? as u64,
+                        cache_write_1h: row.get::<_, i64>(5)? as u64,
+                        web_searches: row.get::<_, i64>(6)? as u64,
+                    },
+                    cost_usd: row.get(7)?,
+                },
+            ))
+        })?
+        .collect::<rusqlite::Result<_>>()?;
+    Ok(expired)
 }
 
 fn requests(transaction: &Transaction, session_id: i64) -> Result<Vec<StoredRequest>> {

@@ -718,7 +718,10 @@ fn upgrading_to_problems_reports_lines_already_read_and_drops_gaps_on_no_cost() 
     );
     scratch.ingest();
     scratch.execute(
-        "DROP INDEX requests_without_price;
+        "ALTER TABLE sessions DROP COLUMN requests_skipped;
+         DROP TABLE expired_requests;
+         ALTER TABLE sessions DROP COLUMN requests_expired;
+         DROP INDEX requests_without_price;
          DROP INDEX session_models_by_model;
          DROP INDEX session_models_with_price_gap;
          DROP TABLE unrecognized_lines;

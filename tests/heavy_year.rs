@@ -34,6 +34,13 @@ const TOOLS: [&str; 5] = [
 ];
 const MODELS: [&str; 3] = ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"];
 const COMBINATIONS: usize = REPOS.len() * SKILLS.len() * MODELS.len();
+const GROUPINGS: [GroupBy; 5] = [
+    GroupBy::Repo,
+    GroupBy::Branch,
+    GroupBy::Skill,
+    GroupBy::Agent,
+    GroupBy::Model,
+];
 
 const MAX_BYTES: u64 = 110 * 1024 * 1024;
 const MAX_TODAY: Duration = Duration::from_millis(5);
@@ -288,20 +295,63 @@ fn a_heavy_year_with_90_day_retention_stays_small_and_fast() {
             )
             .unwrap();
     }
-    let cutoff = shift(LAST_DAY, -(RETENTION_DAYS as i64 - 1));
+    let reports = |store: &Store| {
+        GROUPINGS.map(|by| query(store, Range::All, by, &[], LAST_DAY).unwrap().rows)
+    };
+    let branch_and_its_sessions = |store: &Store| {
+        let branches = query(store, Range::All, GroupBy::Repo, &[REPOS[0]], LAST_DAY)
+            .unwrap()
+            .rows;
+        let branch = branches
+            .iter()
+            .find(|row| row.key.as_deref() == Some("ab/branch-0"))
+            .map(|row| (row.requests, row.cost_usd.unwrap_or_default()))
+            .unwrap();
+        let sessions = query(
+            store,
+            Range::All,
+            GroupBy::Repo,
+            &[REPOS[0], "ab/branch-0"],
+            LAST_DAY,
+        )
+        .unwrap()
+        .rows;
+        let summed = (
+            sessions.iter().map(|row| row.requests).sum::<u64>(),
+            sessions.iter().filter_map(|row| row.cost_usd).sum::<f64>(),
+        );
+        (branch, summed)
+    };
+    let before_cleanup = reports(&store);
+    let sessions_before_cleanup = branch_and_its_sessions(&store);
+    let stored_before_cleanup = store.request_count().unwrap();
+    let bytes_before_cleanup = database_bytes(&path);
+
+    let expired = store
+        .expire_requests(RETENTION_DAYS as u32, LAST_DAY)
+        .unwrap();
     drop(store);
-    let connection = rusqlite::Connection::open(&path).unwrap();
-    connection
-        .execute("DELETE FROM requests WHERE day < ?1", [&cutoff])
+    let free_pages: i64 = rusqlite::Connection::open(&path)
+        .unwrap()
+        .query_row("PRAGMA freelist_count", [], |row| row.get(0))
         .unwrap();
-    connection
-        .execute_batch("PRAGMA incremental_vacuum; PRAGMA wal_checkpoint(TRUNCATE);")
-        .unwrap();
-    drop(connection);
     let store = Store::open(&path).unwrap();
 
     let bytes = database_bytes(&path);
+    assert_eq!(free_pages, 0);
     let requests = store.request_count().unwrap();
+    assert!(expired > 0);
+    assert_eq!(expired, stored_before_cleanup - requests);
+    assert!(
+        bytes < bytes_before_cleanup,
+        "cleanup left the database at {bytes} bytes, from {bytes_before_cleanup}"
+    );
+    assert!(reports(&store) == before_cleanup);
+    let ((branch_requests, branch_cost), (session_requests, session_cost)) =
+        branch_and_its_sessions(&store);
+    assert_eq!(session_requests, branch_requests);
+    assert!((session_cost - branch_cost).abs() < 1e-6);
+    assert_eq!(sessions_before_cleanup.0, (branch_requests, branch_cost));
     let today = fastest_of_three(|| {
         query(&store, Range::Today, GroupBy::Model, &[], LAST_DAY).unwrap();
     });

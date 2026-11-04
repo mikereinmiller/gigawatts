@@ -1,0 +1,1 @@
+ALTER TABLE sessions ADD COLUMN requests_expired INTEGER NOT NULL DEFAULT 0;

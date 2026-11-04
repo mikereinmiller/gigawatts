@@ -54,6 +54,7 @@ pub struct Switch {
 #[derive(Debug, Default)]
 pub struct Config {
     pub extra_paths: Vec<PathBuf>,
+    pub request_detail_days: Option<u32>,
     accounts: HashMap<Account, AccountSettings>,
     switches: HashMap<PathBuf, Switch>,
     prices: HashMap<String, ModelPrices>,
@@ -63,6 +64,7 @@ pub struct Config {
 #[serde(default, deny_unknown_fields)]
 struct RawConfig {
     extra_paths: Vec<String>,
+    request_detail_days: Option<u32>,
     accounts: BTreeMap<String, RawAccount>,
     directories: BTreeMap<String, RawDirectory>,
     prices: BTreeMap<String, RawPrices>,
@@ -104,6 +106,12 @@ impl Config {
 
     pub fn parse(text: &str, home: &Path) -> Result<Config, Error> {
         let raw: RawConfig = toml::from_str(text).map_err(Error::Toml)?;
+        if raw.request_detail_days == Some(0) {
+            return Err(Error::Invalid(
+                "request_detail_days must be 1 or more. Leave it out to keep request detail forever"
+                    .to_string(),
+            ));
+        }
         let mut accounts = HashMap::new();
         for (id, settings) in raw.accounts {
             let account = id.parse().map_err(Error::Invalid)?;
@@ -133,6 +141,7 @@ impl Config {
                 .iter()
                 .map(|path| expand_home(path, home))
                 .collect(),
+            request_detail_days: raw.request_detail_days,
             accounts,
             switches,
             prices: raw

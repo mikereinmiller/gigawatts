@@ -91,7 +91,7 @@ An account is one Claude Code config directory (`~/.claude`, or wherever `CLAUDE
 - **Tracking versus displaying.** Tracking means the engine reads an account's transcripts and limits into history. It runs whether or not anything is on screen, because a gap can't be filled after Claude Code deletes the transcripts. Tracking is on by default for every account found, a newly found account is announced in the view, and it can be turned off per account. Off means Gigawatts never reads that directory. Turning it off keeps existing history, and `gigawatts accounts forget` deletes it. Forgetting keeps the record of how far each transcript file was read, so a later login change can't read the deleted history back in under another account.
 - **Limits belong to the account.** If two directories are ever logged into the same account, they share one set of limits and keep separate cost history.
 - **A changed login.** If the account ID inside a directory changes, Gigawatts says so instead of mixing the two accounts' history.
-- **A switch Gigawatts didn't see.** Transcripts don't record which account made a request, so a directory that changed accounts before Gigawatts first ran (the work Mac moving from enterprise to Ultra in the same `~/.claude`) would otherwise put all its history under the newer account. Each config directory can carry a switch setting: a time and the earlier account ID. Requests before that time, and `cachedUsageUtilization` readings whose `fetchedAtMs` is before it, belong to the earlier account.
+- **A switch Gigawatts didn't see.** Transcripts don't record which account made a request, so a directory that changed accounts before Gigawatts first ran (the work Mac moving from enterprise to Ultra in the same `~/.claude`) would otherwise put all its history under the newer account. Each config directory can carry a switch setting: a time and the earlier account ID. Requests before that time, and `cachedUsageUtilization` readings whose `fetchedAtMs` is before it, belong to the earlier account. Days whose request detail has already expired keep the account they were stored under, so set the switch before the retention window passes them.
 
 ## Architecture
 
@@ -135,13 +135,13 @@ Rows are written only when something happens, never on a timer.
 | Requests | API request, keyed by `requestId` | Forever by default. A setting limits it to a number of days |
 | Daily totals | Day × account × repo × branch × skill × agent × model, updated in place | Forever |
 | Sessions | Session, updated in place | Forever |
-| Not in transcript | Session × model, rewritten on each `cost-state` | Forever |
+| Not in transcript | Session × model, rewritten on each `cost-state` while the model has request detail | Forever |
 | Directories | Working directory, resolved once | Forever |
 | Limit readings | Change in a limit percentage, per account | Forever |
 | Usage advice | Day × account, from `behaviors` | Forever |
 | File positions | Transcript file, updated in place | While the file exists |
 
-Request costs are provisional until Claude Code writes the session's `cost-state` when the session ends. Then the session's requests are checked, any spend not in the transcript is stored as its own row, and the daily totals are recomputed. If request detail is limited by the setting, a daily cleanup deletes expired rows and runs SQLite's incremental vacuum so the file actually shrinks, and reports fall back to the daily totals and session rows.
+Request costs are provisional until Claude Code writes the session's `cost-state` when the session ends. Then the session's requests are checked, any spend not in the transcript is stored as its own row, and the daily totals are recomputed. If request detail is limited by the setting, a daily cleanup deletes expired rows and runs SQLite's incremental vacuum so the file actually shrinks, and reports fall back to the daily totals, with a session report showing all expired days as one "older sessions, detail not kept" row. Transcripts first found after cleanup, such as a directory added later, don't add days before the cutoff. A switch setting added later can't move those days to the earlier account, because daily totals don't record the time of each request.
 
 Measured in an earlier design session (not rerun since):
 
@@ -202,7 +202,7 @@ It shows one account at a time, starting with the one used most recently, with i
 ## Stale data and errors
 
 - **Stale limits.** Every limit shows its age. Opening the view refreshes any account whose reading is over 10 minutes old. `gigawatts status` prints the saved reading and asks the engine to refresh in the background, at most once per 10 minutes. A reading over an hour old is greyed out with "may not include use outside Claude Code," since chat and cloud sessions only show up through limits.
-- **Problems.** Each affected number carries a short marker, like "limits: refresh failing since 2 PM" or "cost estimated: no price for claude-opus-5-6." The footer shows when anything is wrong, and `gigawatts doctor` lists each problem with its cause and what to do. Watched problems include unrecognized transcript lines, unknown models, price gaps ("adjusted" sessions, plus a price that comes out above Claude Code's record even with spend missing from the transcript), failing refreshes, folders the engine can't watch, and transcripts or logins it can't read.
+- **Problems.** Each affected number carries a short marker, like "limits: refresh failing since 2 PM" or "cost estimated: no price for claude-opus-5-6." The footer shows when anything is wrong, and `gigawatts doctor` lists each problem with its cause and what to do. Watched problems include unrecognized transcript lines, unknown models, price gaps ("adjusted" sessions, plus a price that comes out above Claude Code's record even with spend missing from the transcript), failing refreshes, folders the engine can't watch, transcripts or logins it can't read, and a daily cleanup of old request detail that fails.
 
 ## Settings
 

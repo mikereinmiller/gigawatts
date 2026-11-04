@@ -211,6 +211,8 @@ pub fn run(paths: &Paths) -> Result<Outcome, Error> {
         watch_problems: BTreeMap::new(),
         login_problems: BTreeMap::new(),
         read_problem: None,
+        requests_expired: None,
+        cleanup_problem: None,
     };
     engine.full_scan(&mut store, started.elapsed());
     loop {
@@ -262,6 +264,8 @@ struct Engine<'a> {
     watch_problems: BTreeMap<PathBuf, Problem>,
     login_problems: BTreeMap<PathBuf, Problem>,
     read_problem: Option<Problem>,
+    requests_expired: Option<(String, u32)>,
+    cleanup_problem: Option<Problem>,
 }
 
 impl Engine<'_> {
@@ -321,6 +325,7 @@ impl Engine<'_> {
             eprintln!("gigawatts engine: can't read changed transcripts: {error}");
             self.read_problem = Some(read_failing(store, self.read_problem.take(), &error));
         }
+        self.expire_requests_once_a_day(store);
         self.write_snapshot(store);
     }
 
@@ -356,7 +361,38 @@ impl Engine<'_> {
             eprintln!("gigawatts engine: can't read transcripts: {error}");
             self.read_problem = Some(read_failing(store, previous_read_problem, &error));
         }
+        self.expire_requests_once_a_day(store);
         self.write_snapshot(store);
+    }
+
+    fn expire_requests_once_a_day(&mut self, store: &mut Store) {
+        let Some(days) = self.config.request_detail_days else {
+            return;
+        };
+        let today = match store.local_today() {
+            Ok(today) => today,
+            Err(error) => {
+                eprintln!("gigawatts engine: can't tell today's date for cleanup: {error}");
+                return;
+            }
+        };
+        let done = (today, days);
+        if self.requests_expired.as_ref() == Some(&done) {
+            return;
+        }
+        match store.expire_requests(days, &done.0) {
+            Ok(_) => {
+                self.requests_expired = Some(done);
+                self.cleanup_problem = None;
+            }
+            Err(error) => {
+                eprintln!(
+                    "gigawatts engine: can't delete request detail older than {days} days: {error}"
+                );
+                let previous = self.cleanup_problem.take();
+                self.cleanup_problem = Some(cleanup_failing(store, previous, days, &error));
+            }
+        }
     }
 
     fn note_unreadable_logins(&mut self, store: &Store, directories: &[Directory]) {
@@ -386,6 +422,7 @@ impl Engine<'_> {
             .values()
             .chain(self.login_problems.values())
             .chain(&self.read_problem)
+            .chain(&self.cleanup_problem)
             .cloned()
             .collect();
         let written = snapshot::build(store, &self.config, now_ms(), &engine_problems)
@@ -461,6 +498,23 @@ fn read_failing(store: &Store, previous: Option<Problem>, error: &ingest::Error)
         since: since(store, previous.as_ref()),
         cause,
         fix: fix.to_string(),
+    }
+}
+
+fn cleanup_failing(
+    store: &Store,
+    previous: Option<Problem>,
+    days: u32,
+    error: &store::Error,
+) -> Problem {
+    Problem {
+        kind: ProblemKind::CleanupFailing,
+        affects: format!(
+            "the history file's size: request detail older than {days} days isn't deleted"
+        ),
+        since: since(store, previous.as_ref()),
+        cause: format!("Gigawatts can't delete old request detail: {error}"),
+        fix: "Check the free disk space and that nothing else holds the history database open. Gigawatts tries again after the next transcript change".to_string(),
     }
 }
 
@@ -593,7 +647,7 @@ pub fn running_problems(paths: &Paths) -> Vec<Problem> {
         .filter(|problem| {
             matches!(
                 problem.kind,
-                ProblemKind::WatchFailing | ProblemKind::ReadFailing
+                ProblemKind::WatchFailing | ProblemKind::ReadFailing | ProblemKind::CleanupFailing
             )
         })
         .collect()
