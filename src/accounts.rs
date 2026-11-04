@@ -185,6 +185,7 @@ pub fn ingest(
     resolver: &Resolver,
 ) -> Result<Summary, ingest::Error> {
     let mut total = Summary::default();
+    let mut first_error = None;
     let now_ms = now_ms();
     let mut kept_folders: Vec<PathBuf> = directories
         .iter()
@@ -216,7 +217,14 @@ pub fn ingest(
         if !attribution.reads_anything() || !projects.is_dir() {
             continue;
         }
-        let summary = ingest_tree(store, &projects, table, &attribution, resolver)?;
+        let summary = match ingest_tree(store, &projects, table, &attribution, resolver) {
+            Ok(summary) => summary,
+            Err(error) => {
+                kept_folders.push(projects);
+                first_error.get_or_insert(error);
+                continue;
+            }
+        };
         kept_folders.push(projects);
         if read_again {
             store.delete_emptied_sessions(&attribution.untracked)?;
@@ -228,7 +236,7 @@ pub fn ingest(
         }
     }
     store.forget_unrecognized_outside_folders(&kept_folders)?;
-    Ok(total)
+    first_error.map_or(Ok(total), Err)
 }
 
 pub fn read_again_for(

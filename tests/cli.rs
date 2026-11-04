@@ -53,3 +53,31 @@ fn editing_a_symlinked_config_writes_through_the_link() {
     assert!(written.contains("# kept in dotfiles\n"), "{written}");
     assert!(written.contains("work-claude"), "{written}");
 }
+
+#[test]
+fn ingest_says_it_read_the_rest_when_one_transcript_is_unreadable() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path().join("home");
+    let project = home.join(".claude").join("projects").join("p");
+    fs::create_dir_all(&project).unwrap();
+    fs::write(
+        home.join(".claude.json"),
+        r#"{"oauthAccount":{"accountUuid":"00000000-0000-4000-8000-00000000000a","organizationUuid":"00000000-0000-4000-8000-0000000000f0"}}"#,
+    )
+    .unwrap();
+    let locked = project.join("a.jsonl");
+    fs::write(&locked, "").unwrap();
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o000)).unwrap();
+    fs::write(project.join("b.jsonl"), "").unwrap();
+
+    let output = gigawatts(Some(&home), dir.path(), &["ingest"]);
+
+    assert_eq!(output.status.code(), Some(2), "{output:?}");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.starts_with("gigawatts: read every other transcript, but can't read ")
+            && stderr.contains("a.jsonl"),
+        "{stderr}"
+    );
+}

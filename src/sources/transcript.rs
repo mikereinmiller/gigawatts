@@ -466,7 +466,14 @@ impl Corpus {
             corpus.read_file(root)?;
             return Ok(corpus);
         }
-        for path in transcript_files(root)? {
+        let listed = transcript_files(root)?;
+        if let Some((folder, error)) = listed.unreadable_folder {
+            return Err(io::Error::new(
+                error.kind(),
+                format!("{}: {error}", folder.display()),
+            ));
+        }
+        for path in listed.files {
             corpus.read_file(&path)?;
         }
         Ok(corpus)
@@ -511,11 +518,27 @@ impl Corpus {
     }
 }
 
-pub fn transcript_files(root: &Path) -> io::Result<Vec<PathBuf>> {
+#[derive(Debug, Default)]
+pub struct TranscriptFiles {
+    pub files: Vec<PathBuf>,
+    pub unreadable_folder: Option<(PathBuf, io::Error)>,
+}
+
+pub fn transcript_files(root: &Path) -> io::Result<TranscriptFiles> {
     let mut files = Vec::new();
+    let mut unreadable_folder = None;
     let mut pending = vec![root.to_path_buf()];
     while let Some(dir) = pending.pop() {
-        for entry in std::fs::read_dir(&dir)? {
+        let entries = match std::fs::read_dir(&dir) {
+            Err(error) if dir != root => {
+                if error.kind() != io::ErrorKind::NotFound {
+                    unreadable_folder.get_or_insert((dir, error));
+                }
+                continue;
+            }
+            entries => entries?,
+        };
+        for entry in entries {
             let path = entry?.path();
             if path.is_dir() {
                 pending.push(path);
@@ -525,5 +548,8 @@ pub fn transcript_files(root: &Path) -> io::Result<Vec<PathBuf>> {
         }
     }
     files.sort();
-    Ok(files)
+    Ok(TranscriptFiles {
+        files,
+        unreadable_folder,
+    })
 }

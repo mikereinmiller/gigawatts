@@ -130,8 +130,12 @@ fn ingest() -> ExitCode {
     };
     let summary = match accounts::ingest(&mut store, &directories, &config, &table, &resolver) {
         Ok(summary) => summary,
-        Err(error) => {
+        Err(error @ gigawatts::ingest::Error::Store(_)) => {
             eprintln!("gigawatts: can't ingest: {error}");
+            return ExitCode::from(2);
+        }
+        Err(error) => {
+            eprintln!("gigawatts: read every other transcript, but can't read {error}");
             return ExitCode::from(2);
         }
     };

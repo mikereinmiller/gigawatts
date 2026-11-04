@@ -9,7 +9,7 @@ use crate::accounts::Attribution;
 use crate::config::epoch_ms_from_text;
 use crate::pricing::PriceTable;
 use crate::sources::git::Resolver;
-use crate::sources::transcript::{Line, Request, parse_line, transcript_files};
+use crate::sources::transcript::{Line, Request, TranscriptFiles, parse_line, transcript_files};
 use crate::store::{self, FilePosition, Store};
 
 pub struct Read<'a> {
@@ -38,13 +38,16 @@ pub fn complete_lines(bytes: &[u8], position: usize) -> Read<'_> {
 #[derive(Debug)]
 pub enum Error {
     Io(PathBuf, io::Error),
+    Folder(PathBuf, io::Error),
     Store(store::Error),
 }
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Error::Io(path, error) => write!(f, "{}: {error}", path.display()),
+            Error::Io(path, error) | Error::Folder(path, error) => {
+                write!(f, "{}: {error}", path.display())
+            }
             Error::Store(error) => write!(f, "history database: {error}"),
         }
     }
@@ -72,25 +75,42 @@ pub fn ingest_tree(
     attribution: &Attribution,
     resolver: &Resolver,
 ) -> Result<Summary, Error> {
-    let files = if root.is_file() {
-        vec![root.to_path_buf()]
+    let listed = if root.is_file() {
+        TranscriptFiles {
+            files: vec![root.to_path_buf()],
+            unreadable_folder: None,
+        }
     } else {
-        transcript_files(root).map_err(|error| Error::Io(root.to_path_buf(), error))?
+        match transcript_files(root) {
+            Ok(listed) => listed,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => TranscriptFiles::default(),
+            Err(error) => return Err(Error::Io(root.to_path_buf(), error)),
+        }
     };
+    let mut first_error = listed
+        .unreadable_folder
+        .map(|(folder, error)| Error::Folder(folder, error));
     store.resolve_unplaced_folders(resolver)?;
-    let files: Vec<PathBuf> = files
+    let files: Vec<PathBuf> = listed
+        .files
         .into_iter()
         .filter(|path| !is_set_aside(path))
         .collect();
-    if root.is_dir() {
+    if root.is_dir() && first_error.is_none() {
         store.forget_unrecognized_outside(root, &files)?;
     }
     let mut summary = Summary::default();
     for path in &files {
         summary.files += 1;
-        ingest_file(store, path, table, attribution, resolver, &mut summary)?;
+        match ingest_file(store, path, table, attribution, resolver, &mut summary) {
+            Ok(()) => {}
+            Err(Error::Io(_, error)) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => {
+                first_error.get_or_insert(error);
+            }
+        }
     }
-    Ok(summary)
+    first_error.map_or(Ok(summary), Err)
 }
 
 fn is_set_aside(path: &Path) -> bool {
