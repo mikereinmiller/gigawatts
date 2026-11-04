@@ -565,7 +565,7 @@ pub fn refresh_if_running(paths: &Paths, executable: &Path) -> Result<bool, Erro
     Ok(true)
 }
 
-fn wait_until_answering(paths: &Paths) -> Result<(), Error> {
+pub fn wait_until_answering(paths: &Paths) -> Result<(), Error> {
     let deadline = Instant::now() + START_WAIT;
     while control::send(&paths.socket(), Command::Version).is_err() {
         if Instant::now() >= deadline {

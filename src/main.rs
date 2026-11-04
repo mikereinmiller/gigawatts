@@ -10,6 +10,7 @@ use gigawatts::contract::{DataResponse, GroupBy, Range, Snapshot};
 use gigawatts::engine;
 use gigawatts::problems;
 use gigawatts::scrub::scrub_sessions;
+use gigawatts::service::{Manager, Service};
 use gigawatts::sources::transcript::Corpus;
 use gigawatts::store::Store;
 
@@ -50,6 +51,11 @@ enum Command {
         #[command(subcommand)]
         action: Option<AccountsAction>,
     },
+    /// Start the background engine at login, or stop doing so
+    Service {
+        #[command(subcommand)]
+        action: ServiceAction,
+    },
     /// Stop the background engine
     Stop,
     /// Print the JSON Schema for the snapshot and `data` responses
@@ -84,6 +90,14 @@ enum AccountsAction {
     Forget { account: String },
 }
 
+#[derive(Subcommand)]
+enum ServiceAction {
+    /// Add a systemd user unit or a launchd agent that starts the engine at login, and start it now
+    Install,
+    /// Remove the login service, which also stops the engine it started
+    Uninstall,
+}
+
 #[derive(Clone, Copy, ValueEnum)]
 enum OnOff {
     On,
@@ -115,6 +129,10 @@ fn main() -> ExitCode {
             Some(AccountsAction::Track { account, state }) => set_tracking(&account, state.is_on()),
             Some(AccountsAction::Titles { account, state }) => set_titles(&account, state.is_on()),
             Some(AccountsAction::Forget { account }) => forget(&account),
+        },
+        Command::Service { action } => match action {
+            ServiceAction::Install => install_service(),
+            ServiceAction::Uninstall => uninstall_service(),
         },
         Command::Stop => stop(),
         Command::Schema => schema(),
@@ -520,6 +538,99 @@ fn stop() -> ExitCode {
             ExitCode::from(2)
         }
     }
+}
+
+fn install_service() -> ExitCode {
+    let Ok(service) = login_service() else {
+        return ExitCode::from(2);
+    };
+    let was_running = match engine::stop_unless_newer(&paths()) {
+        Ok(was_running) => was_running,
+        Err(error) => {
+            eprintln!("gigawatts: {error}");
+            return ExitCode::from(2);
+        }
+    };
+    match service.install(&mut run_command) {
+        Ok(()) => {
+            if let Err(error) = engine::wait_until_answering(&paths()) {
+                eprintln!(
+                    "gigawatts: installed {}, but {error}",
+                    service.file().display()
+                );
+                return ExitCode::from(2);
+            }
+            println!(
+                "Installed {}. The engine starts at login, and the service started it now.",
+                service.file().display()
+            );
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("gigawatts: can't install the login service: {error}");
+            if was_running && let Err(error) = engine::ensure_running(&paths(), &executable()) {
+                eprintln!("gigawatts: can't start the engine again: {error}");
+            }
+            ExitCode::from(2)
+        }
+    }
+}
+
+fn uninstall_service() -> ExitCode {
+    let Ok(service) = login_service() else {
+        return ExitCode::from(2);
+    };
+    match service.uninstall(&mut run_command) {
+        Ok(true) => {
+            println!(
+                "Removed {}. The engine no longer starts at login.",
+                service.file().display()
+            );
+            ExitCode::SUCCESS
+        }
+        Ok(false) => {
+            println!("No login service is installed.");
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("gigawatts: can't remove the login service: {error}");
+            ExitCode::from(2)
+        }
+    }
+}
+
+fn login_service() -> Result<Service, ExitCode> {
+    let uid = std::process::Command::new("id")
+        .arg("-u")
+        .output()
+        .ok()
+        .and_then(|output| String::from_utf8(output.stdout).ok())
+        .and_then(|text| text.trim().parse().ok());
+    let Some(uid) = uid else {
+        eprintln!("gigawatts: can't find your user ID with `id -u`.");
+        return Err(ExitCode::from(2));
+    };
+    Ok(Service {
+        manager: Manager::for_this_os(),
+        home: home(),
+        executable: executable(),
+        path: std::env::var("PATH").unwrap_or_default(),
+        uid,
+    })
+}
+
+fn run_command(args: &[&str]) -> std::io::Result<()> {
+    let output = std::process::Command::new(args[0])
+        .args(&args[1..])
+        .output()?;
+    if output.status.success() {
+        return Ok(());
+    }
+    Err(std::io::Error::other(format!(
+        "{}: {}",
+        output.status,
+        String::from_utf8_lossy(&output.stderr).trim()
+    )))
 }
 
 fn schema() -> ExitCode {

@@ -9,5 +9,6 @@ pub mod ingest;
 pub mod pricing;
 pub mod problems;
 pub mod scrub;
+pub mod service;
 pub mod sources;
 pub mod store;
