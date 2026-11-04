@@ -82,6 +82,7 @@ pub struct DataResponse {
     pub today: String,
     pub since: Option<String>,
     pub rows: Vec<DataRow>,
+    pub problems: Vec<Problem>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -99,4 +100,21 @@ pub struct DataRow {
     pub cache_write_tokens: u64,
     pub web_searches: u64,
     pub cost_usd: Option<f64>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProblemKind {
+    UnrecognizedLines,
+    NoPrice,
+    PriceGap,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Problem {
+    pub kind: ProblemKind,
+    pub affects: String,
+    pub since: Option<String>,
+    pub cause: String,
+    pub fix: String,
 }

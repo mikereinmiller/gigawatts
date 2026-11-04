@@ -1,16 +1,25 @@
+use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
 
 use gigawatts::accounts::Attribution;
-use gigawatts::contract::{GroupBy, Range};
+use gigawatts::config::epoch_ms_from_text;
+use gigawatts::contract::{GroupBy, ProblemKind, Range};
 use gigawatts::data::query;
 use gigawatts::pricing::PriceTable;
+use gigawatts::problems;
 use gigawatts::sources::claude_json::Account;
 use gigawatts::sources::git::Resolver;
-use gigawatts::sources::transcript::{Line, Request, RequestDetail, Tokens};
+use gigawatts::sources::transcript::{
+    CostState, Line, ModelCost, Request, RequestDetail, SessionTotals, Tokens,
+};
 use gigawatts::store::{FilePosition, Store};
 
 const HEAVY_REQUESTS_PER_DAY: usize = 5_000;
 const SESSIONS_PER_DAY: usize = 50;
+const PRICE_GAP_EVERY: usize = 10;
+const UNPRICED_EVERY: usize = 25;
+const UNPRICED_DAYS: usize = 30;
+const UNPRICED_REQUEST_MODEL: &str = "claude-invented-8";
 const RETENTION_DAYS: usize = 90;
 const YEAR_DAYS: usize = 365;
 const LAST_DAY: &str = "2026-12-31";
@@ -112,16 +121,106 @@ fn request(random: &mut Random, date: &str, day: usize, n: usize, combination: u
     }
 }
 
-fn day_lines(random: &mut Random, date: &str, day: usize, heavy: bool) -> Vec<Line> {
+fn day_lines(
+    random: &mut Random,
+    table: &PriceTable,
+    date: &str,
+    day: usize,
+    heavy: bool,
+) -> Vec<Line> {
     let count = if heavy {
         HEAVY_REQUESTS_PER_DAY
     } else {
         COMBINATIONS
     };
-    (0..count)
+    let unpriced_days = day >= YEAR_DAYS - UNPRICED_DAYS;
+    let requests: Vec<Request> = (0..count)
         .map(|n| {
-            let combination = n % COMBINATIONS;
-            Line::Request(Box::new(request(random, date, day, n, combination)))
+            let mut request = request(random, date, day, n, n % COMBINATIONS);
+            if unpriced_days && n % UNPRICED_EVERY == 0 {
+                request.model = UNPRICED_REQUEST_MODEL.to_string();
+            }
+            request
+        })
+        .collect();
+    let cost_states = cost_states(table, &requests);
+    let unrecognized = Line::Unrecognized {
+        kind: "assistant-v2".to_string(),
+        timestamp: Some(format!("{date}T00:00:00.000Z")),
+    };
+    requests
+        .into_iter()
+        .map(|request| Line::Request(Box::new(request)))
+        .chain(cost_states.into_iter().map(Line::CostState))
+        .chain(std::iter::once(unrecognized))
+        .collect()
+}
+
+fn cost_states(table: &PriceTable, requests: &[Request]) -> Vec<CostState> {
+    let mut sessions: BTreeMap<&str, CostState> = BTreeMap::new();
+    for request in requests {
+        let state = sessions
+            .entry(&request.session_id)
+            .or_insert_with(|| CostState {
+                session_id: request.session_id.clone(),
+                total_cost_usd: 0.0,
+                models: BTreeMap::new(),
+                totals: SessionTotals {
+                    start_time_ms: request
+                        .detail
+                        .timestamp
+                        .as_deref()
+                        .and_then(epoch_ms_from_text),
+                    ..SessionTotals::default()
+                },
+            });
+        let model = state
+            .models
+            .entry(request.model.clone())
+            .or_insert_with(|| ModelCost {
+                tokens: Tokens::default(),
+                has_cache_write_split: true,
+                cost_usd: 0.0,
+                thinking_tokens: 0,
+                web_fetches: 0,
+            });
+        let tokens = &mut model.tokens;
+        tokens.input += request.tokens.input;
+        tokens.output += request.tokens.output;
+        tokens.cache_read += request.tokens.cache_read;
+        tokens.cache_write_5m += request.tokens.cache_write_5m;
+        tokens.cache_write_1h += request.tokens.cache_write_1h;
+        tokens.web_searches += request.tokens.web_searches;
+        model.thinking_tokens += request.detail.thinking_tokens;
+        model.cost_usd += table.price(request).unwrap_or(0.01);
+    }
+    sessions
+        .into_values()
+        .enumerate()
+        .map(|(index, mut state)| {
+            if index % PRICE_GAP_EVERY == 0 {
+                for model in state.models.values_mut() {
+                    model.cost_usd *= 1.1;
+                }
+            }
+            if index % UNPRICED_EVERY == 1 {
+                state.models.insert(
+                    "claude-invented-9".to_string(),
+                    ModelCost {
+                        tokens: Tokens {
+                            input: 1_000,
+                            output: 100,
+                            ..Tokens::default()
+                        },
+                        has_cache_write_split: true,
+                        cost_usd: 0.01,
+                        thinking_tokens: 0,
+                        web_fetches: 0,
+                    },
+                );
+            }
+            state.total_cost_usd = state.models.values().map(|model| model.cost_usd).sum();
+            state
         })
         .collect()
 }
@@ -170,7 +269,7 @@ fn a_heavy_year_with_90_day_retention_stays_small_and_fast() {
     for day in 0..YEAR_DAYS {
         let date = shift(&first_day, day as i64);
         let heavy = day >= YEAR_DAYS - RETENTION_DAYS;
-        let lines = day_lines(&mut random, &date, day, heavy);
+        let lines = day_lines(&mut random, &table, &date, day, heavy);
         let position = FilePosition {
             path: format!("day-{day}.jsonl"),
             device: 1,
@@ -181,6 +280,7 @@ fn a_heavy_year_with_90_day_retention_stays_small_and_fast() {
         store
             .save_file(
                 &position,
+                true,
                 &lines,
                 &attribution,
                 &table,
@@ -205,6 +305,25 @@ fn a_heavy_year_with_90_day_retention_stays_small_and_fast() {
     let today = fastest_of_three(|| {
         query(&store, Range::Today, GroupBy::Model, &[], LAST_DAY).unwrap();
     });
+    let kinds: Vec<ProblemKind> = problems::collect(&store, &table)
+        .unwrap()
+        .iter()
+        .map(|problem| problem.kind)
+        .collect();
+    assert_eq!(
+        kinds,
+        vec![
+            ProblemKind::UnrecognizedLines,
+            ProblemKind::NoPrice,
+            ProblemKind::NoPrice,
+            ProblemKind::PriceGap,
+            ProblemKind::PriceGap,
+            ProblemKind::PriceGap,
+        ]
+    );
+    let problems = fastest_of_three(|| {
+        problems::collect(&store, &table).unwrap();
+    });
     let year_by = |by: GroupBy| {
         fastest_of_three(|| {
             query(&store, Range::All, by, &[], LAST_DAY).unwrap();
@@ -226,12 +345,17 @@ fn a_heavy_year_with_90_day_retention_stays_small_and_fast() {
 
     println!(
         "{:.1} MB, {} bytes per stored request, today {today:?}, year {year:?}, \
-         by repo {year_by_repo:?}, by branch {year_by_branch:?}, drill {year_drill:?}",
+         by repo {year_by_repo:?}, by branch {year_by_branch:?}, drill {year_drill:?}, \
+         problems {problems:?}",
         bytes as f64 / 1024.0 / 1024.0,
         bytes / requests
     );
     assert!(bytes <= MAX_BYTES, "database is {bytes} bytes");
     assert!(today <= MAX_TODAY, "today's query took {today:?}");
+    assert!(
+        today + problems <= MAX_TODAY,
+        "today's query took {today:?} and collecting problems took {problems:?}"
+    );
     assert!(year <= MAX_YEAR, "the yearly report took {year:?}");
     assert!(
         year_by_repo <= MAX_YEAR,

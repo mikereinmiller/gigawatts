@@ -233,7 +233,7 @@ impl PriceTable {
     }
 }
 
-fn without_date_suffix(model: &str) -> &str {
+pub(crate) fn without_date_suffix(model: &str) -> &str {
     match model.rsplit_once('-') {
         Some((id, date)) if date.len() == 8 && date.bytes().all(|b| b.is_ascii_digit()) => id,
         _ => model,

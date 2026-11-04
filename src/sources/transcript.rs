@@ -104,8 +104,14 @@ pub struct SessionTotals {
 pub enum Line {
     Request(Box<Request>),
     CostState(CostState),
-    Title { session_id: String, title: String },
-    Unrecognized(String),
+    Title {
+        session_id: String,
+        title: String,
+    },
+    Unrecognized {
+        kind: String,
+        timestamp: Option<String>,
+    },
 }
 
 #[derive(Deserialize)]
@@ -289,6 +295,9 @@ struct RawModelUsage {
 
 const SYNTHETIC_MODEL: &str = "<synthetic>";
 
+/// Raise it whenever `parse_line` reads lines it used to reject, so every stored transcript is read again.
+pub const READER_VERSION: u32 = 1;
+
 pub fn is_candidate(line: &str) -> bool {
     line.contains("\"usage\"") || line.contains("\"cost-state\"") || line.contains("\"ai-title\"")
 }
@@ -298,18 +307,26 @@ pub fn parse_line(line: &str) -> Option<Line> {
         return None;
     }
     let Ok(raw) = serde_json::from_str::<RawLine>(line) else {
-        return Some(Line::Unrecognized("invalid JSON".to_string()));
+        return Some(Line::Unrecognized {
+            kind: "invalid JSON".to_string(),
+            timestamp: None,
+        });
     };
     let kind = raw.kind.as_deref().unwrap_or("untyped").to_string();
+    let timestamp = raw.timestamp.as_deref().map(str::to_string);
+    let unrecognized = Line::Unrecognized {
+        kind: kind.clone(),
+        timestamp,
+    };
     let parsed = match kind.as_str() {
         "assistant" if is_synthetic(&raw) => return None,
         "assistant" => request_from(raw),
         "cost-state" => cost_state_from(raw),
         "ai-title" => title_from(raw),
-        _ if carries_usage(&raw) => return Some(Line::Unrecognized(kind)),
+        _ if carries_usage(&raw) => return Some(unrecognized),
         _ => return None,
     };
-    Some(parsed.unwrap_or(Line::Unrecognized(kind)))
+    Some(parsed.unwrap_or(unrecognized))
 }
 
 fn carries_usage(raw: &RawLine) -> bool {
@@ -489,7 +506,7 @@ impl Corpus {
                 }
             }
             Line::Title { .. } => {}
-            Line::Unrecognized(kind) => *self.unrecognized.entry(kind).or_default() += 1,
+            Line::Unrecognized { kind, .. } => *self.unrecognized.entry(kind).or_default() += 1,
         }
     }
 }

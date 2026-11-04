@@ -86,6 +86,7 @@ pub fn query(
         today: today.to_string(),
         since,
         rows,
+        problems: Vec::new(),
     })
 }
 
@@ -212,6 +213,7 @@ pub fn render(response: &DataResponse) -> String {
         let _ = writeln!(out);
         let _ = writeln!(out, "No requests in this range.");
     }
+    out.push_str(&crate::problems::footer(&response.problems));
     out
 }
 

@@ -78,8 +78,15 @@ pub fn ingest_tree(
         transcript_files(root).map_err(|error| Error::Io(root.to_path_buf(), error))?
     };
     store.resolve_unplaced_folders(resolver)?;
+    let files: Vec<PathBuf> = files
+        .into_iter()
+        .filter(|path| !is_set_aside(path))
+        .collect();
+    if root.is_dir() {
+        store.forget_unrecognized_outside(root, &files)?;
+    }
     let mut summary = Summary::default();
-    for path in files.iter().filter(|path| !is_set_aside(path)) {
+    for path in &files {
         summary.files += 1;
         ingest_file(store, path, table, attribution, resolver, &mut summary)?;
     }
@@ -128,12 +135,17 @@ fn ingest_file(
     let mut lines = Vec::new();
     for line in &read.lines {
         match parse_line(&String::from_utf8_lossy(line)) {
-            Some(Line::Unrecognized(kind)) => *summary.unrecognized.entry(kind).or_default() += 1,
+            Some(Line::Unrecognized { kind, timestamp }) => {
+                *summary.unrecognized.entry(kind.clone()).or_default() += 1;
+                lines.push(Line::Unrecognized { kind, timestamp });
+            }
             Some(Line::Request(request)) if !has_usable_timestamp(&request) => {
-                *summary
-                    .unrecognized
-                    .entry("assistant without a timestamp".to_string())
-                    .or_default() += 1;
+                let kind = "assistant without a timestamp".to_string();
+                *summary.unrecognized.entry(kind.clone()).or_default() += 1;
+                lines.push(Line::Unrecognized {
+                    kind,
+                    timestamp: None,
+                });
             }
             Some(parsed) => lines.push(parsed),
             None => {}
@@ -146,7 +158,7 @@ fn ingest_file(
         first_line_hash,
         offset: start + read.position as u64,
     };
-    store.save_file(&position, &lines, attribution, table, resolver)?;
+    store.save_file(&position, start == 0, &lines, attribution, table, resolver)?;
     summary.files_with_new_lines += 1;
     Ok(())
 }

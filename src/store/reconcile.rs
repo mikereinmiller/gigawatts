@@ -54,8 +54,9 @@ pub(super) fn session(
                 changed_days.extend(stored.day.clone());
             }
         }
-        let price_gap = (check.cause == Some(Cause::PriceOrRule) || priced_above_shortfall(check))
-            .then(|| check.gap());
+        let price_gap = (check.cause == Some(Cause::PriceOrRule) && !recorded_no_cost(check)
+            || priced_above_shortfall(check))
+        .then(|| check.gap());
         transaction.execute(
             "UPDATE session_models SET price_gap_usd = ?3
              WHERE session_id = ?1

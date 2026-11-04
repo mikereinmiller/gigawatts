@@ -6,6 +6,7 @@ pub mod cost;
 pub mod data;
 pub mod ingest;
 pub mod pricing;
+pub mod problems;
 pub mod scrub;
 pub mod sources;
 pub mod store;

@@ -7,6 +7,7 @@ use gigawatts::accounts::{self, Directory};
 use gigawatts::check_costs::CheckReport;
 use gigawatts::config::{self, Config};
 use gigawatts::contract::{GroupBy, Range};
+use gigawatts::problems;
 use gigawatts::scrub::scrub_sessions;
 use gigawatts::sources::git::Resolver;
 use gigawatts::sources::transcript::Corpus;
@@ -42,6 +43,8 @@ enum Command {
         #[arg(long)]
         drill: Vec<String>,
     },
+    /// List every current problem with its cause and fix, and exit 1 if there are any
+    Doctor,
     /// List Claude Code config directories, their accounts, and whether each is tracked
     Accounts {
         #[command(subcommand)]
@@ -94,6 +97,7 @@ fn main() -> ExitCode {
         Command::CheckCosts { path } => check_costs(path.unwrap_or_else(default_projects_dir)),
         Command::Ingest => ingest(),
         Command::Data { range, by, drill } => data(range, by, &drill),
+        Command::Doctor => doctor(),
         Command::Accounts { action } => match action {
             None => list_accounts(),
             Some(AccountsAction::Add { path }) => add_account_path(&path),
@@ -161,7 +165,11 @@ fn data(range: Range, by: GroupBy, drill: &[String]) -> ExitCode {
     let response = store
         .local_today()
         .map_err(gigawatts::data::Error::from)
-        .and_then(|today| gigawatts::data::query(&store, range, by, &drill, &today));
+        .and_then(|today| gigawatts::data::query(&store, range, by, &drill, &today))
+        .and_then(|mut response| {
+            response.problems = problems::collect(&store, &config.price_table())?;
+            Ok(response)
+        });
     match response {
         Ok(mut response) => {
             gigawatts::data::label_accounts(&mut response, &config);
@@ -174,6 +182,26 @@ fn data(range: Range, by: GroupBy, drill: &[String]) -> ExitCode {
         }
         Err(error) => {
             eprintln!("gigawatts: {error}");
+            ExitCode::from(2)
+        }
+    }
+}
+
+fn doctor() -> ExitCode {
+    let (Ok(config), Ok(store)) = (load_config(), open_store()) else {
+        return ExitCode::from(2);
+    };
+    match problems::collect(&store, &config.price_table()) {
+        Ok(problems) => {
+            print!("{}", problems::render(&problems));
+            if problems.is_empty() {
+                ExitCode::SUCCESS
+            } else {
+                ExitCode::FAILURE
+            }
+        }
+        Err(error) => {
+            eprintln!("gigawatts: can't read problems from the history database: {error}");
             ExitCode::from(2)
         }
     }

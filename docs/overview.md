@@ -202,7 +202,7 @@ It shows one account at a time, starting with the one used most recently, with i
 ## Stale data and errors
 
 - **Stale limits.** Every limit shows its age. Opening the view refreshes any account whose reading is over 10 minutes old. `gigawatts status` prints the saved reading and asks the engine to refresh in the background, at most once per 10 minutes. A reading over an hour old is greyed out with "may not include use outside Claude Code," since chat and cloud sessions only show up through limits.
-- **Problems.** Each affected number carries a short marker, like "limits: refresh failing since 2 PM" or "cost estimated: no price for claude-opus-5-6." The footer shows when anything is wrong, and `gigawatts doctor` lists each problem with its cause and what to do. Watched problems include unrecognized transcript lines, unknown models, "adjusted" sessions (a price gap, not spend missing from the transcript), and failing refreshes.
+- **Problems.** Each affected number carries a short marker, like "limits: refresh failing since 2 PM" or "cost estimated: no price for claude-opus-5-6." The footer shows when anything is wrong, and `gigawatts doctor` lists each problem with its cause and what to do. Watched problems include unrecognized transcript lines, unknown models, price gaps ("adjusted" sessions, plus a price that comes out above Claude Code's record even with spend missing from the transcript), and failing refreshes.
 
 ## Settings
 
@@ -334,7 +334,7 @@ Gigawatts targets what none of them do well: history that outlives log deletion,
 
 - **Undocumented formats.** Transcripts, `cachedUsageUtilization`, and `get_usage` can change in any Claude Code release. Each source sits behind its own reader with fixture tests, and `gigawatts doctor` reports what stopped making sense.
 - **`get_usage` rate limits.** It likely hits the same rate-limited endpoint other tools fight. Refreshes stay infrequent, back off on failure, and fall back to the cached copy.
-- **The built-in price table goes stale.** It is copied by hand, so a new model or price change leaves it behind. `gigawatts doctor` names any model without a price, and the check against Claude Code's totals flags a wrong price as an "adjusted" session.
+- **The built-in price table goes stale.** It is copied by hand, so a new model or price change leaves it behind. `gigawatts doctor` names any model without a price, and the check against Claude Code's totals flags a wrong price as an "adjusted" session, or as a price gap when the price comes out above Claude Code's record even with spend missing from the transcript.
 - **Swift adds a second language.** The view is kept thin so the Swift code stays small.
 
 ## Open questions

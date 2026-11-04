@@ -12,11 +12,13 @@ use crate::contract::{DataRow, Level};
 use crate::pricing::PriceTable;
 use crate::sources::claude_json::{Account, Login};
 use crate::sources::git::{Place, Resolver};
-use crate::sources::transcript::{CostState, Line, Request, Tokens};
+use crate::sources::transcript::{CostState, Line, READER_VERSION, Request, Tokens};
 
+mod problems;
 mod reconcile;
 mod totals;
 
+pub use problems::{ModelSighting, PriceGap, UnrecognizedKind};
 pub use totals::Filter;
 
 #[derive(Debug)]
@@ -99,6 +101,7 @@ fn migrations() -> Migrations<'static> {
         M::up(include_str!("migrations/003_repricing.sql")),
         M::up(include_str!("migrations/004_login_history.sql")),
         M::up(include_str!("migrations/005_attribution.sql")),
+        M::up(include_str!("migrations/006_problems.sql")),
     ])
 }
 
@@ -118,6 +121,7 @@ impl Store {
         connection.pragma_update(None, "synchronous", "NORMAL")?;
         connection.pragma_update(None, "foreign_keys", "ON")?;
         migrations().to_latest(&mut connection)?;
+        read_again_if_reader_changed(&mut connection)?;
         Ok(Store { connection })
     }
 
@@ -144,12 +148,14 @@ impl Store {
     pub fn save_file(
         &mut self,
         position: &FilePosition,
+        from_start: bool,
         lines: &[Line],
         attribution: &Attribution,
         table: &PriceTable,
         resolver: &Resolver,
     ) -> Result<()> {
         let transaction = self.connection.transaction()?;
+        problems::record_unrecognized(&transaction, &position.path, from_start, lines)?;
         let mut writer = Writer::new(&transaction);
         let mut session_accounts: HashMap<&str, Option<Account>> = HashMap::new();
         let mut moved_sessions: BTreeSet<&str> = BTreeSet::new();
@@ -212,7 +218,7 @@ impl Store {
                         writer.title(session_id, title)?;
                     }
                 }
-                Line::Request(_) | Line::Unrecognized(_) => {}
+                Line::Request(_) | Line::Unrecognized { .. } => {}
             }
         }
         writer.resolve_places(resolver)?;
@@ -1091,6 +1097,29 @@ fn delete_positions_under(transaction: &Transaction, prefix: &str) -> Result<()>
         "DELETE FROM file_positions WHERE substr(path, 1, length(?1)) = ?1",
         [prefix],
     )?;
+    Ok(())
+}
+
+fn read_again_if_reader_changed(connection: &mut Connection) -> Result<()> {
+    let version = READER_VERSION.to_string();
+    let transaction = connection.transaction()?;
+    let stored: Option<String> = transaction
+        .query_row(
+            "SELECT value FROM store_settings WHERE key = 'reader_version'",
+            [],
+            |row| row.get(0),
+        )
+        .optional()?;
+    if stored.as_deref() == Some(version.as_str()) {
+        return Ok(());
+    }
+    transaction.execute("UPDATE file_positions SET offset = 0", [])?;
+    transaction.execute(
+        "INSERT INTO store_settings (key, value) VALUES ('reader_version', ?1)
+         ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+        [&version],
+    )?;
+    transaction.commit()?;
     Ok(())
 }
 
