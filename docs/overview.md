@@ -118,7 +118,7 @@ Claude Code's files ──▶ engine ──▶ SQLite history ──▶ snapshot
 | Parsing | `serde_json` into narrow borrowed structs, skipping lines without `"usage"`, `"cost-state"`, or `"ai-title"` before parsing | `sonic-rs` or `simd-json`, only if the first full read proves slow |
 | Storage | `rusqlite` 0.40 (bundled SQLite, the newest `rusqlite_migration` supports), WAL mode, migrations with `rusqlite_migration`, retention below | `sqlx` needs an async runtime. `redb` has no SQL for rollups |
 | Concurrency | Plain threads and channels, all blocking while idle | `tokio`, unnecessary without async networking |
-| Tests | `insta` snapshot tests over trimmed real transcripts, and `proptest` checks that the same bytes split into arbitrary appends produce the same totals. Unrecognized record types are counted, so format drift shows up instead of reading as zero | Hand-written unit tests only |
+| Tests | `insta` snapshot tests over trimmed real transcripts, and `proptest` checks that the same bytes split into arbitrary appends produce the same totals. Lines of an unknown type whose message carries usage are counted, so format drift shows up instead of reading as zero | Hand-written unit tests only |
 
 ### What gets recorded
 

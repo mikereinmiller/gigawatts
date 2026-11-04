@@ -306,9 +306,16 @@ pub fn parse_line(line: &str) -> Option<Line> {
         "assistant" => request_from(raw),
         "cost-state" => cost_state_from(raw),
         "ai-title" => title_from(raw),
-        _ => None,
+        _ if carries_usage(&raw) => return Some(Line::Unrecognized(kind)),
+        _ => return None,
     };
     Some(parsed.unwrap_or(Line::Unrecognized(kind)))
+}
+
+fn carries_usage(raw: &RawLine) -> bool {
+    raw.message
+        .as_ref()
+        .is_some_and(|message| message.usage.is_some())
 }
 
 fn is_synthetic(raw: &RawLine) -> bool {

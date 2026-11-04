@@ -65,16 +65,27 @@ fn keeps_the_largest_cost_state_per_session() {
 }
 
 #[test]
-fn counts_lines_mentioning_usage_that_are_not_requests_by_type() {
-    let attachment = r#"{"type":"attachment","sessionId":"s1","content":{"usage":"see docs"}}"#;
+fn counts_lines_of_other_types_only_when_their_message_carries_usage() {
+    let request_like = r#"{"type":"assistant-v2","sessionId":"s1","message":{"model":"claude-opus-5-5","usage":{"input_tokens":1,"output_tokens":1}}}"#;
+    let summary = r#"{"type":"attachment","sessionId":"s1","attachment":{"type":"queued_command","usage":{"totalTokens":145018,"toolUses":23,"durationMs":299170}}}"#;
+    let text = r#"{"type":"system","sessionId":"s1","content":"run /usage to see \"usage\""}"#;
     let user = r#"{"type":"user","sessionId":"s1","message":{"content":"no match here"}}"#;
     let broken = r#"{"type":"assistant","usage": "#;
 
-    let corpus = corpus_of(&[attachment, user, broken]);
+    let corpus = corpus_of(&[request_like, summary, text, user, broken]);
 
-    assert_eq!(corpus.unrecognized.get("attachment"), Some(&1));
+    assert_eq!(corpus.unrecognized.get("assistant-v2"), Some(&1));
     assert_eq!(corpus.unrecognized.get("invalid JSON"), Some(&1));
-    assert_eq!(corpus.unrecognized.len(), 2);
+    assert_eq!(corpus.unrecognized.len(), 2, "{:?}", corpus.unrecognized);
+}
+
+#[test]
+fn counts_a_known_line_type_that_doesnt_parse() {
+    let cost_state = r#"{"type":"cost-state","sessionId":"s1","totalCostUSD":1.0}"#;
+
+    let corpus = corpus_of(&[cost_state]);
+
+    assert_eq!(corpus.unrecognized.get("cost-state"), Some(&1));
 }
 
 #[test]
