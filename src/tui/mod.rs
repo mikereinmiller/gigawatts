@@ -2,28 +2,26 @@ use std::collections::BTreeSet;
 
 use ratatui::Frame;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use ratatui::layout::{Constraint, Layout};
+use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Paragraph, Wrap};
+use ratatui::widgets::Paragraph;
 
-use crate::contract::{
-    AccountLimits, AccountToday, LimitSource, Problem, ProblemKind, SessionSpend, Snapshot,
-};
-use crate::limits::{age, credits_used, limit_name, percent, unusual_severity};
+use crate::contract::{AccountToday, Snapshot};
 use crate::problems;
 pub mod announced;
+mod sections;
 pub mod terminal;
 
-use crate::status::{MAY_MISS_OUTSIDE_USE_MS, has_reset, pace_phrase, resets_ms, spend_today};
-
-const SESSION_LABEL_WIDTH: usize = 28;
-const SESSION_PLACE_WIDTH: usize = 24;
+use sections::{KEY, MUTED, WARNING};
 
 pub struct App {
     snapshot: Snapshot,
     current: Option<String>,
     stacked: bool,
+    help: bool,
+    first_launch: bool,
+    engine_written_at_ms: Option<i64>,
     known: BTreeSet<Option<String>>,
     announcements: Vec<Announcement>,
     read_error: Option<String>,
@@ -40,32 +38,40 @@ pub enum Flow {
 }
 
 impl App {
-    pub fn new(snapshot: Snapshot, last_used: Option<String>, announced: &BTreeSet<String>) -> App {
+    pub fn new(
+        snapshot: Snapshot,
+        last_used: Option<String>,
+        announced: Option<&BTreeSet<String>>,
+    ) -> App {
         let current = last_used
             .filter(|id| account_ids(&snapshot).contains(&Some(id.clone())))
             .or_else(|| snapshot.accounts.first().and_then(|a| a.account.clone()));
-        let mut known: BTreeSet<Option<String>> = announced.iter().cloned().map(Some).collect();
+        let mut known: BTreeSet<Option<String>> =
+            announced.into_iter().flatten().cloned().map(Some).collect();
         known.insert(None);
-        let announcements = newly_found(&mut known, &snapshot.accounts);
-        let unsaved_announced = !announcements.is_empty();
-        App {
+        let mut app = App {
             snapshot,
             current,
             stacked: false,
+            help: false,
+            first_launch: announced.is_none(),
+            engine_written_at_ms: None,
             known,
-            announcements,
+            announcements: Vec::new(),
             read_error: None,
             engine_running: true,
             watching_snapshot: true,
             config_readable: true,
-            unsaved_announced,
-        }
+            unsaved_announced: false,
+        };
+        let accounts = std::mem::take(&mut app.snapshot.accounts);
+        app.record_found(&accounts);
+        app.snapshot.accounts = accounts;
+        app
     }
 
     pub fn update(&mut self, snapshot: Snapshot) {
-        let found = newly_found(&mut self.known, &snapshot.accounts);
-        self.unsaved_announced |= !found.is_empty();
-        self.announcements.extend(found);
+        self.record_found(&snapshot.accounts);
         if !snapshot
             .accounts
             .iter()
@@ -73,8 +79,26 @@ impl App {
         {
             self.current = snapshot.accounts.first().and_then(|a| a.account.clone());
         }
+        if snapshot.accounts.len() < 2 {
+            self.stacked = false;
+        }
         self.snapshot = snapshot;
         self.read_error = None;
+    }
+
+    fn record_found(&mut self, accounts: &[AccountToday]) {
+        let found = newly_found(&mut self.known, accounts);
+        if found.is_empty() {
+            return;
+        }
+        self.unsaved_announced = true;
+        if !std::mem::take(&mut self.first_launch) {
+            self.announcements.extend(found);
+        }
+    }
+
+    pub fn set_engine_written_at(&mut self, written_at_ms: Option<i64>) {
+        self.engine_written_at_ms = written_at_ms;
     }
 
     pub fn failed_to_read(&mut self, error: String) {
@@ -106,28 +130,57 @@ impl App {
 
     pub fn handle(&mut self, key: KeyEvent) -> Flow {
         self.announcements.clear();
+        let ctrl_c =
+            key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL);
+        if ctrl_c || key.code == KeyCode::Char('q') {
+            return Flow::Quit;
+        }
         match key.code {
-            KeyCode::Char('q') | KeyCode::Esc => return Flow::Quit,
-            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                return Flow::Quit;
+            KeyCode::Char('?') => self.help = !self.help,
+            KeyCode::Esc if self.help => self.help = false,
+            KeyCode::Esc => return Flow::Quit,
+            _ if self.help => {}
+            KeyCode::Char('a') if self.snapshot.accounts.len() > 1 => {
+                self.stacked = !self.stacked;
             }
-            KeyCode::Tab => self.next_account(),
-            KeyCode::Char('a') => self.stacked = !self.stacked,
+            KeyCode::Char(digit @ '1'..='9') => self.pick(digit),
+            KeyCode::Right => self.step(1),
+            KeyCode::Left => self.step(-1),
             _ => {}
         }
         Flow::Continue
     }
 
-    fn next_account(&mut self) {
+    fn pick(&mut self, digit: char) {
+        let index = digit as usize - '1' as usize;
+        if let Some(account) = self.snapshot.accounts.get(index) {
+            self.current = account.account.clone();
+            self.stacked = false;
+        }
+    }
+
+    fn step(&mut self, by: isize) {
         let accounts = &self.snapshot.accounts;
-        if accounts.is_empty() {
+        if accounts.len() < 2 {
             return;
         }
-        let next = accounts
-            .iter()
-            .position(|account| account.account == self.current)
-            .map_or(0, |index| (index + 1) % accounts.len());
-        self.current = accounts[next].account.clone();
+        let tabs = accounts.len() as isize + 1;
+        let at = if self.stacked {
+            accounts.len()
+        } else {
+            accounts
+                .iter()
+                .position(|account| account.account == self.current)
+                .unwrap_or(0)
+        };
+        let next = (at as isize + by).rem_euclid(tabs) as usize;
+        match accounts.get(next) {
+            Some(account) => {
+                self.current = account.account.clone();
+                self.stacked = false;
+            }
+            None => self.stacked = true,
+        }
     }
 
     fn shown(&self) -> Option<&AccountToday> {
@@ -139,118 +192,179 @@ impl App {
     }
 
     pub fn draw(&self, frame: &mut Frame, now_ms: i64, local_minute: &dyn Fn(i64) -> String) {
-        let footer = self.footer();
-        let [body, bottom] =
-            Layout::vertical([Constraint::Fill(1), Constraint::Length(footer.len() as u16)])
-                .areas(frame.area());
-        let mut lines = vec![self.header()];
+        let notices = self.notices(frame.area().width);
+        let [top, body, bottom, keys] = Layout::vertical([
+            Constraint::Length(2 + self.announcements.len() as u16),
+            Constraint::Fill(1),
+            Constraint::Length(notices.len() as u16),
+            Constraint::Length(1),
+        ])
+        .areas(frame.area());
+        frame.render_widget(Paragraph::new(self.header(now_ms, top.width)), top);
+        match (self.stacked, self.shown()) {
+            (_, None) => frame.render_widget(
+                Paragraph::new(
+                    " No accounts yet. `gigawatts accounts` shows what Gigawatts found.",
+                ),
+                body,
+            ),
+            (true, Some(_)) => sections::every_account(frame, body, &self.snapshot, now_ms),
+            (false, Some(account)) => sections::one_account(
+                frame,
+                body,
+                account,
+                &self.snapshot.problems,
+                now_ms,
+                local_minute,
+            ),
+        }
+        frame.render_widget(Paragraph::new(notices), bottom);
+        frame.render_widget(Paragraph::new(self.key_strip()), keys);
+        if self.help {
+            sections::help(frame, frame.area());
+        }
+    }
+
+    fn header(&self, now_ms: i64, width: u16) -> Vec<Line<'static>> {
+        let updated = match self.engine_written_at_ms {
+            Some(written_at_ms) => {
+                format!("updated {} ", crate::limits::age(now_ms - written_at_ms))
+            }
+            None => String::new(),
+        };
+        let title = " Gigawatts";
+        let gap = (width as usize).saturating_sub(title.len() + updated.chars().count());
+        let mut lines = vec![
+            Line::from(vec![
+                Span::styled(title, KEY.add_modifier(Modifier::BOLD)),
+                Span::raw(" ".repeat(gap)),
+                Span::styled(updated, MUTED),
+            ]),
+            self.account_tabs(),
+        ];
         lines.extend(
             self.announcements
                 .iter()
-                .map(|found| Line::styled(self.announcement(found), Modifier::BOLD)),
+                .map(|found| Line::styled(self.announcement(found), WARNING)),
         );
-        lines.push(Line::default());
-        let problems = &self.snapshot.problems;
-        match (self.stacked, self.shown()) {
-            (_, None) => lines.push(Line::raw(
-                "No accounts yet. `gigawatts accounts` shows what Gigawatts found.",
-            )),
-            (true, Some(_)) => {
-                for (index, account) in self.snapshot.accounts.iter().enumerate() {
-                    if index > 0 {
-                        lines.push(Line::default());
-                    }
-                    lines.push(Line::styled(account.account_label.clone(), Modifier::BOLD));
-                    lines.extend(limit_lines(account, problems, now_ms, local_minute));
-                    lines.extend(today_lines(account, problems));
-                }
-            }
-            (false, Some(account)) => {
-                lines.extend(limit_lines(account, problems, now_ms, local_minute));
-                lines.push(Line::default());
-                lines.extend(today_lines(account, problems));
-                lines.push(Line::default());
-                lines.extend(session_lines(&account.active_sessions));
-            }
-        }
-        frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), body);
-        frame.render_widget(Paragraph::new(footer), bottom);
+        lines
     }
 
-    fn footer(&self) -> Vec<Line<'static>> {
+    fn account_tabs(&self) -> Line<'static> {
+        let accounts = &self.snapshot.accounts;
+        if accounts.len() == 1 {
+            return Line::styled(format!(" {}", accounts[0].account_label), Modifier::BOLD);
+        }
+        let mut spans = vec![Span::raw(" ")];
+        for (index, account) in accounts.iter().enumerate() {
+            let number = if index < 9 {
+                format!("{} ", index + 1)
+            } else {
+                String::new()
+            };
+            let text = format!(" {number}{} ", account.account_label);
+            let on = !self.stacked && account.account == self.current;
+            spans.push(tab(text, on));
+            spans.push(Span::raw(" "));
+        }
+        if accounts.len() > 1 {
+            spans.push(tab(" a all ".to_string(), self.stacked));
+        }
+        Line::from(spans)
+    }
+
+    fn notices(&self, width: u16) -> Vec<Line<'static>> {
         let mut lines = Vec::new();
+        let mut warn = |text: String| {
+            for row in sections::wrapped(&text, width.saturating_sub(1), WARNING) {
+                lines.push(Line::styled(format!(" {row}"), WARNING));
+            }
+        };
         if let Some(error) = &self.read_error {
-            lines.push(Line::styled(
-                "Showing the last numbers read.",
-                Modifier::BOLD,
-            ));
-            lines.push(Line::styled(
-                format!("Can't read the history database: {error}"),
-                Modifier::BOLD,
-            ));
+            warn("Showing the last numbers read.".to_string());
+            warn(format!("Can't read the history database: {error}"));
         }
         if !self.engine_running {
-            lines.push(Line::styled(
-                "The engine stopped, so these numbers don't update.",
-                Modifier::BOLD,
-            ));
-            lines.push(Line::styled(
-                "Reopen `gigawatts` to start it.",
-                Modifier::BOLD,
-            ));
+            warn("The engine stopped, so these numbers don't update.".to_string());
+            warn("Reopen `gigawatts` to start it.".to_string());
         }
         if !self.watching_snapshot {
-            lines.push(Line::styled(
-                "Can't watch for new numbers, so these update once a minute.",
-                Modifier::BOLD,
-            ));
+            warn("Can't watch for new numbers, so these update once a minute.".to_string());
         }
         if !self.config_readable {
-            lines.push(Line::styled(
-                "Can't read config.toml, so the view keeps the settings read before.",
-                Modifier::BOLD,
-            ));
-            lines.push(Line::styled(
-                "`gigawatts status` shows why.",
-                Modifier::BOLD,
-            ));
+            warn("Can't read config.toml, so the view keeps the settings read before.".to_string());
+            warn("`gigawatts status` shows why.".to_string());
         }
         let problems = problems::footer(&self.snapshot.problems);
         if !problems.is_empty() {
-            lines.push(Line::styled(problems.trim().to_string(), Modifier::BOLD));
+            warn(problems.trim().to_string());
         }
         lines
     }
 
+    fn key_strip(&self) -> Line<'static> {
+        let count = self.snapshot.accounts.len();
+        let mut keys = Vec::new();
+        if self.help {
+            keys.push(("? Esc".to_string(), "close help"));
+        } else if count > 1 {
+            keys.push((format!("1-{}", count.min(9)), "account"));
+            keys.push(("← →".to_string(), "switch"));
+            keys.push((
+                "a".to_string(),
+                if self.stacked { "one account" } else { "all" },
+            ));
+        }
+        if !self.help {
+            keys.push(("?".to_string(), "help"));
+        }
+        keys.push(("q".to_string(), "quit"));
+        let mut spans = vec![Span::raw(" ")];
+        for (key, what) in keys {
+            spans.push(Span::styled(key, KEY.add_modifier(Modifier::BOLD)));
+            spans.push(Span::styled(format!(" {what}   "), MUTED));
+        }
+        Line::from(spans)
+    }
+
     fn announcement(&self, found: &Announcement) -> String {
+        let accounts = &self.snapshot.accounts;
         let on_screen = self.stacked
-            || self.snapshot.accounts.len() == 1
+            || accounts.len() == 1
             || self
                 .shown()
                 .is_some_and(|shown| shown.account == found.account);
-        if on_screen {
-            format!("New account: {}.", found.label)
-        } else {
-            format!("New account: {}. Tab cycles to it.", found.label)
+        let number = accounts
+            .iter()
+            .position(|account| account.account == found.account)
+            .filter(|index| *index < 9);
+        match number {
+            Some(index) if !on_screen => format!(
+                " New account: {}. Press {} to show it.",
+                found.label,
+                index + 1
+            ),
+            _ => format!(" New account: {}.", found.label),
         }
     }
+}
 
-    fn header(&self) -> Line<'static> {
-        let title = match (self.stacked, self.shown()) {
-            (true, _) => "Gigawatts · every account".to_string(),
-            (false, Some(account)) => format!("Gigawatts · {}", account.account_label),
-            (false, None) => "Gigawatts".to_string(),
-        };
-        let keys = match self.snapshot.accounts.len() {
-            0 | 1 => "q quit",
-            _ if self.stacked => "a one account · q quit",
-            _ => "Tab next account · a all · q quit",
-        };
-        Line::from(vec![
-            Span::styled(title, Modifier::BOLD),
-            Span::raw("   "),
-            Span::styled(keys, Modifier::DIM),
-        ])
+fn tab(text: String, on: bool) -> Span<'static> {
+    if on {
+        Span::styled(text, KEY.add_modifier(Modifier::REVERSED | Modifier::BOLD))
+    } else {
+        Span::styled(text, Style::new())
+    }
+}
+
+pub(crate) fn centered(area: Rect, width: u16, height: u16) -> Rect {
+    let width = width.min(area.width);
+    let height = height.min(area.height);
+    Rect {
+        x: area.x + (area.width - width) / 2,
+        y: area.y + (area.height - height) / 2,
+        width,
+        height,
     }
 }
 
@@ -279,160 +393,4 @@ fn account_ids(snapshot: &Snapshot) -> BTreeSet<Option<String>> {
         .iter()
         .map(|account| account.account.clone())
         .collect()
-}
-
-fn limit_lines(
-    account: &AccountToday,
-    problems: &[Problem],
-    now_ms: i64,
-    local_minute: &dyn Fn(i64) -> String,
-) -> Vec<Line<'static>> {
-    let mut lines = match &account.limits {
-        Some(limits) if !limits.limits.is_empty() => readings(limits, now_ms, local_minute),
-        _ => vec![Line::raw(
-            "Limits: no readings yet. The engine reads them while Claude Code is active.",
-        )],
-    };
-    lines.extend(limit_markers(account, problems).into_iter().map(marker));
-    lines
-}
-
-fn readings(
-    limits: &AccountLimits,
-    now_ms: i64,
-    local_minute: &dyn Fn(i64) -> String,
-) -> Vec<Line<'static>> {
-    let elapsed_ms = now_ms - limits.fetched_at_ms;
-    let stale = elapsed_ms > MAY_MISS_OUTSIDE_USE_MS;
-    let style = if stale {
-        Style::new().add_modifier(Modifier::DIM)
-    } else {
-        Style::new()
-    };
-    let source = match limits.source {
-        LimitSource::GetUsage => "get_usage",
-        LimitSource::CachedUsageUtilization => "cachedUsageUtilization",
-    };
-    let mut heading = format!("Limits from {source}, read {}", age(elapsed_ms));
-    if stale {
-        heading.push_str(", may not include use outside Claude Code");
-    }
-    let mut lines = vec![Line::styled(heading, style)];
-    for shown in &limits.limits {
-        let name = limit_name(&shown.limit);
-        let detail = if has_reset(shown, now_ms) {
-            "reset since this reading".to_string()
-        } else {
-            let mut parts: Vec<String> = credits_used(&shown.limit).into_iter().collect();
-            if let Some(pace) = &shown.pace {
-                parts.push(pace_phrase(pace));
-            }
-            if let Some(resets_ms) = resets_ms(shown) {
-                parts.push(format!("resets {}", local_minute(resets_ms)));
-            }
-            parts.extend(unusual_severity(&shown.limit));
-            parts.join(", ")
-        };
-        lines.push(Line::styled(
-            format!("  {name:<20}{:>5}%  {detail}", percent(shown.limit.percent)),
-            style,
-        ));
-    }
-    lines
-}
-
-fn today_lines(account: &AccountToday, problems: &[Problem]) -> Vec<Line<'static>> {
-    let mut lines = vec![Line::raw(format!("Today {}", spend_today(account)))];
-    lines.extend(spend_markers(account, problems).into_iter().map(marker));
-    lines
-}
-
-fn session_lines(sessions: &[SessionSpend]) -> Vec<Line<'static>> {
-    if sessions.is_empty() {
-        return vec![Line::raw("No sessions active in the last 15 minutes.")];
-    }
-    let mut lines = vec![Line::raw("Active sessions, spend in the last 15 minutes")];
-    for (index, session) in sessions.iter().enumerate() {
-        let place = match &session.branch {
-            Some(branch) => format!("{} · {branch}", session.repo),
-            None => session.repo.clone(),
-        };
-        let fastest = index == 0;
-        let text = format!(
-            "{} {:<label$} {:<place$} {:>7}  ${:.2} total",
-            if fastest { "▸" } else { " " },
-            clip(&session.label, SESSION_LABEL_WIDTH),
-            clip(&place, SESSION_PLACE_WIDTH),
-            format!("${:.2}", session.last_15_minutes_usd),
-            session.total_usd,
-            label = SESSION_LABEL_WIDTH,
-            place = SESSION_PLACE_WIDTH,
-        );
-        lines.push(if fastest {
-            Line::styled(text, Modifier::BOLD)
-        } else {
-            Line::raw(text)
-        });
-    }
-    lines
-}
-
-fn clip(text: &str, width: usize) -> String {
-    if text.chars().count() <= width {
-        return text.to_string();
-    }
-    let kept: String = text.chars().take(width - 1).collect();
-    format!("{kept}…")
-}
-
-fn marker(text: String) -> Line<'static> {
-    Line::styled(format!("  {text}"), Modifier::DIM)
-}
-
-fn limit_markers(account: &AccountToday, problems: &[Problem]) -> Vec<String> {
-    affecting(account, problems)
-        .filter_map(|problem| match problem.kind {
-            ProblemKind::RefreshFailing => Some(match &problem.since {
-                Some(since) => format!(
-                    "limits: refresh failing since {}",
-                    since.chars().take(16).collect::<String>()
-                ),
-                None => "limits: refresh failing".to_string(),
-            }),
-            ProblemKind::ReadFailing if problem.affects.starts_with("limits") => {
-                Some(problem.affects.clone())
-            }
-            _ => None,
-        })
-        .collect()
-}
-
-fn affecting<'a>(
-    account: &AccountToday,
-    problems: &'a [Problem],
-) -> impl Iterator<Item = &'a Problem> {
-    let id = account.account.clone();
-    problems
-        .iter()
-        .filter(move |problem| problem.account.is_none() || problem.account == id)
-}
-
-fn spend_markers(account: &AccountToday, problems: &[Problem]) -> Vec<String> {
-    let estimated = account
-        .unpriced_models
-        .iter()
-        .map(|model| format!("cost leaves out {model} until its session ends: no price"));
-    let adjusted = account
-        .adjusted_models
-        .iter()
-        .map(|model| format!("cost adjusted: {model}'s prices differ from Claude Code's record"));
-    let unread = affecting(account, problems)
-        .filter(|problem| {
-            matches!(
-                problem.kind,
-                ProblemKind::WatchFailing | ProblemKind::ReadFailing
-            ) && problem.affects.starts_with("today's spend")
-        })
-        .map(|problem| problem.affects.clone());
-    estimated.chain(adjusted).chain(unread).collect()
 }

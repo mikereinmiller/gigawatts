@@ -421,7 +421,8 @@ fn view() -> ExitCode {
     };
     let announced_path = paths.announced();
     let announced = gigawatts::tui::announced::read(&announced_path);
-    let mut app = gigawatts::tui::App::new(first, last_used, &announced);
+    let mut app = gigawatts::tui::App::new(first, last_used, announced.as_ref());
+    app.set_engine_written_at(engine_written_at(&paths.snapshot()));
     let local_minute = local_minute_from(&store);
     let rebuild = |app: &mut gigawatts::tui::App| {
         let reloaded = Config::load(&paths.config(), &home());
@@ -433,6 +434,7 @@ fn view() -> ExitCode {
             Ok(snapshot) => app.update(snapshot),
             Err(error) => app.failed_to_read(error.to_string()),
         }
+        app.set_engine_written_at(engine_written_at(&paths.snapshot()));
     };
     let remember =
         |announced: &BTreeSet<String>| gigawatts::tui::announced::write(&announced_path, announced);
@@ -450,6 +452,12 @@ fn view() -> ExitCode {
             ExitCode::from(2)
         }
     }
+}
+
+fn engine_written_at(snapshot_path: &Path) -> Option<i64> {
+    let text = std::fs::read_to_string(snapshot_path).ok()?;
+    let written: serde_json::Value = serde_json::from_str(&text).ok()?;
+    written["written_at_ms"].as_i64()
 }
 
 fn accounts_in(snapshot: &Snapshot) -> Vec<Account> {

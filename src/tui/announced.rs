@@ -4,11 +4,15 @@ use std::io::{self, Write as _};
 use std::os::unix::fs::OpenOptionsExt as _;
 use std::path::Path;
 
-pub fn read(path: &Path) -> BTreeSet<String> {
-    std::fs::read_to_string(path)
-        .ok()
-        .and_then(|text| serde_json::from_str(&text).ok())
-        .unwrap_or_default()
+pub fn read(path: &Path) -> Option<BTreeSet<String>> {
+    match std::fs::read_to_string(path) {
+        Err(error) if error.kind() == io::ErrorKind::NotFound => None,
+        read => Some(
+            read.ok()
+                .and_then(|text| serde_json::from_str(&text).ok())
+                .unwrap_or_default(),
+        ),
+    }
 }
 
 pub fn write(path: &Path, accounts: &BTreeSet<String>) -> io::Result<()> {
