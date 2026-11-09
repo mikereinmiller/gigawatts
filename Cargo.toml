@@ -1,11 +1,12 @@
 [package]
 name = "gigawatts"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2024"
 
 [dependencies]
 clap = { version = "4.6.7", features = ["derive"] }
 notify = "8.2"
+ratatui = "0.30"
 rusqlite = { version = "0.40", features = ["bundled"] }
 rusqlite_migration = "2.6"
 schemars = "1.2"

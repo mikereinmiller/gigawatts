@@ -57,6 +57,7 @@ fn unrecognized_lines(unrecognized: &UnrecognizedKind) -> Problem {
             count(unrecognized.files, "file")
         ),
         fix: "A Claude Code update probably changed the transcript format. Update Gigawatts to a version that reads it.".to_string(),
+        account: None,
     }
 }
 
@@ -83,6 +84,7 @@ fn no_price(sighting: &ModelSighting) -> Problem {
             "Add [prices.{}] to {CONFIG_PATH} with input, cache_write_5m, cache_write_1h, cache_read, and output in dollars per million tokens, from {TABLE_SOURCE}, then run `gigawatts ingest`. Until then, the cost Claude Code recorded for it counts as not in transcript.",
             toml_key(&sighting.model)
         ),
+        account: None,
     }
 }
 
@@ -100,6 +102,7 @@ fn price_gap(gap: &PriceGap) -> Problem {
             "Compare its price in the built-in table (copied {TABLE_DATE}) and {CONFIG_PATH} with {TABLE_SOURCE}, then add or correct [prices.{}] and run `gigawatts ingest`. Until then, sessions whose tokens match Claude Code's record are scaled to its totals and marked adjusted, and the rest stay estimated.",
             toml_key(&gap.model)
         ),
+        account: None,
     }
 }
 

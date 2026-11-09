@@ -300,6 +300,10 @@ fn an_unreadable_transcript_shows_as_a_problem_while_the_rest_is_read() {
         .filter_map(|problem| problem["kind"].as_str())
         .collect();
     assert_eq!(kinds, vec!["read_failing"]);
+    assert_eq!(
+        snapshot["problems"][0]["account"],
+        "00000000-0000-4000-8000-00000000000a/00000000-0000-4000-8000-0000000000f0"
+    );
 }
 
 #[test]
@@ -813,6 +817,10 @@ fn a_failing_refresh_shows_as_a_problem() {
         problem["affects"],
         "limits for 00000000-0000-4000-8000-00000000000a/00000000-0000-4000-8000-0000000000f0: no reading yet"
     );
+    assert_eq!(
+        problem["account"],
+        "00000000-0000-4000-8000-00000000000a/00000000-0000-4000-8000-0000000000f0"
+    );
 }
 
 #[test]
@@ -963,6 +971,10 @@ fn a_cached_reading_that_doesnt_parse_shows_as_a_problem() {
             claude_json.display()
         )
     );
+    assert_eq!(
+        problem["account"],
+        "00000000-0000-4000-8000-00000000000a/00000000-0000-4000-8000-0000000000f0"
+    );
     assert!(
         problem["cause"].as_str().unwrap().starts_with(&format!(
             "Gigawatts can't read `cachedUsageUtilization` in {}: invalid type: null, expected f64",
@@ -1095,8 +1107,8 @@ fn status_shows_the_account_used_most_recently_unless_asked_for_another_or_all()
     request_seconds_ago(&work.join("projects/p/b.jsonl"), "b", 1);
     let ingested = gigawatts(&home.path, &["ingest"]);
     assert!(ingested.status.success(), "{ingested:?}");
-    let personal = "personal: no limit readings yet · today $0.01, no usual yet\n";
-    let work_line = "work: no limit readings yet · today $0.01, no usual yet\n";
+    let personal = "personal: no limit readings yet · today $0.01, estimated, no usual yet\n";
+    let work_line = "work: no limit readings yet · today $0.01, estimated, no usual yet\n";
 
     assert_eq!(stdout(&gigawatts(&home.path, &["status"])), work_line);
     assert_eq!(
@@ -1157,6 +1169,6 @@ fn status_skips_an_untracked_account_for_the_most_recent_tracked_one() {
 
     assert_eq!(
         stdout(&gigawatts(&home.path, &["status"])),
-        "work: no limit readings yet · today $0.01, no usual yet\n"
+        "work: no limit readings yet · today $0.01, estimated, no usual yet\n"
     );
 }

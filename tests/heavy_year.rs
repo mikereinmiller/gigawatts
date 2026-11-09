@@ -479,7 +479,8 @@ fn a_heavy_year_with_90_day_retention_stays_small_and_fast() {
     assert_eq!(usual.usual_days, pace::USUAL_DAYS);
     let pace = fastest_of_three(|| {
         pace::dollar_pace(&store, Some(&account), last_day_afternoon).unwrap();
-        pace::fastest_session(&store, Some(&account), last_day_afternoon).unwrap();
+        pace::active_sessions(&store, Some(&account), last_day_afternoon).unwrap();
+        store.cost_flags_on(Some(&account), LAST_DAY).unwrap();
     });
     let year_by = |by: GroupBy| {
         fastest_of_three(|| {
@@ -515,7 +516,7 @@ fn a_heavy_year_with_90_day_retention_stays_small_and_fast() {
     );
     assert!(
         pace <= MAX_PACE,
-        "dollar pace and the fastest session took {pace:?}"
+        "dollar pace, active sessions, and today's cost flags took {pace:?}"
     );
     assert!(
         idle_pace + last_used_idle.max(last_used_dormant).max(last_used_none) <= MAX_PACE,

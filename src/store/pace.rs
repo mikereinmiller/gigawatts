@@ -1,7 +1,7 @@
 use rusqlite::{OptionalExtension, params};
 
 use super::{Result, Store};
-use crate::contract::FastestSession;
+use crate::contract::SessionSpend;
 use crate::sources::claude_json::Account;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -9,6 +9,13 @@ pub struct ClockSpend {
     pub clock: String,
     pub today_usd: f64,
     pub earlier_days_usd: Vec<f64>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct CostFlags {
+    pub unpriced_models: Vec<String>,
+    pub adjusted_models: Vec<String>,
+    pub estimated: bool,
 }
 
 impl Store {
@@ -72,24 +79,26 @@ impl Store {
         })
     }
 
-    pub fn fastest_session_since(
+    pub fn sessions_spending_since(
         &self,
         account: Option<&Account>,
         since_ms: i64,
         now_ms: i64,
-    ) -> Result<Option<FastestSession>> {
+    ) -> Result<Vec<SessionSpend>> {
         let account_id = match account {
             None => None,
             Some(account) => match self.account_row_id(account)? {
                 Some(id) => Some(id),
-                None => return Ok(None),
+                None => return Ok(Vec::new()),
             },
         };
-        Ok(self
+        let sessions = self
             .connection
             .prepare_cached(
                 "WITH recent AS (
-                     SELECT session_id, coalesce(sum(cost_usd), 0) AS usd, max(time_ms) AS last_ms
+                     -- SQLite fills the bare `id` from the row that max(time_ms) picks.
+                     SELECT session_id, coalesce(sum(cost_usd), 0) AS usd, max(time_ms) AS last_ms,
+                            id AS last_id
                      FROM requests INDEXED BY requests_by_day
                      WHERE day >= date(?1 / 1000, 'unixepoch', 'localtime')
                        AND time_ms > ?1 AND time_ms <= ?2 AND account_id IS ?3
@@ -102,17 +111,15 @@ impl Store {
                          WHERE requests.session_id = recent.session_id)
                  FROM recent
                  JOIN sessions AS session ON session.id = recent.session_id
-                 JOIN requests AS latest
-                     ON latest.session_id = recent.session_id AND latest.time_ms = recent.last_ms
+                 JOIN requests AS latest ON latest.id = recent.last_id
                  LEFT JOIN labels AS cwd ON cwd.id = latest.cwd_label
                  LEFT JOIN directories AS dir ON dir.cwd_label = latest.cwd_label
                  LEFT JOIN labels AS branch
                      ON branch.id = coalesce(latest.head_branch_label, latest.git_branch_label)
-                 ORDER BY recent.usd DESC, recent.last_ms DESC
-                 LIMIT 1",
+                 ORDER BY recent.usd DESC, recent.last_ms DESC",
             )?
-            .query_row(params![since_ms, now_ms, account_id], |row| {
-                Ok(FastestSession {
+            .query_map(params![since_ms, now_ms, account_id], |row| {
+                Ok(SessionSpend {
                     session: row.get(0)?,
                     label: row.get(1)?,
                     repo: row.get(2)?,
@@ -120,8 +127,61 @@ impl Store {
                     last_15_minutes_usd: row.get(4)?,
                     total_usd: row.get(5)?,
                 })
-            })
-            .optional()?)
+            })?
+            .collect::<rusqlite::Result<_>>()?;
+        Ok(sessions)
+    }
+
+    pub fn cost_flags_on(&self, account: Option<&Account>, day: &str) -> Result<CostFlags> {
+        let account_id = match account {
+            None => None,
+            Some(account) => match self.account_row_id(account)? {
+                Some(id) => Some(id),
+                None => return Ok(CostFlags::default()),
+            },
+        };
+        let models = |sql: &str| -> Result<Vec<String>> {
+            Ok(self
+                .connection
+                .prepare_cached(sql)?
+                .query_map(params![day, account_id], |row| row.get(0))?
+                .collect::<rusqlite::Result<_>>()?)
+        };
+        Ok(CostFlags {
+            unpriced_models: models(
+                "SELECT DISTINCT model.text
+                 FROM requests INDEXED BY requests_by_day
+                 JOIN labels AS model ON model.id = requests.model_label
+                 JOIN sessions ON sessions.id = requests.session_id
+                 WHERE requests.day = ?1 AND requests.account_id IS ?2
+                   AND requests.cost_usd IS NULL AND sessions.cost_status IS NULL
+                 ORDER BY model.text",
+            )?,
+            adjusted_models: models(
+                "SELECT DISTINCT model.text
+                 FROM session_models
+                 JOIN labels AS model ON model.id = session_models.model_label
+                 WHERE price_gap_usd IS NOT NULL
+                   AND NOT EXISTS (
+                       SELECT 1 FROM not_in_transcript AS missing
+                       WHERE missing.session_id = session_models.session_id
+                         AND missing.model_label = session_models.model_label)
+                   AND session_id IN (
+                       SELECT session_id FROM requests INDEXED BY requests_by_day
+                       WHERE day = ?1 AND account_id IS ?2)
+                 ORDER BY model.text",
+            )?,
+            estimated: self
+                .connection
+                .prepare_cached(
+                    "SELECT EXISTS (
+                         SELECT 1 FROM requests INDEXED BY requests_by_day
+                         JOIN sessions ON sessions.id = requests.session_id
+                         WHERE requests.day = ?1 AND requests.account_id IS ?2
+                           AND coalesce(sessions.cost_status, 'estimated') = 'estimated')",
+                )?
+                .query_row(params![day, account_id], |row| row.get(0))?,
+        })
     }
 
     pub fn last_used_account_among(&self, candidates: &[Account]) -> Result<Option<Account>> {

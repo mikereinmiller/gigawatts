@@ -74,6 +74,10 @@ impl Paths {
         self.data_dir().join("snapshot.json")
     }
 
+    pub fn announced(&self) -> PathBuf {
+        self.data_dir().join("announced.json")
+    }
+
     pub fn lock(&self) -> PathBuf {
         self.data_dir().join("engine.lock")
     }
@@ -360,7 +364,12 @@ impl Engine<'_> {
             });
         if let Err(error) = read {
             eprintln!("gigawatts engine: can't read changed transcripts: {error}");
-            self.read_problem = Some(read_failing(store, self.read_problem.take(), &error));
+            self.read_problem = Some(read_failing(
+                store,
+                self.read_problem.take(),
+                &error,
+                &directories,
+            ));
         }
         self.note_activity(store, &directories, &files);
         self.refresh_due_limits(store, &directories);
@@ -510,10 +519,15 @@ impl Engine<'_> {
                     "gigawatts engine: can't watch {}: {error}",
                     projects.display()
                 );
+                let account = directories
+                    .iter()
+                    .find(|directory| directory.projects() == projects)
+                    .and_then(Directory::account);
                 let problem = watch_failing(
                     store,
                     previous_watch_problems.get(&projects),
                     &projects,
+                    account,
                     &error,
                 );
                 self.watch_problems.insert(projects, problem);
@@ -526,7 +540,12 @@ impl Engine<'_> {
             .map_err(ingest::Error::from);
         if let Err(error) = cached.and(read) {
             eprintln!("gigawatts engine: can't read transcripts: {error}");
-            self.read_problem = Some(read_failing(store, previous_read_problem, &error));
+            self.read_problem = Some(read_failing(
+                store,
+                previous_read_problem,
+                &error,
+                &directories,
+            ));
         }
         self.expire_requests_once_a_day(store);
         self.write_snapshot(store);
@@ -570,8 +589,16 @@ impl Engine<'_> {
         let unreadable = limits::read_cached(store, directories, &self.config)?;
         let previous = std::mem::take(&mut self.usage_problems);
         for unreadable in unreadable {
-            let problem =
-                usage_unreadable(store, previous.get(&unreadable.claude_json), &unreadable);
+            let account = directories
+                .iter()
+                .find(|directory| directory.claude_json == unreadable.claude_json)
+                .and_then(Directory::account);
+            let problem = usage_unreadable(
+                store,
+                previous.get(&unreadable.claude_json),
+                &unreadable,
+                account,
+            );
             self.usage_problems.insert(unreadable.claude_json, problem);
         }
         Ok(())
@@ -662,6 +689,7 @@ impl Engine<'_> {
                     since: store.local_datetime(failing.since_ms).ok().flatten(),
                     cause: format!("Gigawatts can't refresh limits through `claude -p`: {}", failing.error),
                     fix: "Check that `claude` runs from the engine's PATH and is logged in to this account. Gigawatts tries again, waiting longer after each failure, while Claude Code is active".to_string(),
+                    account: Some(failing.account.to_string()),
                 }
             })
             .collect()
@@ -672,6 +700,7 @@ fn watch_failing(
     store: &Store,
     previous: Option<&Problem>,
     projects: &Path,
+    account: Option<&Account>,
     error: &notify::Error,
 ) -> Problem {
     Problem {
@@ -683,6 +712,7 @@ fn watch_failing(
         since: since(store, previous),
         cause: format!("Gigawatts can't watch {}: {error}", projects.display()),
         fix: "On Linux, raise fs.inotify.max_user_watches. Otherwise check the folder's permissions. Then run `gigawatts ingest`".to_string(),
+        account: account.map(Account::to_string),
     }
 }
 
@@ -702,6 +732,7 @@ fn login_unreadable(
         cause: format!("Gigawatts can't read the login in {unreadable}"),
         fix: "Check that the file is readable and holds valid JSON. Then run `gigawatts ingest`"
             .to_string(),
+        account: None,
     }
 }
 
@@ -709,6 +740,7 @@ fn usage_unreadable(
     store: &Store,
     previous: Option<&Problem>,
     unreadable: &limits::UnreadableUsage,
+    account: Option<&Account>,
 ) -> Problem {
     let claude_json = unreadable.claude_json.display();
     Problem {
@@ -720,10 +752,23 @@ fn usage_unreadable(
             unreadable.error
         ),
         fix: "Claude Code may have changed this field's format. Gigawatts keeps refreshing limits through `claude -p` while Claude Code is active, and reads the file again at the next scan".to_string(),
+        account: account.map(Account::to_string),
     }
 }
 
-fn read_failing(store: &Store, previous: Option<Problem>, error: &ingest::Error) -> Problem {
+fn read_failing(
+    store: &Store,
+    previous: Option<Problem>,
+    error: &ingest::Error,
+    directories: &[Directory],
+) -> Problem {
+    let account = match error {
+        ingest::Error::Io(path, _) | ingest::Error::Folder(path, _) => directories
+            .iter()
+            .find(|directory| path.starts_with(&directory.path))
+            .and_then(Directory::account),
+        ingest::Error::Store(_) => None,
+    };
     let (affects, cause, fix) = match error {
         ingest::Error::Io(..) => (
             "today's spend and history: requests in that transcript are missing",
@@ -747,6 +792,7 @@ fn read_failing(store: &Store, previous: Option<Problem>, error: &ingest::Error)
         since: since(store, previous.as_ref()),
         cause,
         fix: fix.to_string(),
+        account: account.map(Account::to_string),
     }
 }
 
@@ -764,6 +810,7 @@ fn cleanup_failing(
         since: since(store, previous.as_ref()),
         cause: format!("Gigawatts can't delete old request detail: {error}"),
         fix: "Check the free disk space and that nothing else holds the history database open. Gigawatts tries again after the next transcript change".to_string(),
+        account: None,
     }
 }
 
@@ -904,8 +951,12 @@ pub fn wait_until_answering(paths: &Paths) -> Result<(), Error> {
     Ok(())
 }
 
+pub fn is_running(paths: &Paths) -> bool {
+    EngineLock::is_held(&paths.lock()).unwrap_or(false)
+}
+
 pub fn running_problems(paths: &Paths) -> Vec<Problem> {
-    if !EngineLock::is_held(&paths.lock()).unwrap_or(false) {
+    if !is_running(paths) {
         return Vec::new();
     }
     #[derive(serde::Deserialize)]

@@ -15,3 +15,4 @@ pub mod service;
 pub mod sources;
 pub mod status;
 pub mod store;
+pub mod tui;

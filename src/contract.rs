@@ -124,6 +124,8 @@ pub struct Problem {
     pub since: Option<String>,
     pub cause: String,
     pub fix: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub account: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
@@ -143,7 +145,11 @@ pub struct AccountToday {
     pub requests: u64,
     pub cost_usd: f64,
     pub pace: DollarPace,
-    pub fastest_session: Option<FastestSession>,
+    pub fastest_session: Option<SessionSpend>,
+    pub active_sessions: Vec<SessionSpend>,
+    pub unpriced_models: Vec<String>,
+    pub adjusted_models: Vec<String>,
+    pub cost_estimated: bool,
     pub limits: Option<AccountLimits>,
 }
 
@@ -244,7 +250,7 @@ pub struct LimitPace {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-pub struct FastestSession {
+pub struct SessionSpend {
     pub session: String,
     pub label: String,
     pub repo: String,

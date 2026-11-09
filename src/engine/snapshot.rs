@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::fs::OpenOptions;
 use std::io::{self, Write as _};
 use std::os::unix::fs::OpenOptionsExt as _;
@@ -10,6 +11,7 @@ use crate::contract::{
 };
 use crate::data;
 use crate::pace;
+use crate::pricing::without_date_suffix;
 use crate::problems;
 use crate::sources::claude_json::Account;
 use crate::store::Store;
@@ -38,6 +40,10 @@ pub fn build(
             cost_usd: 0.0,
             pace: no_pace(),
             fastest_session: None,
+            active_sessions: Vec::new(),
+            unpriced_models: Vec::new(),
+            adjusted_models: Vec::new(),
+            cost_estimated: false,
             limits: None,
         })
         .collect();
@@ -59,6 +65,10 @@ pub fn build(
                     cost_usd: 0.0,
                     pace: no_pace(),
                     fastest_session: None,
+                    active_sessions: Vec::new(),
+                    unpriced_models: Vec::new(),
+                    adjusted_models: Vec::new(),
+                    cost_estimated: false,
                     limits: None,
                 });
                 accounts.last_mut().expect("just pushed")
@@ -67,13 +77,32 @@ pub fn build(
         account.requests += row.requests;
         account.cost_usd += row.cost_usd.unwrap_or_default();
     }
+    let table = config.price_table();
     for account in &mut accounts {
         let parsed = account
             .account
             .as_deref()
             .and_then(|account| account.parse::<Account>().ok());
         account.pace = pace::dollar_pace(store, parsed.as_ref(), now_ms)?;
-        account.fastest_session = pace::fastest_session(store, parsed.as_ref(), now_ms)?;
+        account.active_sessions = pace::active_sessions(store, parsed.as_ref(), now_ms)?;
+        account.fastest_session = account.active_sessions.first().cloned();
+        let flags = store.cost_flags_on(parsed.as_ref(), &today)?;
+        account.unpriced_models = flags
+            .unpriced_models
+            .iter()
+            .filter(|model| table.model(model).is_none())
+            .map(|model| without_date_suffix(model).to_string())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        account.cost_estimated = flags.estimated;
+        account.adjusted_models = flags
+            .adjusted_models
+            .iter()
+            .map(|model| without_date_suffix(model).to_string())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect();
     }
     for (stored, reading) in store.latest_limits()? {
         let id = Some(stored.to_string());

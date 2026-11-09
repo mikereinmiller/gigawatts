@@ -3,8 +3,8 @@ use std::fs;
 use gigawatts::accounts::Attribution;
 use gigawatts::config::Config;
 use gigawatts::contract::{
-    AccountLimits, AccountToday, DollarPace, FastestSession, Limit, LimitPace, LimitSource,
-    PaceBasis, PaceState, PacedLimit, Problem, ProblemKind, SCHEMA_VERSION, Snapshot,
+    AccountLimits, AccountToday, DollarPace, Limit, LimitPace, LimitSource, PaceBasis, PaceState,
+    PacedLimit, Problem, ProblemKind, SCHEMA_VERSION, SessionSpend, Snapshot,
 };
 use gigawatts::engine::snapshot;
 use gigawatts::ingest::ingest_tree;
@@ -128,6 +128,7 @@ fn the_snapshot_carries_each_tracked_accounts_spend_today_and_the_engines_proble
         since: None,
         cause: "b".to_string(),
         fix: "c".to_string(),
+        account: None,
     };
 
     let snapshot = snapshot::build(
@@ -138,6 +139,14 @@ fn the_snapshot_carries_each_tracked_accounts_spend_today_and_the_engines_proble
     )
     .unwrap();
 
+    let s1 = SessionSpend {
+        session: "s1".to_string(),
+        label: "s1".to_string(),
+        repo: "unknown folder".to_string(),
+        branch: None,
+        last_15_minutes_usd: 0.028,
+        total_usd: 0.042,
+    };
     assert_eq!(
         snapshot,
         Snapshot {
@@ -157,14 +166,11 @@ fn the_snapshot_carries_each_tracked_accounts_spend_today_and_the_engines_proble
                         usual_days: 1,
                         clock: "12:10".to_string(),
                     },
-                    fastest_session: Some(FastestSession {
-                        session: "s1".to_string(),
-                        label: "s1".to_string(),
-                        repo: "unknown folder".to_string(),
-                        branch: None,
-                        last_15_minutes_usd: 0.028,
-                        total_usd: 0.042,
-                    }),
+                    fastest_session: Some(s1.clone()),
+                    active_sessions: vec![s1],
+                    unpriced_models: Vec::new(),
+                    adjusted_models: Vec::new(),
+                    cost_estimated: true,
                     limits: Some(AccountLimits {
                         source: LimitSource::GetUsage,
                         fetched_at_ms: 1_699_999_400_000,
@@ -193,6 +199,10 @@ fn the_snapshot_carries_each_tracked_accounts_spend_today_and_the_engines_proble
                         clock: "12:10".to_string(),
                     },
                     fastest_session: None,
+                    active_sessions: Vec::new(),
+                    unpriced_models: Vec::new(),
+                    adjusted_models: Vec::new(),
+                    cost_estimated: false,
                     limits: None,
                 },
             ],
@@ -243,4 +253,157 @@ fn writing_replaces_the_whole_file_and_leaves_no_staging_file() {
         fs::metadata(&path).unwrap().permissions().mode() & 0o777,
         0o600
     );
+}
+
+#[test]
+fn only_an_account_with_unpriced_requests_in_open_sessions_or_adjusted_requests_today_names_those_models()
+ {
+    let dir = tempfile::tempdir().unwrap();
+    let mut store = Store::open(&dir.path().join("history.sqlite3")).unwrap();
+    let today = store.local_today().unwrap();
+    let noon = |days_back| local_noon_in_utc(&today, days_back);
+    let session = |line: String, session: &str| line.replace("\"s1\"", &format!("\"{session}\""));
+    let gap_cost_state = r#"{"type":"cost-state","sessionId":"adjusted","totalCostUSD":1.0,"modelUsage":{"claude-opus-5-5":{"inputTokens":1000,"outputTokens":500,"cacheReadInputTokens":0,"cacheCreationInputTokens":0,"webSearchRequests":0,"costUSD":1.0}}}"#;
+    let used = dir.path().join("used");
+    fs::create_dir_all(&used).unwrap();
+    fs::write(
+        used.join("adjusted.jsonl"),
+        session(request_line("a1", &noon(0)), "adjusted") + gap_cost_state + "\n",
+    )
+    .unwrap();
+    fs::write(
+        used.join("unpriced.jsonl"),
+        session(request_line("u1", &noon(0)), "unpriced")
+            .replace("claude-opus-5-5", "claude-opus-9-9"),
+    )
+    .unwrap();
+    let closed_cost_state = r#"{"type":"cost-state","sessionId":"closed","totalCostUSD":0.2,"modelUsage":{"claude-opus-9-7":{"inputTokens":1000,"outputTokens":500,"cacheReadInputTokens":0,"cacheCreationInputTokens":0,"webSearchRequests":0,"costUSD":0.2}}}"#;
+    fs::write(
+        used.join("closed.jsonl"),
+        session(request_line("c1", &noon(0)), "closed")
+            .replace("claude-opus-5-5", "claude-opus-9-7")
+            + closed_cost_state
+            + "\n",
+    )
+    .unwrap();
+    let shortfall_cost_state = r#"{"type":"cost-state","sessionId":"shortfall","totalCostUSD":0.000001,"modelUsage":{"claude-sonnet-5-5":{"inputTokens":2000,"outputTokens":500,"cacheReadInputTokens":0,"cacheCreationInputTokens":0,"webSearchRequests":0,"costUSD":0.000001}}}"#;
+    fs::write(
+        used.join("shortfall.jsonl"),
+        session(request_line("s1", &noon(0)), "shortfall")
+            .replace("claude-opus-5-5", "claude-sonnet-5-5")
+            + shortfall_cost_state
+            + "\n",
+    )
+    .unwrap();
+    fs::write(
+        used.join("old.jsonl"),
+        session(request_line("o1", &noon(7)), "old").replace("claude-opus-5-5", "claude-opus-9-8"),
+    )
+    .unwrap();
+    let table = PriceTable::built_in();
+    ingest(&mut store, &used, &table, ACCOUNT);
+    let other = dir.path().join("other");
+    fs::create_dir_all(&other).unwrap();
+    fs::write(
+        other.join("plain.jsonl"),
+        session(request_line("p1", &noon(0)), "plain"),
+    )
+    .unwrap();
+    ingest(&mut store, &other, &table, IDLE_ACCOUNT);
+
+    let snapshot = snapshot::build(
+        &store,
+        &Config::default(),
+        local_ms(&today, "13:00:00"),
+        &[],
+    )
+    .unwrap();
+
+    let flags: Vec<_> = snapshot
+        .accounts
+        .iter()
+        .map(|account| {
+            (
+                account.account.clone().unwrap(),
+                account.unpriced_models.clone(),
+                account.adjusted_models.clone(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        flags,
+        vec![
+            (
+                ACCOUNT.to_string(),
+                vec!["claude-opus-9-9".to_string()],
+                vec!["claude-opus-5-5".to_string()]
+            ),
+            (IDLE_ACCOUNT.to_string(), Vec::new(), Vec::new()),
+        ]
+    );
+}
+
+#[test]
+fn an_unpriced_model_seen_with_and_without_a_date_is_named_once() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut store = Store::open(&dir.path().join("history.sqlite3")).unwrap();
+    let today = store.local_today().unwrap();
+    let noon = local_noon_in_utc(&today, 0);
+    let projects = dir.path().join("projects");
+    fs::create_dir_all(&projects).unwrap();
+    let lines: String = [
+        ("r1", "claude-opus-9"),
+        ("r2", "claude-opus-9-1-20261201"),
+        ("r3", "claude-opus-9-20261101"),
+    ]
+    .iter()
+    .map(|(request, model)| request_line(request, &noon).replace("claude-opus-5-5", model))
+    .collect();
+    fs::write(projects.join("s1.jsonl"), lines).unwrap();
+    ingest(&mut store, &projects, &PriceTable::built_in(), ACCOUNT);
+
+    let snapshot = snapshot::build(
+        &store,
+        &Config::default(),
+        local_ms(&today, "13:00:00"),
+        &[],
+    )
+    .unwrap();
+
+    assert_eq!(
+        snapshot.accounts[0].unpriced_models,
+        vec!["claude-opus-9".to_string(), "claude-opus-9-1".to_string()]
+    );
+}
+
+#[test]
+fn spend_today_counts_as_estimated_until_every_session_today_is_checked_against_claude_code() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut store = Store::open(&dir.path().join("history.sqlite3")).unwrap();
+    let today = store.local_today().unwrap();
+    let noon = local_noon_in_utc(&today, 0);
+    let session = |line: String, session: &str| line.replace("\"s1\"", &format!("\"{session}\""));
+    let gap_cost_state = r#"{"type":"cost-state","sessionId":"checked","totalCostUSD":1.0,"modelUsage":{"claude-opus-5-5":{"inputTokens":1000,"outputTokens":500,"cacheReadInputTokens":0,"cacheCreationInputTokens":0,"webSearchRequests":0,"costUSD":1.0}}}"#;
+    let projects = dir.path().join("projects");
+    fs::create_dir_all(&projects).unwrap();
+    fs::write(
+        projects.join("checked.jsonl"),
+        session(request_line("a1", &noon), "checked") + gap_cost_state + "\n",
+    )
+    .unwrap();
+    let table = PriceTable::built_in();
+    ingest(&mut store, &projects, &table, ACCOUNT);
+    let at = local_ms(&today, "13:00:00");
+    let checked = snapshot::build(&store, &Config::default(), at, &[]).unwrap();
+    fs::write(
+        projects.join("open.jsonl"),
+        session(request_line("o1", &noon), "open"),
+    )
+    .unwrap();
+    ingest(&mut store, &projects, &table, ACCOUNT);
+
+    let with_open = snapshot::build(&store, &Config::default(), at, &[]).unwrap();
+
+    assert!(!checked.accounts[0].cost_estimated);
+    assert!(with_open.accounts[0].cost_estimated);
 }

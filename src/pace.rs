@@ -1,5 +1,5 @@
 use crate::config::{CreditReset, days_from_civil, epoch_ms_from_text};
-use crate::contract::{DollarPace, FastestSession, Limit, LimitPace, PaceBasis, PaceState};
+use crate::contract::{DollarPace, Limit, LimitPace, PaceBasis, PaceState, SessionSpend};
 use crate::sources::claude_json::Account;
 use crate::store::{self, LimitPoint, Store};
 
@@ -190,6 +190,14 @@ pub fn fastest_session(
     store: &Store,
     account: Option<&Account>,
     now_ms: i64,
-) -> store::Result<Option<FastestSession>> {
-    store.fastest_session_since(account, now_ms - FASTEST_WITHIN_MS, now_ms)
+) -> store::Result<Option<SessionSpend>> {
+    Ok(active_sessions(store, account, now_ms)?.into_iter().next())
+}
+
+pub fn active_sessions(
+    store: &Store,
+    account: Option<&Account>,
+    now_ms: i64,
+) -> store::Result<Vec<SessionSpend>> {
+    store.sessions_spending_since(account, now_ms - FASTEST_WITHIN_MS, now_ms)
 }

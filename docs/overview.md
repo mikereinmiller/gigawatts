@@ -153,7 +153,7 @@ Measured in an earlier design session (not rerun since):
 | Today's total, 1 million rows | 0.4 ms |
 | A month grouped by skill and model | 18 ms |
 
-Keeping every request with the wider field set, plus its tool names, measured 92 MB for a synthetic heavy year with the retention setting at 90 days, about 200 bytes a request including indexes. The index on requests by session and the branch column in daily totals, both needed for cost checks and branch history, brought it to 106.3 MB, 248 bytes per stored request. That works out to about 30 MB a year at your usage. Size is only a disk cost: SQLite's page cache stays at its fixed size, and reports read daily totals rather than requests. A test in the repo generates that heavy year and fails the build if the database exceeds 110 MB, today's query takes over 5 ms, dollar pace and the fastest session take over 20 ms, or a yearly report takes over 100 ms.
+Keeping every request with the wider field set, plus its tool names, measured 92 MB for a synthetic heavy year with the retention setting at 90 days, about 200 bytes a request including indexes. The index on requests by session and the branch column in daily totals, both needed for cost checks and branch history, brought it to 106.3 MB, 248 bytes per stored request. That works out to about 30 MB a year at your usage. Size is only a disk cost: SQLite's page cache stays at its fixed size, and reports read daily totals rather than requests. A test in the repo generates that heavy year and fails the build if the database exceeds 110 MB, today's query takes over 5 ms, dollar pace, active sessions, and today's cost flags take over 20 ms, or a yearly report takes over 100 ms.
 
 ## Cost
 
@@ -202,7 +202,7 @@ It shows one account at a time, starting with the one used most recently, with i
 ## Stale data and errors
 
 - **Stale limits.** Every limit shows its age. Opening the view refreshes any account whose reading is over 10 minutes old. `gigawatts status` prints the saved reading and asks the engine to refresh in the background, at most once per 10 minutes. A reading over an hour old is greyed out with "may not include use outside Claude Code," since chat and cloud sessions only show up through limits.
-- **Problems.** Each affected number carries a short marker, like "limits: refresh failing since 2 PM" or "cost estimated: no price for claude-opus-5-6." The footer shows when anything is wrong, and `gigawatts doctor` lists each problem with its cause and what to do. Watched problems include unrecognized transcript lines, unknown models, price gaps ("adjusted" sessions, plus a price that comes out above Claude Code's record even with spend missing from the transcript), failing refreshes, folders the engine can't watch, transcripts or logins it can't read, and a daily cleanup of old request detail that fails.
+- **Problems.** Each affected number carries a short marker, like "limits: refresh failing since 2 PM" or "cost leaves out claude-opus-5-6 until its session ends: no price." The footer shows when anything is wrong, and `gigawatts doctor` lists each problem with its cause and what to do. Watched problems include unrecognized transcript lines, unknown models, price gaps ("adjusted" sessions, plus a price that comes out above Claude Code's record even with spend missing from the transcript), failing refreshes, folders the engine can't watch, transcripts or logins it can't read, and a daily cleanup of old request detail that fails.
 
 ## Settings
 
@@ -228,7 +228,7 @@ An [Agent Skill](https://agentskills.io/specification) in the Gigawatts repo, so
 
 | View | Platform | Technology | When |
 |---|---|---|---|
-| Terminal: full view, one-line summary, and `gigawatts data` | All | Rust, [`ratatui`](https://ratatui.rs) 0.30, redrawn only when data changes | Version 1 |
+| Terminal: full view, one-line summary, and `gigawatts data` | All | Rust, [`ratatui`](https://ratatui.rs) 0.30, redrawn when data changes and once a minute while open | Version 1 |
 | Floating terminal window on a key binding | Omarchy | The terminal view | Version 1, no extra code |
 | HTML report page | All | A self-contained page with inline charts, written by `gigawatts report` | Version 1.1 |
 | Menu bar with a popover and charts | macOS | SwiftUI, reading the view contract. No Rust bindings | Version 2 |

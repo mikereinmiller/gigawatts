@@ -1,9 +1,9 @@
 use crate::config::epoch_ms_from_text;
-use crate::contract::{AccountToday, DollarPace, PaceBasis, PaceState, PacedLimit};
+use crate::contract::{AccountToday, DollarPace, LimitPace, PaceBasis, PaceState, PacedLimit};
 use crate::limits::{age, limit_name, percent};
 use crate::pace::USUAL_DAYS;
 
-const MAY_MISS_OUTSIDE_USE_MS: i64 = 60 * 60_000;
+pub(crate) const MAY_MISS_OUTSIDE_USE_MS: i64 = 60 * 60_000;
 
 pub fn render_line(
     account: &AccountToday,
@@ -17,8 +17,20 @@ pub fn render_line(
         _ => "no limit readings yet".to_string(),
     };
     format!(
-        "{}: {limit} · today ${:.2}{}",
+        "{}: {limit} · today {}",
         account.account_label,
+        spend_today(account)
+    )
+}
+
+pub(crate) fn spend_today(account: &AccountToday) -> String {
+    let estimated = if account.cost_estimated {
+        ", estimated"
+    } else {
+        ""
+    };
+    format!(
+        "${:.2}{estimated}{}",
         account.cost_usd,
         against_usual(&account.pace)
     )
@@ -54,7 +66,7 @@ fn limit_part(
     }
 }
 
-fn has_reset(shown: &PacedLimit, now_ms: i64) -> bool {
+pub(crate) fn has_reset(shown: &PacedLimit, now_ms: i64) -> bool {
     match resets_ms(shown) {
         Some(resets_ms) => resets_ms <= now_ms,
         None => shown.limit.kind == "credits",
@@ -68,31 +80,36 @@ fn closest_limit(shown: &PacedLimit) -> String {
         percent(shown.limit.percent)
     );
     if let Some(pace) = &shown.pace {
-        let state = match pace.state {
-            PaceState::Under => "under",
-            PaceState::Even => "on",
-            PaceState::Over => "over",
-        };
-        let basis = match pace.basis {
-            PaceBasis::Even => "even pace",
-            PaceBasis::Usual => "your usual pace",
-        };
-        text.push_str(&format!(" {state} {basis}"));
-        if pace.provisional {
-            text.push_str(" (provisional until credit_reset is set)");
-        }
+        text.push_str(&format!(" {}", pace_phrase(pace)));
     }
     text
 }
 
-fn resets_ms(shown: &PacedLimit) -> Option<i64> {
+pub(crate) fn pace_phrase(pace: &LimitPace) -> String {
+    let state = match pace.state {
+        PaceState::Under => "under",
+        PaceState::Even => "on",
+        PaceState::Over => "over",
+    };
+    let basis = match pace.basis {
+        PaceBasis::Even => "even pace",
+        PaceBasis::Usual => "your usual pace",
+    };
+    let mut text = format!("{state} {basis}");
+    if pace.provisional {
+        text.push_str(" (provisional until credit_reset is set)");
+    }
+    text
+}
+
+pub(crate) fn resets_ms(shown: &PacedLimit) -> Option<i64> {
     match &shown.limit.resets_at {
         Some(resets_at) => epoch_ms_from_text(resets_at),
         None => shown.pace.as_ref().map(|pace| pace.window_end_ms),
     }
 }
 
-fn against_usual(pace: &DollarPace) -> String {
+pub(crate) fn against_usual(pace: &DollarPace) -> String {
     let Some(usual_usd) = pace.usual_usd else {
         return ", no usual yet".to_string();
     };

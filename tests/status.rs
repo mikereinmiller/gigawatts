@@ -52,6 +52,10 @@ fn account(limits: Option<AccountLimits>, cost_usd: f64, today: DollarPace) -> A
         cost_usd,
         pace: today,
         fastest_session: None,
+        active_sessions: Vec::new(),
+        unpriced_models: Vec::new(),
+        adjusted_models: Vec::new(),
+        cost_estimated: false,
         limits,
     }
 }
@@ -208,5 +212,18 @@ fn when_every_limit_reset_since_the_reading_the_line_says_so() {
     assert_eq!(
         line,
         "personal: limits reset since the last reading, read 10 hours ago · today $0.00, no usual yet"
+    );
+}
+
+#[test]
+fn spend_from_sessions_claude_code_has_not_checked_yet_is_labeled_estimated() {
+    let mut open = account(None, 3.0, usual(3.0, Some(2.0), 20));
+    open.cost_estimated = true;
+
+    let line = render_line(&open, NOW_MS, &utc_minute);
+
+    assert_eq!(
+        line,
+        "personal: no limit readings yet · today $3.00, estimated, 1.5× your usual by 12:10"
     );
 }

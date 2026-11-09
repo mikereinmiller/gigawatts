@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -12,6 +13,7 @@ use gigawatts::pace;
 use gigawatts::problems;
 use gigawatts::scrub::scrub_sessions;
 use gigawatts::service::{Manager, Service};
+use gigawatts::sources::claude_json::Account;
 use gigawatts::sources::transcript::Corpus;
 use gigawatts::store::Store;
 
@@ -23,7 +25,7 @@ use gigawatts::store::Store;
 )]
 struct Cli {
     #[command(subcommand)]
-    command: Command,
+    command: Option<Command>,
 }
 
 #[derive(Subcommand)]
@@ -134,6 +136,9 @@ fn main() -> ExitCode {
         );
         return ExitCode::from(2);
     }
+    let Some(command) = command else {
+        return view();
+    };
     match command {
         Command::CheckCosts { path } => check_costs(path.unwrap_or_else(default_projects_dir)),
         Command::Ingest => ingest(),
@@ -347,6 +352,10 @@ fn status(name: Option<&str>, all: bool) -> ExitCode {
                 cost_usd: 0.0,
                 pace,
                 fastest_session: None,
+                active_sessions: Vec::new(),
+                unpriced_models: Vec::new(),
+                adjusted_models: Vec::new(),
+                cost_estimated: false,
                 limits: None,
             }),
             Err(error) => {
@@ -367,14 +376,7 @@ fn status(name: Option<&str>, all: bool) -> ExitCode {
     if shown.is_empty() {
         println!("No accounts yet. Run `gigawatts accounts` to see what Gigawatts found.");
     }
-    let local_minute = |ms: i64| {
-        store
-            .local_datetime(ms)
-            .ok()
-            .flatten()
-            .map(|time| time.chars().take(16).collect())
-            .unwrap_or_default()
-    };
+    let local_minute = local_minute_from(&store);
     for account in shown {
         println!(
             "{}",
@@ -385,6 +387,88 @@ fn status(name: Option<&str>, all: bool) -> ExitCode {
         eprintln!("gigawatts: can't ask the engine to refresh limits: {error}");
     }
     ExitCode::SUCCESS
+}
+
+fn view() -> ExitCode {
+    let paths = paths();
+    if let Err(error) = engine::ensure_running(&paths, &executable()) {
+        eprintln!("gigawatts: {error}");
+        return ExitCode::from(2);
+    }
+    if let Err(error) = engine::ask_for_limits_if_running(&paths, &executable()) {
+        eprintln!("gigawatts: can't ask the engine to refresh limits: {error}");
+    }
+    let (Ok(mut config), Ok(store)) = (load_config(), open_store()) else {
+        return ExitCode::from(2);
+    };
+    let build = |config: &Config| {
+        engine::snapshot::build(&store, config, now_ms(), &engine::running_problems(&paths))
+    };
+    let first = match build(&config) {
+        Ok(snapshot) => snapshot,
+        Err(error) => {
+            eprintln!("gigawatts: can't read the history database: {error}");
+            return ExitCode::from(2);
+        }
+    };
+    let tracked = accounts_in(&first);
+    let last_used = match store.last_used_account_among(&tracked) {
+        Ok(last_used) => last_used.map(|account| account.to_string()),
+        Err(error) => {
+            eprintln!("gigawatts: can't read the history database: {error}");
+            return ExitCode::from(2);
+        }
+    };
+    let announced_path = paths.announced();
+    let announced = gigawatts::tui::announced::read(&announced_path);
+    let mut app = gigawatts::tui::App::new(first, last_used, &announced);
+    let local_minute = local_minute_from(&store);
+    let rebuild = |app: &mut gigawatts::tui::App| {
+        let reloaded = Config::load(&paths.config(), &home());
+        app.set_config_readable(reloaded.is_ok());
+        if let Ok(reloaded) = reloaded {
+            config = reloaded;
+        }
+        match build(&config) {
+            Ok(snapshot) => app.update(snapshot),
+            Err(error) => app.failed_to_read(error.to_string()),
+        }
+    };
+    let remember =
+        |announced: &BTreeSet<String>| gigawatts::tui::announced::write(&announced_path, announced);
+    match gigawatts::tui::terminal::run(
+        &mut app,
+        &paths.snapshot(),
+        rebuild,
+        || engine::is_running(&paths),
+        remember,
+        &local_minute,
+    ) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("gigawatts: can't draw in this terminal: {error}");
+            ExitCode::from(2)
+        }
+    }
+}
+
+fn accounts_in(snapshot: &Snapshot) -> Vec<Account> {
+    snapshot
+        .accounts
+        .iter()
+        .filter_map(|account| account.account.as_deref()?.parse().ok())
+        .collect()
+}
+
+fn local_minute_from(store: &Store) -> impl Fn(i64) -> String + '_ {
+    |ms: i64| {
+        store
+            .local_datetime(ms)
+            .ok()
+            .flatten()
+            .map(|time| time.chars().take(16).collect())
+            .unwrap_or_default()
+    }
 }
 
 fn now_ms() -> i64 {

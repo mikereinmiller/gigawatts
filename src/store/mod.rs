@@ -22,7 +22,7 @@ mod retention;
 mod totals;
 
 pub use limits::{LimitPoint, LimitsReading, UsageAdvice};
-pub use pace::ClockSpend;
+pub use pace::{ClockSpend, CostFlags};
 pub use problems::{ModelSighting, PriceGap, UnrecognizedKind};
 pub use totals::Filter;
 

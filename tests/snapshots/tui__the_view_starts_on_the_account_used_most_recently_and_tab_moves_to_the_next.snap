@@ -1,0 +1,29 @@
+---
+source: tests/tui.rs
+assertion_line: 236
+expression: first
+---
+"Gigawatts · work   Tab next account · a all · q quit                            "
+"                                                                                "
+"Limits from cachedUsageUtilization, read 2 hours ago, may not include use       "
+"outside Claude Code                                                             "
+"  Credits                20%  437.60 of 2200.00 USD, under even pace            "
+"(provisional until credit_reset is set), resets 2026-12-01 00:00                "
+"                                                                                "
+"Today $0.40, no usual yet                                                       "
+"                                                                                "
+"No sessions active in the last 15 minutes.                                      "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"3 problems. `gigawatts doctor` lists them.                                      "

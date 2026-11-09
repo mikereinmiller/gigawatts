@@ -3,9 +3,9 @@ use std::path::Path;
 
 use gigawatts::accounts::Attribution;
 use gigawatts::config::{Config, epoch_ms_from_text};
-use gigawatts::contract::{DollarPace, FastestSession, Limit, LimitPace, PaceBasis, PaceState};
+use gigawatts::contract::{DollarPace, Limit, LimitPace, PaceBasis, PaceState, SessionSpend};
 use gigawatts::ingest::ingest_tree;
-use gigawatts::pace::{dollar_pace, fastest_session, limit_pace};
+use gigawatts::pace::{active_sessions, dollar_pace, fastest_session, limit_pace};
 use gigawatts::pricing::PriceTable;
 use gigawatts::sources::claude_json::Account;
 use gigawatts::sources::get_usage;
@@ -321,7 +321,7 @@ fn the_fastest_session_spent_most_in_the_last_15_minutes_counting_its_subagents(
 
     assert_eq!(
         fastest,
-        Some(FastestSession {
+        Some(SessionSpend {
             session: "s2".to_string(),
             label: "s2".to_string(),
             repo: "orchard".to_string(),
@@ -330,6 +330,50 @@ fn the_fastest_session_spent_most_in_the_last_15_minutes_counting_its_subagents(
             total_usd: 5.0,
         })
     );
+}
+
+#[test]
+fn active_sessions_are_every_session_written_in_the_last_15_minutes_fastest_first() {
+    let dir = tempfile::tempdir().unwrap();
+    let projects = dir.path().join("projects").join("-work-orchard");
+    fs::create_dir_all(&projects).unwrap();
+    fs::write(
+        projects.join("s1.jsonl"),
+        session_spend_line("s1", "a1", "2026-11-04 13:00:00", 10)
+            + &session_spend_line("s1", "a2", "2026-11-04 13:55:00", 4),
+    )
+    .unwrap();
+    fs::write(
+        projects.join("s2.jsonl"),
+        session_spend_line("s2", "b1", "2026-11-04 13:50:00", 5),
+    )
+    .unwrap();
+    fs::write(
+        projects.join("s3.jsonl"),
+        session_spend_line("s3", "c1", "2026-11-04 13:40:00", 20),
+    )
+    .unwrap();
+    let mut store = Store::open(&dir.path().join("history.sqlite3")).unwrap();
+    ingest_tree(
+        &mut store,
+        &dir.path().join("projects"),
+        &PriceTable::built_in(),
+        &Attribution::default(),
+        &Resolver::default(),
+    )
+    .unwrap();
+
+    let active = active_sessions(&store, None, local_ms("2026-11-04 14:00:00")).unwrap();
+
+    let spend = |session: &str, last_15_minutes_usd: f64, total_usd: f64| SessionSpend {
+        session: session.to_string(),
+        label: session.to_string(),
+        repo: "orchard".to_string(),
+        branch: Some("ab/carts".to_string()),
+        last_15_minutes_usd,
+        total_usd,
+    };
+    assert_eq!(active, vec![spend("s2", 5.0, 5.0), spend("s1", 4.0, 14.0)]);
 }
 
 #[test]
@@ -357,7 +401,7 @@ fn a_session_with_only_unpriced_requests_in_the_last_15_minutes_counts_as_spendi
 
     assert_eq!(
         fastest,
-        Some(FastestSession {
+        Some(SessionSpend {
             session: "s1".to_string(),
             label: "s1".to_string(),
             repo: "orchard".to_string(),

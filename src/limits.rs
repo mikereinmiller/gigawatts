@@ -355,25 +355,27 @@ pub(crate) fn percent(value: f64) -> String {
 }
 
 fn detail(shown: &ShownLimit) -> String {
-    let mut parts = Vec::new();
-    if let Some(credits) = &shown.limit.credits {
-        parts.push(match credits.limit {
-            Some(limit) => format!("{:.2} of {limit:.2} {}", credits.used, credits.currency),
-            None => format!("{:.2} {} used", credits.used, credits.currency),
-        });
-    }
+    let mut parts: Vec<String> = credits_used(&shown.limit).into_iter().collect();
     if let Some(resets) = &shown.resets_local {
         parts.push(format!("resets {resets}"));
     }
-    if let Some(severity) = shown
-        .limit
-        .severity
-        .as_deref()
-        .filter(|severity| *severity != "normal")
-    {
-        parts.push(severity.to_string());
-    }
+    parts.extend(unusual_severity(&shown.limit));
     parts.join(", ")
+}
+
+pub(crate) fn credits_used(limit: &Limit) -> Option<String> {
+    let credits = limit.credits.as_ref()?;
+    Some(match credits.limit {
+        Some(cap) => format!("{:.2} of {cap:.2} {}", credits.used, credits.currency),
+        None => format!("{:.2} {} used", credits.used, credits.currency),
+    })
+}
+
+pub(crate) fn unusual_severity(limit: &Limit) -> Option<String> {
+    limit
+        .severity
+        .clone()
+        .filter(|severity| severity != "normal")
 }
 
 pub(crate) fn age(elapsed_ms: i64) -> String {
