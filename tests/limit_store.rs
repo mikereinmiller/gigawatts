@@ -159,3 +159,56 @@ fn forgetting_an_account_deletes_its_limits_and_advice() {
     assert_eq!(store.limit_history(&personal).unwrap(), vec![]);
     assert_eq!(store.usage_advice(&personal, "2026-11-04").unwrap(), None);
 }
+
+#[test]
+fn history_since_a_time_starts_with_the_reading_in_effect_then() {
+    let (_dir, mut store) = open();
+    let personal = account("00000000-0000-4000-8000-0000000000f0");
+    for (fetched_at_ms, all, fable) in [
+        (1_000, 10.0, 70.0),
+        (2_000, 20.0, 70.0),
+        (3_000, 30.0, 70.0),
+        (5_000, 40.0, 80.0),
+    ] {
+        store
+            .record_limits(
+                &personal,
+                &reading(
+                    fetched_at_ms,
+                    LimitSource::GetUsage,
+                    vec![
+                        limit("weekly_all", None, all),
+                        limit("weekly_scoped", Some("Fable"), fable),
+                    ],
+                ),
+            )
+            .unwrap();
+    }
+
+    assert_eq!(
+        store
+            .limit_series(&personal, "weekly_all", None, 2_500)
+            .unwrap(),
+        vec![
+            point("weekly_all", None, 2_000, 20.0),
+            point("weekly_all", None, 3_000, 30.0),
+            point("weekly_all", None, 5_000, 40.0),
+        ]
+    );
+    assert_eq!(
+        store
+            .limit_series(&personal, "weekly_scoped", Some("Fable"), 2_500)
+            .unwrap(),
+        vec![
+            point("weekly_scoped", Some("Fable"), 1_000, 70.0),
+            point("weekly_scoped", Some("Fable"), 5_000, 80.0),
+        ]
+    );
+    assert_eq!(
+        store
+            .limit_series(&personal, "weekly_all", None, 500)
+            .unwrap()
+            .len(),
+        4
+    );
+}

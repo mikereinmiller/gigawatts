@@ -5,6 +5,7 @@ use std::path::Path;
 use std::sync::{Arc, mpsc};
 use std::time::Duration;
 
+const QUEUED: &str = "queued";
 const QUICK_ANSWER: Duration = Duration::from_secs(5);
 const FULL_SCAN_ANSWER: Duration = Duration::from_secs(600);
 
@@ -13,6 +14,7 @@ pub enum Command {
     Version,
     Refresh,
     Limits,
+    LimitsLater,
     Stop,
 }
 
@@ -22,6 +24,7 @@ impl Command {
             Command::Version => "version",
             Command::Refresh => "refresh",
             Command::Limits => "limits",
+            Command::LimitsLater => "limits-later",
             Command::Stop => "stop",
         }
     }
@@ -31,6 +34,7 @@ impl Command {
             Command::Version,
             Command::Refresh,
             Command::Limits,
+            Command::LimitsLater,
             Command::Stop,
         ]
         .into_iter()
@@ -40,7 +44,7 @@ impl Command {
     fn answer_within(self) -> Duration {
         match self {
             Command::Refresh | Command::Limits => FULL_SCAN_ANSWER,
-            Command::Version | Command::Stop => QUICK_ANSWER,
+            Command::Version | Command::LimitsLater | Command::Stop => QUICK_ANSWER,
         }
     }
 }
@@ -138,6 +142,14 @@ fn answer(stream: UnixStream, version: &str, socket: &Path, forward: &dyn Fn(Req
             let _ = stream.flush();
             let _ = std::fs::remove_file(socket);
             std::process::exit(0);
+        }
+        Some(Command::LimitsLater) => {
+            let (reply, _) = mpsc::channel();
+            forward(Request {
+                command: Command::LimitsLater,
+                reply,
+            });
+            QUEUED.to_string()
         }
         Some(command) => {
             let (reply, answer) = mpsc::channel();

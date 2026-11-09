@@ -5,9 +5,11 @@ use std::path::Path;
 
 use crate::config::Config;
 use crate::contract::{
-    AccountLimits, AccountToday, GroupBy, Problem, Range, SCHEMA_VERSION, Snapshot,
+    AccountLimits, AccountToday, DollarPace, GroupBy, PacedLimit, Problem, Range, SCHEMA_VERSION,
+    Snapshot,
 };
 use crate::data;
+use crate::pace;
 use crate::problems;
 use crate::sources::claude_json::Account;
 use crate::store::Store;
@@ -34,6 +36,8 @@ pub fn build(
                 .unwrap_or_else(|| stored.account.to_string()),
             requests: 0,
             cost_usd: 0.0,
+            pace: no_pace(),
+            fastest_session: None,
             limits: None,
         })
         .collect();
@@ -53,6 +57,8 @@ pub fn build(
                     account_label: row.account_label.clone(),
                     requests: 0,
                     cost_usd: 0.0,
+                    pace: no_pace(),
+                    fastest_session: None,
                     limits: None,
                 });
                 accounts.last_mut().expect("just pushed")
@@ -61,13 +67,44 @@ pub fn build(
         account.requests += row.requests;
         account.cost_usd += row.cost_usd.unwrap_or_default();
     }
+    for account in &mut accounts {
+        let parsed = account
+            .account
+            .as_deref()
+            .and_then(|account| account.parse::<Account>().ok());
+        account.pace = pace::dollar_pace(store, parsed.as_ref(), now_ms)?;
+        account.fastest_session = pace::fastest_session(store, parsed.as_ref(), now_ms)?;
+    }
     for (stored, reading) in store.latest_limits()? {
         let id = Some(stored.to_string());
         if let Some(account) = accounts.iter_mut().find(|account| account.account == id) {
+            let credit_reset = config.account(&stored).credit_reset;
+            let mut limits = Vec::new();
+            for limit in reading.limits {
+                let history = match limit.kind.as_str() {
+                    "weekly_all" | "weekly_scoped" => store.limit_series(
+                        &stored,
+                        &limit.kind,
+                        limit.scope.as_deref(),
+                        now_ms - pace::USUAL_HISTORY_MS,
+                    )?,
+                    _ => Vec::new(),
+                };
+                limits.push(PacedLimit {
+                    pace: pace::limit_pace(
+                        &limit,
+                        reading.fetched_at_ms,
+                        now_ms,
+                        &history,
+                        credit_reset.as_ref(),
+                    ),
+                    limit,
+                });
+            }
             account.limits = Some(AccountLimits {
                 source: reading.source,
                 fetched_at_ms: reading.fetched_at_ms,
-                limits: reading.limits,
+                limits,
             });
         }
     }
@@ -83,6 +120,15 @@ pub fn build(
         ]
         .concat(),
     })
+}
+
+fn no_pace() -> DollarPace {
+    DollarPace {
+        today_usd: 0.0,
+        usual_usd: None,
+        usual_days: 0,
+        clock: String::new(),
+    }
 }
 
 fn tracked(config: &Config, account: Option<&str>) -> bool {

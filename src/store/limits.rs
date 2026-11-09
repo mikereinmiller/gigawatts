@@ -146,6 +146,45 @@ impl Store {
         Ok(rows.collect::<rusqlite::Result<_>>()?)
     }
 
+    pub fn limit_series(
+        &self,
+        account: &Account,
+        kind: &str,
+        scope: Option<&str>,
+        since_ms: i64,
+    ) -> Result<Vec<LimitPoint>> {
+        let mut statement = self.connection.prepare_cached(
+            "WITH series AS (
+                 SELECT limit_readings.* FROM limit_readings
+                 JOIN accounts ON accounts.id = limit_readings.account_id
+                 WHERE accounts.account_uuid = ?1 AND accounts.organization_uuid = ?2
+                   AND kind = ?3 AND scope = ?4
+             )
+             SELECT kind, scope, fetched_at_ms, percent FROM series
+             WHERE fetched_at_ms >= coalesce(
+                 (SELECT max(fetched_at_ms) FROM series WHERE fetched_at_ms <= ?5), ?5)
+             ORDER BY fetched_at_ms",
+        )?;
+        let rows = statement.query_map(
+            params![
+                account.account_uuid,
+                account.organization_uuid,
+                kind,
+                scope.unwrap_or(""),
+                since_ms
+            ],
+            |row| {
+                Ok(LimitPoint {
+                    kind: row.get(0)?,
+                    scope: Some(row.get::<_, String>(1)?).filter(|scope| !scope.is_empty()),
+                    fetched_at_ms: row.get(2)?,
+                    percent: row.get(3)?,
+                })
+            },
+        )?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
     pub fn local_minute(&self, timestamp: &str) -> Result<Option<String>> {
         Ok(self.connection.query_row(
             "SELECT strftime('%Y-%m-%d %H:%M', ?1, 'localtime')",

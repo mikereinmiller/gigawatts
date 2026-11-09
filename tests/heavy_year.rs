@@ -5,6 +5,7 @@ use gigawatts::accounts::Attribution;
 use gigawatts::config::epoch_ms_from_text;
 use gigawatts::contract::{GroupBy, ProblemKind, Range};
 use gigawatts::data::query;
+use gigawatts::pace;
 use gigawatts::pricing::PriceTable;
 use gigawatts::problems;
 use gigawatts::sources::claude_json::Account;
@@ -44,6 +45,7 @@ const GROUPINGS: [GroupBy; 5] = [
 
 const MAX_BYTES: u64 = 110 * 1024 * 1024;
 const MAX_TODAY: Duration = Duration::from_millis(5);
+const MAX_PACE: Duration = Duration::from_millis(20);
 const MAX_YEAR: Duration = Duration::from_millis(100);
 
 struct Random(u64);
@@ -268,7 +270,7 @@ fn a_heavy_year_with_90_day_retention_stays_small_and_fast() {
         account_uuid: "00000000-0000-4000-8000-000000000001".to_string(),
         organization_uuid: "00000000-0000-4000-8000-000000000002".to_string(),
     };
-    let attribution = Attribution::single(Some(account));
+    let attribution = Attribution::single(Some(account.clone()));
     let table = PriceTable::built_in();
     let first_day = shift(LAST_DAY, -(YEAR_DAYS as i64 - 1));
     let mut random = Random(7);
@@ -295,6 +297,105 @@ fn a_heavy_year_with_90_day_retention_stays_small_and_fast() {
             )
             .unwrap();
     }
+    let idle = Account {
+        account_uuid: "00000000-0000-4000-8000-000000000003".to_string(),
+        organization_uuid: "00000000-0000-4000-8000-000000000002".to_string(),
+    };
+    for week in 0..3 {
+        let date = shift(LAST_DAY, -(week as i64 * 7 + 1));
+        let lines: Vec<Line> = day_lines(&mut random, &table, &date, YEAR_DAYS + week, false)
+            .into_iter()
+            .skip(1)
+            .take(2)
+            .collect();
+        let position = FilePosition {
+            path: format!("idle-{week}.jsonl"),
+            device: 1,
+            inode: (YEAR_DAYS + week) as u64,
+            first_line_hash: Some((YEAR_DAYS + week) as u64),
+            offset: 1,
+        };
+        store
+            .save_file(
+                &position,
+                true,
+                &lines,
+                &Attribution::single(Some(idle.clone())),
+                &table,
+                &Resolver::default(),
+            )
+            .unwrap();
+    }
+    let dormant = Account {
+        account_uuid: "00000000-0000-4000-8000-000000000004".to_string(),
+        organization_uuid: "00000000-0000-4000-8000-000000000002".to_string(),
+    };
+    let lines: Vec<Line> = day_lines(&mut random, &table, &first_day, YEAR_DAYS + 3, false)
+        .into_iter()
+        .skip(1)
+        .take(2)
+        .collect();
+    store
+        .save_file(
+            &FilePosition {
+                path: "dormant.jsonl".to_string(),
+                device: 1,
+                inode: (YEAR_DAYS + 3) as u64,
+                first_line_hash: Some((YEAR_DAYS + 3) as u64),
+                offset: 1,
+            },
+            true,
+            &lines,
+            &Attribution::single(Some(dormant.clone())),
+            &table,
+            &Resolver::default(),
+        )
+        .unwrap();
+    let last_day_afternoon: i64 = rusqlite::Connection::open_in_memory()
+        .unwrap()
+        .query_row(
+            "SELECT CAST(unixepoch(?1 || ' 14:00:00', 'utc') AS INTEGER) * 1000",
+            [LAST_DAY],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let idle_pace = fastest_of_three(|| {
+        pace::dollar_pace(&store, Some(&idle), last_day_afternoon).unwrap();
+    });
+    let last_used = fastest_of_three(|| {
+        store
+            .last_used_account_among(&[account.clone(), idle.clone()])
+            .unwrap();
+    });
+    let last_used_idle = fastest_of_three(|| {
+        store
+            .last_used_account_among(std::slice::from_ref(&idle))
+            .unwrap();
+    });
+    let last_used_dormant = fastest_of_three(|| {
+        store
+            .last_used_account_among(std::slice::from_ref(&dormant))
+            .unwrap();
+    });
+    let last_used_none = fastest_of_three(|| {
+        store.last_used_account_among(&[]).unwrap();
+    });
+    assert_eq!(
+        store
+            .last_used_account_among(&[dormant.clone(), idle.clone()])
+            .unwrap(),
+        Some(idle.clone())
+    );
+    assert_eq!(
+        store
+            .last_used_account_among(std::slice::from_ref(&dormant))
+            .unwrap(),
+        Some(dormant.clone())
+    );
+    println!(
+        "with every day kept: idle account pace {idle_pace:?}, last used {last_used:?}, last used when only the idle account is tracked {last_used_idle:?}, \
+         only a dormant one {last_used_dormant:?}, none tracked {last_used_none:?}"
+    );
     let reports = |store: &Store| {
         GROUPINGS.map(|by| query(store, Range::All, by, &[], LAST_DAY).unwrap().rows)
     };
@@ -374,6 +475,12 @@ fn a_heavy_year_with_90_day_retention_stays_small_and_fast() {
     let problems = fastest_of_three(|| {
         problems::collect(&store, &table).unwrap();
     });
+    let usual = pace::dollar_pace(&store, Some(&account), last_day_afternoon).unwrap();
+    assert_eq!(usual.usual_days, pace::USUAL_DAYS);
+    let pace = fastest_of_three(|| {
+        pace::dollar_pace(&store, Some(&account), last_day_afternoon).unwrap();
+        pace::fastest_session(&store, Some(&account), last_day_afternoon).unwrap();
+    });
     let year_by = |by: GroupBy| {
         fastest_of_three(|| {
             query(&store, Range::All, by, &[], LAST_DAY).unwrap();
@@ -396,7 +503,7 @@ fn a_heavy_year_with_90_day_retention_stays_small_and_fast() {
     println!(
         "{:.1} MB, {} bytes per stored request, today {today:?}, year {year:?}, \
          by repo {year_by_repo:?}, by branch {year_by_branch:?}, drill {year_drill:?}, \
-         problems {problems:?}",
+         problems {problems:?}, pace {pace:?}",
         bytes as f64 / 1024.0 / 1024.0,
         bytes / requests
     );
@@ -405,6 +512,14 @@ fn a_heavy_year_with_90_day_retention_stays_small_and_fast() {
     assert!(
         today + problems <= MAX_TODAY,
         "today's query took {today:?} and collecting problems took {problems:?}"
+    );
+    assert!(
+        pace <= MAX_PACE,
+        "dollar pace and the fastest session took {pace:?}"
+    );
+    assert!(
+        idle_pace + last_used_idle.max(last_used_dormant).max(last_used_none) <= MAX_PACE,
+        "an idle account's dollar pace took {idle_pace:?}, and finding the last used account took {last_used_idle:?}, {last_used_dormant:?} when only a dormant account is tracked, and {last_used_none:?} when none is"
     );
     assert!(year <= MAX_YEAR, "the yearly report took {year:?}");
     assert!(

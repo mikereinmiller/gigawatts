@@ -259,6 +259,10 @@ pub fn run(paths: &Paths) -> Result<Outcome, Error> {
                 eprintln!("gigawatts engine: the watcher reported {error}; scanning everything");
                 engine.full_scan(&mut store, started.elapsed());
             }
+            Message::Control(request) if request.command == Command::LimitsLater => {
+                engine.refresh_requested_limits(&mut store);
+                engine.write_snapshot(&store);
+            }
             Message::Control(request) if request.command == Command::Limits => {
                 let reply = match engine.refresh_requested_limits(&mut store) {
                     Some(failed) => format!("{FAILED}{failed}"),
@@ -876,6 +880,16 @@ pub fn refresh_limits_if_running(paths: &Paths, executable: &Path) -> Result<boo
             reply: reply.trim_start_matches(FAILED).to_string(),
         });
     }
+    Ok(true)
+}
+
+pub fn ask_for_limits_if_running(paths: &Paths, executable: &Path) -> Result<bool, Error> {
+    if !EngineLock::is_held(&paths.lock())? {
+        return Ok(false);
+    }
+    wait_until_answering(paths)?;
+    replace_if_older(paths, executable)?;
+    control::send(&paths.socket(), Command::LimitsLater)?;
     Ok(true)
 }
 

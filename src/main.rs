@@ -6,8 +6,9 @@ use clap::{Parser, Subcommand, ValueEnum};
 use gigawatts::accounts::{self, Directory};
 use gigawatts::check_costs::CheckReport;
 use gigawatts::config::{self, Config};
-use gigawatts::contract::{DataResponse, GroupBy, Range, Snapshot};
+use gigawatts::contract::{AccountToday, DataResponse, GroupBy, Range, Snapshot};
 use gigawatts::engine;
+use gigawatts::pace;
 use gigawatts::problems;
 use gigawatts::scrub::scrub_sessions;
 use gigawatts::service::{Manager, Service};
@@ -46,6 +47,15 @@ enum Command {
         /// Print each account's latest limits instead, after the running engine refreshes any over 10 minutes old
         #[arg(long, conflicts_with_all = ["range", "by", "drill"])]
         limits: bool,
+    },
+    /// Print the closest limit with its pace and today's spend against usual, then ask the engine to refresh limits
+    Status {
+        /// The account to show, by ID or label (default: the one used most recently)
+        #[arg(long, conflicts_with = "all")]
+        account: Option<String>,
+        /// Print one line per account
+        #[arg(long)]
+        all: bool,
     },
     /// List every current problem with its cause and fix, and exit 1 if there are any
     Doctor,
@@ -131,6 +141,7 @@ fn main() -> ExitCode {
         Command::Data {
             range, by, drill, ..
         } => data(range, by, &drill),
+        Command::Status { account, all } => status(account.as_deref(), all),
         Command::Doctor => doctor(),
         Command::Accounts { action } => match action {
             None => list_accounts(),
@@ -279,6 +290,101 @@ fn limits() -> ExitCode {
             ExitCode::from(2)
         }
     }
+}
+
+fn status(name: Option<&str>, all: bool) -> ExitCode {
+    let chosen = match name {
+        Some(name) => match find_account(name) {
+            Ok(row) if !row.tracking => {
+                eprintln!(
+                    "gigawatts: {name} isn't tracked. `gigawatts accounts track {name} on` turns it on."
+                );
+                return ExitCode::from(2);
+            }
+            Ok(row) => Some(row),
+            Err(code) => return code,
+        },
+        None => None,
+    };
+    let (Ok(config), Ok(store)) = (load_config(), open_store()) else {
+        return ExitCode::from(2);
+    };
+    let now = now_ms();
+    let read = engine::snapshot::build(&store, &config, now, &[])
+        .map_err(|error| error.to_string())
+        .and_then(|snapshot| match &chosen {
+            Some(row) => Ok((snapshot, Some(row.account.clone()))),
+            None => {
+                let tracked: Vec<_> = snapshot
+                    .accounts
+                    .iter()
+                    .filter_map(|account| account.account.as_deref()?.parse().ok())
+                    .collect();
+                let last_used = store
+                    .last_used_account_among(&tracked)
+                    .map_err(|e| e.to_string())?;
+                Ok((snapshot, last_used))
+            }
+        });
+    let (snapshot, wanted) = match read {
+        Ok(read) => read,
+        Err(error) => {
+            eprintln!("gigawatts: can't read the history database: {error}");
+            return ExitCode::from(2);
+        }
+    };
+    let id = wanted.map(|account| account.to_string());
+    let matching = snapshot
+        .accounts
+        .iter()
+        .find(|account| id.is_some() && account.account == id);
+    let not_seen_yet = match (&chosen, matching) {
+        (Some(row), None) => match pace::dollar_pace(&store, Some(&row.account), now) {
+            Ok(pace) => Some(AccountToday {
+                account: Some(row.account.to_string()),
+                account_label: row.label.clone(),
+                requests: 0,
+                cost_usd: 0.0,
+                pace,
+                fastest_session: None,
+                limits: None,
+            }),
+            Err(error) => {
+                eprintln!("gigawatts: can't read the history database: {error}");
+                return ExitCode::from(2);
+            }
+        },
+        _ => None,
+    };
+    let shown: Vec<_> = match (all, matching) {
+        (true, _) => snapshot.accounts.iter().collect(),
+        (false, matching) => matching
+            .or(not_seen_yet.as_ref())
+            .or(snapshot.accounts.first())
+            .into_iter()
+            .collect(),
+    };
+    if shown.is_empty() {
+        println!("No accounts yet. Run `gigawatts accounts` to see what Gigawatts found.");
+    }
+    let local_minute = |ms: i64| {
+        store
+            .local_datetime(ms)
+            .ok()
+            .flatten()
+            .map(|time| time.chars().take(16).collect())
+            .unwrap_or_default()
+    };
+    for account in shown {
+        println!(
+            "{}",
+            gigawatts::status::render_line(account, now, &local_minute)
+        );
+    }
+    if let Err(error) = engine::ask_for_limits_if_running(&paths(), &executable()) {
+        eprintln!("gigawatts: can't ask the engine to refresh limits: {error}");
+    }
+    ExitCode::SUCCESS
 }
 
 fn now_ms() -> i64 {

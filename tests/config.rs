@@ -233,3 +233,21 @@ fn keeping_zero_days_of_request_detail_is_refused() {
         "{error}"
     );
 }
+
+#[test]
+fn a_credit_reset_without_a_time_zone_is_refused() {
+    let text = format!(
+        "[accounts.\"{}\"]\ncredit_reset = 2026-11-01T00:00:00\n",
+        work()
+    );
+
+    let error = Config::parse(&text, Path::new(HOME)).unwrap_err();
+
+    assert_eq!(
+        error.to_string(),
+        format!(
+            "credit_reset for {} needs a date, a time, and a time zone, like 2026-11-01T00:00:00Z",
+            work()
+        )
+    );
+}

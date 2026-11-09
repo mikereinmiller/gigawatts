@@ -142,6 +142,8 @@ pub struct AccountToday {
     pub account_label: String,
     pub requests: u64,
     pub cost_usd: f64,
+    pub pace: DollarPace,
+    pub fastest_session: Option<FastestSession>,
     pub limits: Option<AccountLimits>,
 }
 
@@ -149,7 +151,30 @@ pub struct AccountToday {
 pub struct AccountLimits {
     pub source: LimitSource,
     pub fetched_at_ms: i64,
-    pub limits: Vec<Limit>,
+    pub limits: Vec<PacedLimit>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct PacedLimit {
+    #[serde(flatten)]
+    pub limit: Limit,
+    pub pace: Option<LimitPace>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct DollarPace {
+    pub today_usd: f64,
+    pub usual_usd: Option<f64>,
+    pub usual_days: u32,
+    pub clock: String,
+}
+
+impl DollarPace {
+    pub fn times_usual(&self) -> Option<f64> {
+        self.usual_usd
+            .filter(|usual| *usual > 0.0)
+            .map(|usual| self.today_usd / usual)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -191,4 +216,39 @@ impl LimitSource {
             .into_iter()
             .find(|source| source.name() == name)
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum PaceState {
+    Under,
+    Even,
+    Over,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum PaceBasis {
+    Even,
+    Usual,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct LimitPace {
+    pub state: PaceState,
+    pub basis: PaceBasis,
+    pub expected_percent: f64,
+    pub window_start_ms: i64,
+    pub window_end_ms: i64,
+    pub provisional: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct FastestSession {
+    pub session: String,
+    pub label: String,
+    pub repo: String,
+    pub branch: Option<String>,
+    pub last_15_minutes_usd: f64,
+    pub total_usd: f64,
 }

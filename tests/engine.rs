@@ -1022,3 +1022,141 @@ fn data_limits_doesnt_ask_claude_while_the_saved_reading_is_fresh() {
         fs::read_to_string(&runs)
     );
 }
+
+#[test]
+fn status_prints_the_saved_reading_and_leaves_the_refresh_to_the_engine() {
+    let home = logged_in_home();
+    let claude_dir = home.path.parent().unwrap().join("claude");
+    let bin = answering_claude(&claude_dir);
+    fs::write(
+        bin.join("claude"),
+        format!(
+            "#!/bin/sh\ncat > /dev/null\nsleep 8\ncat '{}'\n",
+            claude_dir.join("stream.jsonl").display()
+        ),
+    )
+    .unwrap();
+    let paths = Paths::new(&home.path);
+    gigawatts_with_claude_in(&home.path, &bin, &["engine"]);
+
+    for _ in 0..2 {
+        let asked = Instant::now();
+        let output = gigawatts_with_claude_in(&home.path, &bin, &["status"]);
+
+        assert!(asked.elapsed() < Duration::from_secs(2), "{output:?}");
+        assert!(output.status.success(), "{output:?}");
+        assert!(output.stderr.is_empty(), "{output:?}");
+        assert_eq!(
+            stdout(&output),
+            "00000000-0000-4000-8000-00000000000a/00000000-0000-4000-8000-0000000000f0: no limit readings yet · today $0.00, no usual yet\n"
+        );
+    }
+    wait_for_snapshot(&paths.snapshot(), "limits", |value| {
+        !value["accounts"][0]["limits"].is_null()
+    });
+}
+
+fn request_seconds_ago(transcript: &Path, request_id: &str, seconds: u32) {
+    let timestamp: String = rusqlite::Connection::open_in_memory()
+        .unwrap()
+        .query_row(
+            "SELECT strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?1)",
+            [format!("-{seconds} seconds")],
+            |row| row.get(0),
+        )
+        .unwrap();
+    fs::create_dir_all(transcript.parent().unwrap()).unwrap();
+    fs::write(
+        transcript,
+        format!(
+            r#"{{"type":"assistant","sessionId":"{request_id}","requestId":"{request_id}","timestamp":"{timestamp}","message":{{"model":"claude-opus-5-5","usage":{{"input_tokens":1000,"output_tokens":500}}}}}}"#
+        ) + "\n",
+    )
+    .unwrap();
+}
+
+#[test]
+fn status_shows_the_account_used_most_recently_unless_asked_for_another_or_all() {
+    let home = logged_in_home();
+    let work = home.path.join(".claude-work");
+    fs::create_dir_all(work.join("projects")).unwrap();
+    fs::write(
+        work.join(".claude.json"),
+        r#"{"oauthAccount":{"accountUuid":"00000000-0000-4000-8000-00000000000b","organizationUuid":"00000000-0000-4000-8000-0000000000f0"}}"#,
+    )
+    .unwrap();
+    fs::create_dir_all(home.path.join(".config/gigawatts")).unwrap();
+    fs::write(
+        home.path.join(".config/gigawatts/config.toml"),
+        "[accounts.\"00000000-0000-4000-8000-00000000000a/00000000-0000-4000-8000-0000000000f0\"]\nlabel = \"personal\"\n\n[accounts.\"00000000-0000-4000-8000-00000000000b/00000000-0000-4000-8000-0000000000f0\"]\nlabel = \"work\"\n\n[accounts.\"00000000-0000-4000-8000-00000000000c/00000000-0000-4000-8000-0000000000f0\"]\nlabel = \"spare\"\n",
+    )
+    .unwrap();
+    request_seconds_ago(&home.path.join(".claude/projects/p/a.jsonl"), "a", 2);
+    request_seconds_ago(&work.join("projects/p/b.jsonl"), "b", 1);
+    let ingested = gigawatts(&home.path, &["ingest"]);
+    assert!(ingested.status.success(), "{ingested:?}");
+    let personal = "personal: no limit readings yet · today $0.01, no usual yet\n";
+    let work_line = "work: no limit readings yet · today $0.01, no usual yet\n";
+
+    assert_eq!(stdout(&gigawatts(&home.path, &["status"])), work_line);
+    assert_eq!(
+        stdout(&gigawatts(&home.path, &["status", "--account", "personal"])),
+        personal
+    );
+    assert_eq!(
+        stdout(&gigawatts(&home.path, &["status", "--account", "spare"])),
+        "spare: no limit readings yet · today $0.00, no usual yet\n"
+    );
+    let all = stdout(&gigawatts(&home.path, &["status", "--all"]));
+    assert_eq!(all, format!("{personal}{work_line}"));
+
+    let untracked = gigawatts(&home.path, &["accounts", "track", "personal", "off"]);
+    assert!(untracked.status.success(), "{untracked:?}");
+    let refused = gigawatts(&home.path, &["status", "--account", "personal"]);
+    assert_eq!(refused.status.code(), Some(2), "{refused:?}");
+    assert_eq!(
+        String::from_utf8_lossy(&refused.stderr),
+        "gigawatts: personal isn't tracked. `gigawatts accounts track personal on` turns it on.\n"
+    );
+}
+
+#[test]
+fn status_skips_an_untracked_account_for_the_most_recent_tracked_one() {
+    let home = logged_in_home();
+    let mut config = String::new();
+    for (directory, uuid, label, seconds) in [
+        (".claude", "a", "personal", 3),
+        (".claude-work", "b", "work", 2),
+        (".claude-side", "c", "side", 1),
+    ] {
+        let directory = home.path.join(directory);
+        fs::create_dir_all(directory.join("projects")).unwrap();
+        let account = format!("00000000-0000-4000-8000-00000000000{uuid}");
+        fs::write(
+            directory.join(".claude.json"),
+            format!(
+                r#"{{"oauthAccount":{{"accountUuid":"{account}","organizationUuid":"00000000-0000-4000-8000-0000000000f0"}}}}"#
+            ),
+        )
+        .unwrap();
+        config.push_str(&format!(
+            "[accounts.\"{account}/00000000-0000-4000-8000-0000000000f0\"]\nlabel = \"{label}\"\n\n"
+        ));
+        request_seconds_ago(
+            &directory.join(format!("projects/p/{uuid}.jsonl")),
+            uuid,
+            seconds,
+        );
+    }
+    fs::create_dir_all(home.path.join(".config/gigawatts")).unwrap();
+    fs::write(home.path.join(".config/gigawatts/config.toml"), config).unwrap();
+    let ingested = gigawatts(&home.path, &["ingest"]);
+    assert!(ingested.status.success(), "{ingested:?}");
+    let untracked = gigawatts(&home.path, &["accounts", "track", "side", "off"]);
+    assert!(untracked.status.success(), "{untracked:?}");
+
+    assert_eq!(
+        stdout(&gigawatts(&home.path, &["status"])),
+        "work: no limit readings yet · today $0.01, no usual yet\n"
+    );
+}

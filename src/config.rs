@@ -33,6 +33,7 @@ pub struct AccountSettings {
     pub label: Option<String>,
     pub tracking: bool,
     pub store_titles: bool,
+    pub credit_reset: Option<CreditReset>,
 }
 
 impl Default for AccountSettings {
@@ -41,8 +42,24 @@ impl Default for AccountSettings {
             label: None,
             tracking: true,
             store_titles: true,
+            credit_reset: None,
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CreditReset {
+    pub day: u8,
+    pub minute_of_day: u16,
+    pub offset_minutes: i16,
+}
+
+impl CreditReset {
+    pub const PROVISIONAL: CreditReset = CreditReset {
+        day: 1,
+        minute_of_day: 0,
+        offset_minutes: 0,
+    };
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -76,6 +93,7 @@ struct RawAccount {
     label: Option<String>,
     tracking: Option<bool>,
     store_titles: Option<bool>,
+    credit_reset: Option<Datetime>,
 }
 
 #[derive(Deserialize)]
@@ -116,12 +134,21 @@ impl Config {
         for (id, settings) in raw.accounts {
             let account = id.parse().map_err(Error::Invalid)?;
             let defaults = AccountSettings::default();
+            let credit_reset = match settings.credit_reset {
+                None => None,
+                Some(datetime) => Some(credit_reset(&datetime).ok_or_else(|| {
+                    Error::Invalid(format!(
+                        "credit_reset for {id} needs a date, a time, and a time zone, like 2026-11-01T00:00:00Z"
+                    ))
+                })?),
+            };
             accounts.insert(
                 account,
                 AccountSettings {
                     label: settings.label,
                     tracking: settings.tracking.unwrap_or(defaults.tracking),
                     store_titles: settings.store_titles.unwrap_or(defaults.store_titles),
+                    credit_reset,
                 },
             );
         }
@@ -248,6 +275,20 @@ pub fn epoch_ms_from_text(timestamp: &str) -> Option<i64> {
     epoch_ms(&timestamp.parse().ok()?)
 }
 
+fn credit_reset(datetime: &Datetime) -> Option<CreditReset> {
+    let date = datetime.date?;
+    let time = datetime.time?;
+    let offset_minutes = match datetime.offset? {
+        Offset::Z => 0,
+        Offset::Custom { minutes } => minutes,
+    };
+    Some(CreditReset {
+        day: date.day,
+        minute_of_day: u16::from(time.hour) * 60 + u16::from(time.minute),
+        offset_minutes,
+    })
+}
+
 fn epoch_ms(datetime: &Datetime) -> Option<i64> {
     let date = datetime.date?;
     let time = datetime.time?;
@@ -265,7 +306,7 @@ fn epoch_ms(datetime: &Datetime) -> Option<i64> {
 }
 
 // Howard Hinnant's days_from_civil: days since 1970-01-01 in the proleptic Gregorian calendar.
-fn days_from_civil(year: i64, month: u8, day: u8) -> i64 {
+pub(crate) fn days_from_civil(year: i64, month: u8, day: u8) -> i64 {
     let year = if month <= 2 { year - 1 } else { year };
     let era = year.div_euclid(400);
     let year_of_era = year - era * 400;

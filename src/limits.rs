@@ -334,7 +334,7 @@ pub fn render(rows: &[LimitsRow], now_ms: i64) -> String {
     out
 }
 
-fn limit_name(limit: &Limit) -> String {
+pub(crate) fn limit_name(limit: &Limit) -> String {
     let scope = limit.scope.as_deref();
     match (limit.kind.as_str(), scope) {
         ("session", None) => "Session".to_string(),
@@ -346,7 +346,7 @@ fn limit_name(limit: &Limit) -> String {
     }
 }
 
-fn percent(value: f64) -> String {
+pub(crate) fn percent(value: f64) -> String {
     if value.fract() == 0.0 {
         format!("{value:.0}")
     } else {
@@ -376,7 +376,7 @@ fn detail(shown: &ShownLimit) -> String {
     parts.join(", ")
 }
 
-fn age(elapsed_ms: i64) -> String {
+pub(crate) fn age(elapsed_ms: i64) -> String {
     let minutes = elapsed_ms.max(0) / 60_000;
     let (count, unit) = match minutes {
         0 => return "just now".to_string(),

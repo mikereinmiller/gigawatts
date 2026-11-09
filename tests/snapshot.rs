@@ -3,7 +3,8 @@ use std::fs;
 use gigawatts::accounts::Attribution;
 use gigawatts::config::Config;
 use gigawatts::contract::{
-    AccountLimits, AccountToday, Limit, LimitSource, Problem, ProblemKind, SCHEMA_VERSION, Snapshot,
+    AccountLimits, AccountToday, DollarPace, FastestSession, Limit, LimitPace, LimitSource,
+    PaceBasis, PaceState, PacedLimit, Problem, ProblemKind, SCHEMA_VERSION, Snapshot,
 };
 use gigawatts::engine::snapshot;
 use gigawatts::ingest::ingest_tree;
@@ -29,6 +30,28 @@ fn local_noon_in_utc(store_day: &str, days_back: i64) -> String {
         .unwrap()
 }
 
+fn local_ms(store_day: &str, clock: &str) -> i64 {
+    rusqlite::Connection::open_in_memory()
+        .unwrap()
+        .query_row(
+            "SELECT CAST(unixepoch(?1 || 'T' || ?2, 'utc') AS INTEGER) * 1000",
+            [store_day, clock],
+            |row| row.get(0),
+        )
+        .unwrap()
+}
+
+fn utc_text(ms: i64) -> String {
+    rusqlite::Connection::open_in_memory()
+        .unwrap()
+        .query_row(
+            "SELECT strftime('%Y-%m-%dT%H:%M:%SZ', ?1 / 1000, 'unixepoch')",
+            [ms],
+            |row| row.get(0),
+        )
+        .unwrap()
+}
+
 fn request_line(request_id: &str, timestamp: &str) -> String {
     format!(
         r#"{{"type":"assistant","sessionId":"s1","requestId":"{request_id}","timestamp":"{timestamp}","message":{{"model":"claude-opus-5-5","usage":{{"input_tokens":1000,"output_tokens":500}}}}}}"#
@@ -45,14 +68,14 @@ fn the_snapshot_carries_each_tracked_accounts_spend_today_and_the_engines_proble
     let lines = [
         request_line("r1", &local_noon_in_utc(&today, 0)),
         request_line("r2", &local_noon_in_utc(&today, 0)),
-        request_line("r3", &local_noon_in_utc(&today, 1)),
+        request_line("r3", &local_noon_in_utc(&today, 7)),
     ]
     .concat();
     fs::write(projects.join("s1.jsonl"), lines).unwrap();
     let table = PriceTable::built_in();
     ingest(&mut store, &projects, &table, ACCOUNT);
     for (folder, account, days_back) in [
-        ("idle", IDLE_ACCOUNT, 1),
+        ("idle", IDLE_ACCOUNT, 7),
         ("untracked", UNTRACKED_ACCOUNT, 0),
     ] {
         let other = dir.path().join(folder);
@@ -75,13 +98,15 @@ fn the_snapshot_carries_each_tracked_accounts_spend_today_and_the_engines_proble
         dir.path(),
     )
     .unwrap();
+    let now_ms = local_ms(&today, "12:10:00");
+    let two_days_ms = 2 * 24 * 3_600_000;
     let weekly = Limit {
         kind: "weekly_all".to_string(),
         group: Some("weekly".to_string()),
         scope: None,
         percent: 63.0,
         severity: Some("normal".to_string()),
-        resets_at: Some("2026-11-08T02:59:59.945600+00:00".to_string()),
+        resets_at: Some(utc_text(now_ms + two_days_ms)),
         active: false,
         credits: None,
     };
@@ -108,7 +133,7 @@ fn the_snapshot_carries_each_tracked_accounts_spend_today_and_the_engines_proble
     let snapshot = snapshot::build(
         &store,
         &config,
-        1_700_000_000_000,
+        now_ms,
         std::slice::from_ref(&watch_failing),
     )
     .unwrap();
@@ -118,7 +143,7 @@ fn the_snapshot_carries_each_tracked_accounts_spend_today_and_the_engines_proble
         Snapshot {
             schema_version: SCHEMA_VERSION,
             engine_version: gigawatts::engine::version(),
-            written_at_ms: 1_700_000_000_000,
+            written_at_ms: now_ms,
             today,
             accounts: vec![
                 AccountToday {
@@ -126,10 +151,34 @@ fn the_snapshot_carries_each_tracked_accounts_spend_today_and_the_engines_proble
                     account_label: "personal".to_string(),
                     requests: 2,
                     cost_usd: 0.028,
+                    pace: DollarPace {
+                        today_usd: 0.028,
+                        usual_usd: Some(0.014),
+                        usual_days: 1,
+                        clock: "12:10".to_string(),
+                    },
+                    fastest_session: Some(FastestSession {
+                        session: "s1".to_string(),
+                        label: "s1".to_string(),
+                        repo: "unknown folder".to_string(),
+                        branch: None,
+                        last_15_minutes_usd: 0.028,
+                        total_usd: 0.042,
+                    }),
                     limits: Some(AccountLimits {
                         source: LimitSource::GetUsage,
                         fetched_at_ms: 1_699_999_400_000,
-                        limits: vec![weekly],
+                        limits: vec![PacedLimit {
+                            limit: weekly,
+                            pace: Some(LimitPace {
+                                state: PaceState::Under,
+                                basis: PaceBasis::Even,
+                                expected_percent: 500.0 / 7.0,
+                                window_start_ms: now_ms - 5 * 24 * 3_600_000,
+                                window_end_ms: now_ms + two_days_ms,
+                                provisional: false,
+                            }),
+                        }],
                     }),
                 },
                 AccountToday {
@@ -137,6 +186,13 @@ fn the_snapshot_carries_each_tracked_accounts_spend_today_and_the_engines_proble
                     account_label: IDLE_ACCOUNT.to_string(),
                     requests: 0,
                     cost_usd: 0.0,
+                    pace: DollarPace {
+                        today_usd: 0.0,
+                        usual_usd: Some(0.014),
+                        usual_days: 1,
+                        clock: "12:10".to_string(),
+                    },
+                    fastest_session: None,
                     limits: None,
                 },
             ],

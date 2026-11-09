@@ -15,12 +15,14 @@ use crate::sources::git::{Place, Resolver};
 use crate::sources::transcript::{CostState, Line, READER_VERSION, Request, Tokens};
 
 mod limits;
+mod pace;
 mod problems;
 mod reconcile;
 mod retention;
 mod totals;
 
 pub use limits::{LimitPoint, LimitsReading, UsageAdvice};
+pub use pace::ClockSpend;
 pub use problems::{ModelSighting, PriceGap, UnrecognizedKind};
 pub use totals::Filter;
 
