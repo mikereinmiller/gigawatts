@@ -1,10 +1,12 @@
 use std::collections::BTreeSet;
 
 use gigawatts::contract::{
-    AccountLimits, AccountToday, Credits, DollarPace, Limit, LimitPace, LimitSource, PaceBasis,
-    PaceState, PacedLimit, Problem, ProblemKind, SCHEMA_VERSION, SessionSpend, Snapshot,
+    AccountLimits, AccountToday, Credits, DataResponse, DataRow, DollarPace, GroupBy, Limit,
+    LimitPace, LimitSource, PaceBasis, PaceState, PacedLimit, Problem, ProblemKind, Range,
+    SCHEMA_VERSION, SessionSpend, Snapshot,
 };
-use gigawatts::tui::{App, Flow};
+use gigawatts::store::{Store, TopItem, UsageAdvice};
+use gigawatts::tui::{App, Flow, HistoryQuery, Spending};
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -294,11 +296,11 @@ fn an_account_that_appears_while_open_is_announced_until_the_next_key() {
 }
 
 #[test]
-fn q_escape_and_ctrl_c_quit() {
+fn q_and_ctrl_c_quit_and_escape_does_not() {
     let mut app = open(snapshot(vec![personal()]), None);
 
     assert_eq!(app.handle(KeyCode::Char('q').into()), Flow::Quit);
-    assert_eq!(app.handle(KeyCode::Esc.into()), Flow::Quit);
+    assert_eq!(app.handle(KeyCode::Esc.into()), Flow::Continue);
     assert_eq!(
         app.handle(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL)),
         Flow::Quit
@@ -653,15 +655,13 @@ fn cell_at(app: &App, width: u16, height: u16, text: &str) -> ratatui::buffer::C
 }
 
 #[test]
-fn number_keys_pick_an_account_from_the_tab_row_and_tab_does_nothing() {
+fn number_keys_pick_an_account_from_the_tab_row() {
     let mut app = open(
         snapshot(vec![personal(), work()]),
         Some(PERSONAL.to_string()),
     );
     let first = screen(&app, 80, 24);
 
-    app.handle(KeyCode::Tab.into());
-    let after_tab = screen(&app, 80, 24);
     app.handle(KeyCode::Char('9').into());
     let after_nine = screen(&app, 80, 24);
     app.handle(KeyCode::Char('2').into());
@@ -670,28 +670,27 @@ fn number_keys_pick_an_account_from_the_tab_row_and_tab_does_nothing() {
     assert!(first.contains("1 personal"), "{first}");
     assert!(first.contains("2 work"), "{first}");
     assert!(first.contains("Weekly, Fable"), "{first}");
-    assert_eq!(after_tab, first);
     assert_eq!(after_nine, first);
     assert!(second.contains("Credits"), "{second}");
     assert!(!second.contains("Weekly, Fable"), "{second}");
 }
 
 #[test]
-fn arrow_keys_step_through_the_tabs_and_wrap_past_all() {
+fn brackets_step_through_the_tabs_and_wrap_past_all() {
     let mut app = open(
         snapshot(vec![personal(), work()]),
         Some(PERSONAL.to_string()),
     );
-    let mut after = |key: KeyCode| {
-        app.handle(key.into());
+    let mut after = |key: char| {
+        app.handle(KeyCode::Char(key).into());
         screen(&app, 80, 24)
     };
 
-    let work_tab = after(KeyCode::Right);
-    let all_tab = after(KeyCode::Right);
-    let wrapped = after(KeyCode::Right);
-    let back_to_all = after(KeyCode::Left);
-    let back_to_work = after(KeyCode::Left);
+    let work_tab = after(']');
+    let all_tab = after(']');
+    let wrapped = after(']');
+    let back_to_all = after('[');
+    let back_to_work = after('[');
 
     assert!(work_tab.contains("Credits"), "{work_tab}");
     assert!(!work_tab.contains("across 2 accounts"), "{work_tab}");
@@ -706,12 +705,12 @@ fn arrow_keys_step_through_the_tabs_and_wrap_past_all() {
 }
 
 #[test]
-fn with_one_account_arrow_keys_do_nothing() {
+fn with_one_account_brackets_do_nothing() {
     let mut app = open(snapshot(vec![personal()]), None);
     let before = screen(&app, 80, 24);
 
-    app.handle(KeyCode::Right.into());
-    app.handle(KeyCode::Left.into());
+    app.handle(KeyCode::Char(']').into());
+    app.handle(KeyCode::Char('[').into());
 
     assert_eq!(screen(&app, 80, 24), before);
 }
@@ -755,13 +754,13 @@ fn the_footer_lists_the_keys_that_work_on_this_screen() {
     let one = screen(&open(snapshot(vec![personal()]), None), 80, 24);
 
     assert!(both.contains("1-2 account"), "{both}");
-    assert!(both.contains("← → switch"), "{both}");
+    assert!(both.contains("[ ] switch"), "{both}");
     assert!(both.contains("a all"), "{both}");
     assert!(both.contains("? help"), "{both}");
     assert!(both.contains("q quit"), "{both}");
     assert!(!one.contains("1-1"), "{one}");
     assert!(!one.contains("a all"), "{one}");
-    assert!(!one.contains("← →"), "{one}");
+    assert!(!one.contains("[ ]"), "{one}");
     assert!(one.contains("? help"), "{one}");
 }
 
@@ -1022,4 +1021,600 @@ fn a_notice_too_long_for_one_row_wraps_without_hiding_the_notices_after_it() {
 
     assert!(shown.contains("(code 14)"), "{shown}");
     assert!(shown.contains("`gigawatts doctor`"), "{shown}");
+}
+
+fn row(account: &str, key: Option<&str>, label: &str, cost: f64) -> DataRow {
+    DataRow {
+        account: Some(account.to_string()),
+        account_label: account.to_string(),
+        key: key.map(str::to_string),
+        label: label.to_string(),
+        not_in_transcript: key.is_none(),
+        status: None,
+        requests: 1,
+        input_tokens: 0,
+        output_tokens: 0,
+        cache_read_tokens: 0,
+        cache_write_tokens: 0,
+        web_searches: 0,
+        cost_usd: Some(cost),
+    }
+}
+
+fn top(account: &str, key: &str, label: &str, cost: f64) -> TopItem {
+    TopItem {
+        account: Some(account.to_string()),
+        key: Some(key.to_string()),
+        label: label.to_string(),
+        cost_usd: cost,
+    }
+}
+
+fn spending(wanted: &HistoryQuery, rows: Vec<DataRow>, top: Vec<TopItem>) -> Spending {
+    Spending {
+        response: DataResponse {
+            schema_version: SCHEMA_VERSION,
+            range: wanted.range,
+            group_by: wanted.group_by,
+            drill: Vec::new(),
+            level: wanted.group_by.levels()[0],
+            today: "2026-11-09".to_string(),
+            since: Some("2026-11-03".to_string()),
+            rows,
+            problems: Vec::new(),
+        },
+        top,
+    }
+}
+
+fn repo_branch(account: &str, repo: &str, branch: &str, cost: f64) -> DataRow {
+    row(
+        account,
+        Some(&format!("/code/{repo}\u{1f}{branch}")),
+        &format!("{repo} · {branch}"),
+        cost,
+    )
+}
+
+fn repos() -> Vec<DataRow> {
+    vec![
+        repo_branch(PERSONAL, "orchard", "ab/login", 30.0),
+        repo_branch(PERSONAL, "gigawatts", "main", 6.0),
+        row(PERSONAL, None, "unlogged usage", 4.0),
+        repo_branch(WORK, "wiki", "main", 2.1),
+    ]
+}
+
+fn top_skills() -> Vec<TopItem> {
+    vec![
+        top(PERSONAL, "/code/orchard", "review", 18.0),
+        top(PERSONAL, "/code/gigawatts", "no skill", 3.0),
+        top(WORK, "/code/wiki", "implement", 2.1),
+        top(PERSONAL, "/code/orchard\u{1f}ab/login", "review", 18.0),
+        top(PERSONAL, "/code/gigawatts\u{1f}main", "no skill", 3.0),
+        top(WORK, "/code/wiki\u{1f}main", "implement", 2.1),
+    ]
+}
+
+fn answer(app: &mut App) -> Option<HistoryQuery> {
+    let wanted = app.take_history_query()?;
+    app.set_history(&wanted, Ok(spending(&wanted, repos(), top_skills())));
+    Some(wanted)
+}
+
+fn with_spending(mut app: App) -> App {
+    answer(&mut app);
+    app
+}
+
+#[test]
+fn the_spending_table_sits_below_the_top_panel_when_the_window_has_room() {
+    let app = with_spending(open(
+        snapshot(vec![personal(), work()]),
+        Some(PERSONAL.to_string()),
+    ));
+
+    insta::assert_snapshot!(screen(&app, 100, 34));
+}
+
+#[test]
+fn in_80_by_24_the_spending_table_hides_behind_tab() {
+    let mut app = with_spending(open(
+        snapshot(vec![personal(), work()]),
+        Some(PERSONAL.to_string()),
+    ));
+    let top = screen(&app, 80, 24);
+
+    app.handle(KeyCode::Tab.into());
+    let table = screen(&app, 80, 24);
+    app.handle(KeyCode::Tab.into());
+    let back = screen(&app, 80, 24);
+
+    assert!(!top.contains("Spending"), "{top}");
+    assert!(top.contains("Tab spending"), "{top}");
+    insta::assert_snapshot!(table);
+    assert_eq!(back, top);
+}
+
+#[test]
+fn spending_starts_on_this_week_by_repo_and_g_t_and_their_capitals_step_both_ways() {
+    let mut app = open(snapshot(vec![personal()]), None);
+    let first = app.take_history_query().unwrap();
+    let mut after = |key: char| {
+        app.handle(KeyCode::Char(key).into());
+        let wanted = app.take_history_query().unwrap();
+        (wanted.group_by, wanted.range)
+    };
+
+    assert_eq!(
+        (first.group_by, first.range),
+        (GroupBy::Branch, Range::Week)
+    );
+    assert_eq!(after('g'), (GroupBy::Skill, Range::Week));
+    assert_eq!(after('g'), (GroupBy::Agent, Range::Week));
+    assert_eq!(after('G'), (GroupBy::Skill, Range::Week));
+    assert_eq!(after('G'), (GroupBy::Branch, Range::Week));
+    assert_eq!(after('G'), (GroupBy::Model, Range::Week));
+    assert_eq!(after('t'), (GroupBy::Model, Range::Month));
+    assert_eq!(after('t'), (GroupBy::Model, Range::All));
+    assert_eq!(after('t'), (GroupBy::Model, Range::Today));
+    assert_eq!(after('T'), (GroupBy::Model, Range::All));
+}
+
+#[test]
+fn each_row_shows_its_cost_share_and_the_skill_that_spent_most_in_it() {
+    let app = with_spending(open(snapshot(vec![personal()]), None));
+
+    let shown = screen(&app, 100, 34);
+
+    assert!(shown.contains("Spending · $40.00 this week"), "{shown}");
+    assert!(shown.contains("Top skill"), "{shown}");
+    assert!(
+        shown.contains("$30.00 ━━━━━━━──   75%  60% review"),
+        "{shown}"
+    );
+    assert!(
+        shown.contains("$6.00 ━────────   15%  50% no skill"),
+        "{shown}"
+    );
+    assert!(shown.contains("$4.00 ━────────   10%      "), "{shown}");
+}
+
+#[test]
+fn skills_name_the_repo_that_spent_most_instead() {
+    let mut app = open(snapshot(vec![personal()]), None);
+    app.take_history_query();
+
+    app.handle(KeyCode::Char('g').into());
+    let wanted = app.take_history_query().unwrap();
+    app.set_history(
+        &wanted,
+        Ok(spending(
+            &wanted,
+            vec![row(PERSONAL, Some("review"), "review", 10.0)],
+            vec![top(PERSONAL, "review", "gigawatts", 7.0)],
+        )),
+    );
+    let shown = screen(&app, 100, 34);
+
+    assert!(shown.contains("Top repo"), "{shown}");
+    assert!(shown.contains(" 70% gigawatts"), "{shown}");
+}
+
+#[test]
+fn a_long_list_scrolls_to_keep_the_highlight_on_screen() {
+    let mut app = open(snapshot(vec![personal()]), None);
+    app.take_history_query();
+    app.handle(KeyCode::Char('g').into());
+    let wanted = app.take_history_query().unwrap();
+    let many = (0..30)
+        .map(|n| {
+            row(
+                PERSONAL,
+                Some(&format!("s{n:02}")),
+                &format!("s{n:02}"),
+                1.0,
+            )
+        })
+        .collect();
+    app.set_history(&wanted, Ok(spending(&wanted, many, Vec::new())));
+    let first = screen(&app, 100, 34);
+
+    for _ in 0..29 {
+        app.handle(KeyCode::Down.into());
+    }
+    let bottom = screen(&app, 100, 34);
+
+    assert!(first.contains("s00"), "{first}");
+    assert!(!first.contains("s29"), "{first}");
+    assert!(!first.contains(" more"), "{first}");
+    assert!(bottom.contains("s29"), "{bottom}");
+    assert!(!bottom.contains("s00"), "{bottom}");
+}
+
+#[test]
+fn spending_shows_the_shown_accounts_rows_and_every_account_view_labels_each_row() {
+    let mut app = with_spending(open(
+        snapshot(vec![personal(), work()]),
+        Some(PERSONAL.to_string()),
+    ));
+    let personal_rows = screen(&app, 100, 34);
+
+    app.handle(KeyCode::Char('2').into());
+    let work_rows = screen(&app, 100, 34);
+    app.handle(KeyCode::Char('a').into());
+    let every = screen(&app, 100, 44);
+
+    assert!(personal_rows.contains("orchard"), "{personal_rows}");
+    assert!(!personal_rows.contains("wiki"), "{personal_rows}");
+    assert!(work_rows.contains("wiki"), "{work_rows}");
+    assert!(!work_rows.contains("orchard"), "{work_rows}");
+    assert!(every.contains("orchard"), "{every}");
+    assert!(every.contains("wiki"), "{every}");
+    assert!(every.contains("100% implement"), "{every}");
+}
+
+#[test]
+fn a_failed_spending_query_says_why_in_the_table() {
+    let mut app = open(snapshot(vec![personal()]), None);
+    let wanted = app.take_history_query().unwrap();
+    app.set_history(&wanted, Err("database is locked".to_string()));
+
+    let shown = screen(&app, 100, 34);
+
+    assert!(shown.contains("database is locked"), "{shown}");
+}
+
+#[test]
+fn a_snapshot_update_asks_for_spending_again() {
+    let mut app = with_spending(open(snapshot(vec![personal()]), None));
+
+    app.update(snapshot(vec![personal()]));
+
+    assert!(answer(&mut app).is_some());
+    assert!(app.take_history_query().is_none());
+}
+
+#[test]
+fn escape_closes_advice_and_help_and_never_quits() {
+    let mut app = with_spending(open(snapshot(vec![personal()]), None));
+
+    app.handle(KeyCode::Char('u').into());
+    let closing = app.handle(KeyCode::Esc.into());
+    let nothing_open = app.handle(KeyCode::Esc.into());
+
+    assert_eq!(closing, Flow::Continue);
+    assert_eq!(nothing_open, Flow::Continue);
+    assert!(!screen(&app, 100, 34).contains("Usage advice"));
+}
+
+#[test]
+fn u_shows_todays_usage_advice_for_the_shown_account() {
+    let mut app = open(snapshot(vec![personal()]), None);
+
+    app.handle(KeyCode::Char('u').into());
+    let wanted = app.take_advice_query();
+    app.set_advice(Ok(Some(UsageAdvice {
+        fetched_at_ms: NOW_MS - 12 * 60_000,
+        behaviors: serde_json::json!({
+            "day": {
+                "session_count": 13,
+                "request_count": 2319,
+                "recommendations": [
+                    {"key": "subagent_heavy", "pct": 94, "title": "Give \"review\" subagents a cheaper model"},
+                    {"key": "long_context", "pct": 38, "title": "Start fresh when you switch tasks", "detail": "run /clear"},
+                    {"key": "always_on_context", "pct": 22}
+                ],
+                "agents": [{"name": "review", "pct": 33}, {"name": "deployer", "pct": 6}],
+                "skills": [{"name": "implement", "pct": 4}]
+            },
+            "week": {"session_count": 40, "request_count": 9000, "recommendations": []}
+        }),
+    })));
+    let advice = screen(&app, 100, 34);
+    app.handle(KeyCode::Esc.into());
+    let closed = screen(&app, 100, 34);
+
+    assert_eq!(wanted.as_deref(), Some(PERSONAL));
+    insta::assert_snapshot!(advice);
+    assert!(!closed.contains("Usage advice"), "{closed}");
+}
+
+#[test]
+fn usage_advice_says_when_none_is_saved_today() {
+    let mut app = open(snapshot(vec![personal()]), None);
+
+    app.handle(KeyCode::Char('u').into());
+    app.take_advice_query();
+    app.set_advice(Ok(None));
+    let shown = screen(&app, 80, 24);
+
+    assert!(shown.contains("No usage advice saved today"), "{shown}");
+}
+
+#[test]
+fn the_key_strip_lists_the_spending_keys() {
+    let app = with_spending(open(snapshot(vec![personal()]), None));
+
+    let strip = screen(&app, 100, 34).lines().last().unwrap().to_string();
+
+    assert!(strip.contains("← → group"), "{strip}");
+    assert!(strip.contains("t time"), "{strip}");
+    assert!(strip.contains("u advice"), "{strip}");
+    assert!(!strip.contains("Tab"), "{strip}");
+    assert!(!strip.contains("open"), "{strip}");
+}
+
+#[test]
+fn spending_load_reads_the_range_and_top_skills_from_the_store() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut store = Store::open(&dir.path().join("history.sqlite3")).unwrap();
+    gigawatts::ingest::ingest_tree(
+        &mut store,
+        std::path::Path::new(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/projects/plain"
+        )),
+        &gigawatts::pricing::PriceTable::built_in(),
+        &gigawatts::accounts::Attribution::default(),
+        &gigawatts::sources::git::Resolver::default(),
+    )
+    .unwrap();
+    let no_account = AccountToday {
+        account: None,
+        ..personal()
+    };
+    let mut app = open(snapshot(vec![no_account]), None);
+    app.handle(KeyCode::Char('t').into());
+    app.handle(KeyCode::Char('t').into());
+
+    gigawatts::tui::history::load(&mut app, &store);
+    let shown = screen(&app, 100, 34);
+
+    assert!(app.take_history_query().is_none());
+    assert!(shown.contains("all time"), "{shown}");
+    assert!(shown.contains("Top skill"), "{shown}");
+    assert!(shown.contains(" 70% no skill"), "{shown}");
+}
+
+#[test]
+fn left_and_right_step_the_grouping_and_up_and_down_ask_for_nothing() {
+    let mut app = open(snapshot(vec![personal()]), None);
+    app.take_history_query();
+    let mut after = |key: KeyCode| {
+        app.handle(key.into());
+        app.take_history_query()
+            .map(|wanted| (wanted.group_by, wanted.range))
+    };
+
+    assert_eq!(after(KeyCode::Right), Some((GroupBy::Skill, Range::Week)));
+    assert_eq!(after(KeyCode::Left), Some((GroupBy::Branch, Range::Week)));
+    assert_eq!(after(KeyCode::Left), Some((GroupBy::Model, Range::Week)));
+    assert_eq!(after(KeyCode::Down), None);
+    assert_eq!(after(KeyCode::Up), None);
+}
+
+#[test]
+fn up_and_down_move_a_highlight_through_the_rows() {
+    let mut app = with_spending(open(snapshot(vec![personal()]), None));
+    let first = cell_at(&app, 100, 34, "orchard  ");
+
+    app.handle(KeyCode::Down.into());
+    let moved_from = cell_at(&app, 100, 34, "orchard  ");
+    let moved_to = cell_at(&app, 100, 34, "gigawatts  ");
+    for _ in 0..5 {
+        app.handle(KeyCode::Down.into());
+    }
+    let last = cell_at(&app, 100, 34, "unlogged usage  ");
+    for _ in 0..5 {
+        app.handle(KeyCode::Up.into());
+    }
+    let top = cell_at(&app, 100, 34, "orchard  ");
+
+    assert!(first.modifier.contains(Modifier::REVERSED));
+    assert!(!moved_from.modifier.contains(Modifier::REVERSED));
+    assert!(moved_to.modifier.contains(Modifier::REVERSED));
+    assert!(last.modifier.contains(Modifier::REVERSED));
+    assert!(top.modifier.contains(Modifier::REVERSED));
+}
+
+#[test]
+fn the_repo_tab_lists_each_repo_with_its_branches_under_it() {
+    let mut app = open(snapshot(vec![personal()]), None);
+    let wanted = app.take_history_query().unwrap();
+    let work = |repo: &str, branch: &str, cost: f64| {
+        row(
+            PERSONAL,
+            Some(&format!("/code/{repo}\u{1f}{branch}")),
+            &format!("{repo} · {branch}"),
+            cost,
+        )
+    };
+    app.set_history(
+        &wanted,
+        Ok(spending(
+            &wanted,
+            vec![
+                work(".dotfiles", "main", 388.0),
+                work("wiki", "ab/milestone-04", 322.0),
+                work("wiki", "ab/milestone-03", 118.0),
+                work(".dotfiles", "ab/review", 52.0),
+                row(PERSONAL, None, "unlogged usage", 20.0),
+            ],
+            vec![top(
+                PERSONAL,
+                "/code/wiki\u{1f}ab/milestone-04",
+                "review",
+                161.0,
+            )],
+        )),
+    );
+    app.handle(KeyCode::Enter.into());
+    app.handle(KeyCode::Down.into());
+    app.handle(KeyCode::Down.into());
+    app.handle(KeyCode::Down.into());
+    app.handle(KeyCode::Enter.into());
+
+    let shown = screen(&app, 100, 34);
+
+    insta::assert_snapshot!(shown);
+}
+
+#[test]
+fn the_tabs_name_work_and_subagents_and_t_changes_the_time_frame() {
+    let app = with_spending(open(snapshot(vec![personal()]), None));
+
+    let shown = screen(&app, 100, 34);
+
+    assert!(
+        shown.contains("← →  repo  skill  subagent  model"),
+        "{shown}"
+    );
+    assert!(shown.contains("t  today  week  month  all"), "{shown}");
+}
+
+#[test]
+fn the_repo_tab_shows_a_repos_top_three_branches_and_adds_up_the_rest() {
+    let mut app = open(snapshot(vec![personal()]), None);
+    let wanted = app.take_history_query().unwrap();
+    let branches = [
+        ("main", 40.0),
+        ("ab/a", 30.0),
+        ("ab/b", 20.0),
+        ("ab/c", 6.0),
+        ("ab/d", 4.0),
+    ]
+    .iter()
+    .map(|(branch, cost)| {
+        row(
+            PERSONAL,
+            Some(&format!("/code/wiki\u{1f}{branch}")),
+            &format!("wiki · {branch}"),
+            *cost,
+        )
+    })
+    .collect();
+    app.set_history(&wanted, Ok(spending(&wanted, branches, Vec::new())));
+    app.handle(KeyCode::Enter.into());
+
+    let shown = screen(&app, 100, 34);
+
+    assert!(shown.contains("  - ab/b "), "{shown}");
+    assert!(!shown.contains("ab/c"), "{shown}");
+    assert!(
+        shown.contains("  - 2 more, largest $6.00 ") && shown.contains("$10.00"),
+        "{shown}"
+    );
+}
+
+#[test]
+fn repos_start_closed_and_enter_opens_and_closes_the_highlighted_one() {
+    let mut app = with_spending(open(snapshot(vec![personal()]), None));
+    let closed = screen(&app, 100, 34);
+
+    app.handle(KeyCode::Enter.into());
+    let opened = screen(&app, 100, 34);
+    app.handle(KeyCode::Down.into());
+    app.handle(KeyCode::Enter.into());
+    let on_branch = screen(&app, 100, 34);
+    app.update(snapshot(vec![personal()]));
+    answer(&mut app);
+    let refreshed = screen(&app, 100, 34);
+    app.handle(KeyCode::Up.into());
+    app.handle(KeyCode::Enter.into());
+    let closed_again = screen(&app, 100, 34);
+
+    assert!(closed.contains("│ ▸ orchard "), "{closed}");
+    assert!(closed.contains("│ ▸ gigawatts "), "{closed}");
+    assert!(!closed.contains("- ab/login"), "{closed}");
+    assert!(closed.contains("│   unlogged usage "), "{closed}");
+    assert!(opened.contains("│ ▾ orchard "), "{opened}");
+    assert!(opened.contains("│     - ab/login "), "{opened}");
+    let table = |screen: &str| -> String {
+        let lines: Vec<&str> = screen.lines().collect();
+        lines[..lines.len() - 1].join("\n")
+    };
+    assert_eq!(table(&on_branch), table(&opened));
+    assert_eq!(table(&refreshed), table(&opened));
+    assert_eq!(closed_again, closed);
+}
+
+#[test]
+fn the_key_strip_says_what_enter_does_on_the_highlighted_row() {
+    let mut app = with_spending(open(snapshot(vec![personal()]), None));
+    let strip = |app: &App| screen(app, 100, 34).lines().last().unwrap().to_string();
+
+    let on_closed = strip(&app);
+    app.handle(KeyCode::Enter.into());
+    let on_open = strip(&app);
+    app.handle(KeyCode::Down.into());
+    let on_branch = strip(&app);
+    app.handle(KeyCode::Char('g').into());
+    answer(&mut app);
+    let on_skills = strip(&app);
+
+    assert!(on_closed.contains("Enter branches"), "{on_closed}");
+    assert!(on_open.contains("Enter hide"), "{on_open}");
+    assert!(!on_branch.contains("Enter"), "{on_branch}");
+    assert!(!on_skills.contains("Enter"), "{on_skills}");
+}
+
+#[test]
+fn e_opens_every_repo_then_closes_them_and_keeps_the_highlight_on_its_repo() {
+    let mut app = with_spending(open(snapshot(vec![personal()]), None));
+    let strip = |app: &App| screen(app, 100, 34).lines().last().unwrap().to_string();
+    app.handle(KeyCode::Down.into());
+    let before = strip(&app);
+
+    app.handle(KeyCode::Char('e').into());
+    let expanded = screen(&app, 100, 34);
+    let highlighted_open = cell_at(&app, 100, 34, "gigawatts  ");
+    let after_expand = strip(&app);
+    app.handle(KeyCode::Char('e').into());
+    let collapsed = screen(&app, 100, 34);
+    let highlighted_closed = cell_at(&app, 100, 34, "gigawatts  ");
+    app.handle(KeyCode::Char('g').into());
+    answer(&mut app);
+    let on_skills = strip(&app);
+
+    assert!(before.contains("e expand all"), "{before}");
+    assert!(expanded.contains("▾ orchard"), "{expanded}");
+    assert!(expanded.contains("▾ gigawatts"), "{expanded}");
+    assert!(expanded.contains("    - ab/login "), "{expanded}");
+    assert!(expanded.contains("    - main "), "{expanded}");
+    assert!(highlighted_open.modifier.contains(Modifier::REVERSED));
+    assert!(after_expand.contains("e collapse all"), "{after_expand}");
+    assert!(collapsed.contains("▸ orchard"), "{collapsed}");
+    assert!(!collapsed.contains("- ab/login"), "{collapsed}");
+    assert!(highlighted_closed.modifier.contains(Modifier::REVERSED));
+    assert!(!on_skills.contains("e expand"), "{on_skills}");
+}
+
+#[test]
+fn enter_opens_the_highlighted_repo_after_switching_to_an_account_with_fewer_rows() {
+    let mut app = with_spending(open(
+        snapshot(vec![personal(), work()]),
+        Some(PERSONAL.to_string()),
+    ));
+    app.handle(KeyCode::Down.into());
+    app.handle(KeyCode::Down.into());
+
+    app.handle(KeyCode::Char('2').into());
+    let strip = screen(&app, 100, 34).lines().last().unwrap().to_string();
+    app.handle(KeyCode::Enter.into());
+    let opened = screen(&app, 100, 34);
+
+    assert!(strip.contains("Enter branches"), "{strip}");
+    assert!(opened.contains("│ ▾ wiki "), "{opened}");
+}
+
+#[test]
+fn the_key_strip_keeps_a_later_key_that_fits_after_one_that_does_not() {
+    let app = with_spending(open(snapshot(vec![personal()]), None));
+
+    let strip = screen(&app, 50, 60).lines().last().unwrap().to_string();
+
+    assert!(!strip.contains("Enter branches"), "{strip}");
+    assert!(strip.contains("u advice"), "{strip}");
+    assert!(strip.contains("q quit"), "{strip}");
 }

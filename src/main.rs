@@ -442,6 +442,7 @@ fn view() -> ExitCode {
         &mut app,
         &paths.snapshot(),
         rebuild,
+        |app: &mut gigawatts::tui::App| gigawatts::tui::history::load(app, &store),
         || engine::is_running(&paths),
         remember,
         &local_minute,

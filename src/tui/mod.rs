@@ -1,4 +1,5 @@
-use std::collections::BTreeSet;
+use std::cell::Cell;
+use std::collections::{BTreeSet, HashMap};
 
 use ratatui::Frame;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -9,9 +10,17 @@ use ratatui::widgets::Paragraph;
 
 use crate::contract::{AccountToday, Snapshot};
 use crate::problems;
+use crate::store::UsageAdvice;
+mod advice;
 pub mod announced;
+pub mod history;
 mod sections;
 pub mod terminal;
+
+use history::{History, LoadedAdvice};
+pub use history::{HistoryQuery, Spending};
+
+const HISTORY_MIN_HEIGHT: u16 = 8;
 
 use sections::{KEY, MUTED, WARNING};
 
@@ -29,6 +38,12 @@ pub struct App {
     watching_snapshot: bool,
     config_readable: bool,
     unsaved_announced: bool,
+    history: History,
+    history_shown: bool,
+    compact: Cell<bool>,
+    advice_open: bool,
+    advice_wanted: bool,
+    advice: Option<LoadedAdvice>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -63,6 +78,12 @@ impl App {
             watching_snapshot: true,
             config_readable: true,
             unsaved_announced: false,
+            history: History::new(),
+            history_shown: false,
+            compact: Cell::new(false),
+            advice_open: false,
+            advice_wanted: false,
+            advice: None,
         };
         let accounts = std::mem::take(&mut app.snapshot.accounts);
         app.record_found(&accounts);
@@ -84,6 +105,39 @@ impl App {
         }
         self.snapshot = snapshot;
         self.read_error = None;
+        self.history.reload();
+        self.advice_wanted = self.advice_open;
+    }
+
+    pub fn take_history_query(&mut self) -> Option<HistoryQuery> {
+        self.history.take_query()
+    }
+
+    pub fn set_history(&mut self, query: &HistoryQuery, loaded: Result<Spending, String>) {
+        self.history.set(query, loaded);
+    }
+
+    pub fn take_advice_query(&mut self) -> Option<String> {
+        if !std::mem::take(&mut self.advice_wanted) {
+            return None;
+        }
+        let account = self.shown().and_then(|account| account.account.clone());
+        if account.is_none() {
+            self.advice = Some(Ok(None));
+        }
+        account
+    }
+
+    pub fn set_advice(&mut self, loaded: Result<Option<UsageAdvice>, String>) {
+        self.advice = Some(loaded);
+    }
+
+    fn history_account(&self) -> Option<&Option<String>> {
+        if self.stacked {
+            None
+        } else {
+            self.shown().map(|account| &account.account)
+        }
     }
 
     fn record_found(&mut self, accounts: &[AccountToday]) {
@@ -136,16 +190,42 @@ impl App {
             return Flow::Quit;
         }
         match key.code {
-            KeyCode::Char('?') => self.help = !self.help,
+            KeyCode::Char('?') if !self.advice_open => self.help = !self.help,
             KeyCode::Esc if self.help => self.help = false,
-            KeyCode::Esc => return Flow::Quit,
-            _ if self.help => {}
+            KeyCode::Esc | KeyCode::Char('u') if self.advice_open => self.advice_open = false,
+            _ if self.help || self.advice_open => {}
+            KeyCode::Char('u') => {
+                self.advice_open = true;
+                self.advice_wanted = true;
+                self.advice = None;
+            }
+            KeyCode::Tab => self.history_shown = !self.history_shown,
+            KeyCode::Right | KeyCode::Char('g') => self.history.next_grouping(1),
+            KeyCode::Left | KeyCode::Char('G') => self.history.next_grouping(-1),
+            KeyCode::Char('t') => self.history.next_range(1),
+            KeyCode::Char('T') => self.history.next_range(-1),
+            KeyCode::Char('e') => {
+                let account = self.history_account().cloned();
+                self.history.toggle_every_repo(account.as_ref());
+            }
+            KeyCode::Enter => {
+                let account = self.history_account().cloned();
+                self.history.toggle(account.as_ref());
+            }
+            KeyCode::Down => {
+                let account = self.history_account().cloned();
+                self.history.select(1, account.as_ref());
+            }
+            KeyCode::Up => {
+                let account = self.history_account().cloned();
+                self.history.select(-1, account.as_ref());
+            }
             KeyCode::Char('a') if self.snapshot.accounts.len() > 1 => {
                 self.stacked = !self.stacked;
             }
             KeyCode::Char(digit @ '1'..='9') => self.pick(digit),
-            KeyCode::Right => self.step(1),
-            KeyCode::Left => self.step(-1),
+            KeyCode::Char(']') => self.step(1),
+            KeyCode::Char('[') => self.step(-1),
             _ => {}
         }
         Flow::Continue
@@ -201,6 +281,59 @@ impl App {
         ])
         .areas(frame.area());
         frame.render_widget(Paragraph::new(self.header(now_ms, top.width)), top);
+        let top_height = match (self.stacked, self.shown()) {
+            (_, None) => 1,
+            (true, Some(_)) => sections::every_account_height(&self.snapshot, now_ms, body.width),
+            (false, Some(account)) => sections::one_account_height(
+                account,
+                &self.snapshot.problems,
+                now_ms,
+                local_minute,
+                body.width,
+            ),
+        };
+        let compact = body.height < top_height + HISTORY_MIN_HEIGHT;
+        self.compact.set(compact);
+        let (overview, history) = match (compact, self.history_shown) {
+            (false, _) => {
+                let [overview, history] =
+                    Layout::vertical([Constraint::Length(top_height), Constraint::Fill(1)])
+                        .areas(body);
+                (Some(overview), Some(history))
+            }
+            (true, false) => (Some(body), None),
+            (true, true) => (None, Some(body)),
+        };
+        if let Some(overview) = overview {
+            self.draw_overview(frame, overview, now_ms, local_minute);
+        }
+        if let (Some(history), Some(_)) = (history, self.shown()) {
+            let labels: HashMap<Option<String>, String> = self
+                .snapshot
+                .accounts
+                .iter()
+                .map(|account| (account.account.clone(), account.account_label.clone()))
+                .collect();
+            self.history
+                .draw(frame, history, self.history_account(), &labels);
+        }
+        frame.render_widget(Paragraph::new(notices), bottom);
+        frame.render_widget(Paragraph::new(self.key_strip(keys.width)), keys);
+        if self.help {
+            sections::help(frame, frame.area());
+        }
+        if self.advice_open {
+            advice::draw(frame, frame.area(), self.advice.as_ref(), now_ms);
+        }
+    }
+
+    fn draw_overview(
+        &self,
+        frame: &mut Frame,
+        body: Rect,
+        now_ms: i64,
+        local_minute: &dyn Fn(i64) -> String,
+    ) {
         match (self.stacked, self.shown()) {
             (_, None) => frame.render_widget(
                 Paragraph::new(
@@ -217,11 +350,6 @@ impl App {
                 now_ms,
                 local_minute,
             ),
-        }
-        frame.render_widget(Paragraph::new(notices), bottom);
-        frame.render_widget(Paragraph::new(self.key_strip()), keys);
-        if self.help {
-            sections::help(frame, frame.area());
         }
     }
 
@@ -302,29 +430,74 @@ impl App {
         lines
     }
 
-    fn key_strip(&self) -> Line<'static> {
+    fn key_strip(&self, width: u16) -> Line<'static> {
         let count = self.snapshot.accounts.len();
         let mut keys = Vec::new();
+        let mut last = Vec::new();
         if self.help {
             keys.push(("? Esc".to_string(), "close help"));
-        } else if count > 1 {
-            keys.push((format!("1-{}", count.min(9)), "account"));
-            keys.push(("← →".to_string(), "switch"));
-            keys.push((
-                "a".to_string(),
-                if self.stacked { "one account" } else { "all" },
-            ));
+        } else if self.advice_open {
+            keys.push(("u Esc".to_string(), "close advice"));
+        } else {
+            if count > 1 {
+                keys.push((format!("1-{}", count.min(9)), "account"));
+                keys.push(("[ ]".to_string(), "switch"));
+                keys.push((
+                    "a".to_string(),
+                    if self.stacked { "one account" } else { "all" },
+                ));
+            }
+            if self.compact.get() && self.history_shown {
+                keys.splice(0..0, self.history_keys());
+            } else {
+                keys.extend(self.history_keys());
+            }
+            last.push(("?".to_string(), "help"));
         }
-        if !self.help {
-            keys.push(("?".to_string(), "help"));
+        last.push(("q".to_string(), "quit"));
+        let entry = |(key, what): &(String, &str)| key.chars().count() + what.chars().count() + 4;
+        let gap_after_last_key = 3;
+        let mut room = (width as usize + gap_after_last_key)
+            .saturating_sub(1 + last.iter().map(entry).sum::<usize>());
+        let mut shown = Vec::new();
+        for item in keys {
+            if entry(&item) > room {
+                continue;
+            }
+            room -= entry(&item);
+            shown.push(item);
         }
-        keys.push(("q".to_string(), "quit"));
+        shown.extend(last);
         let mut spans = vec![Span::raw(" ")];
-        for (key, what) in keys {
+        for (key, what) in shown {
             spans.push(Span::styled(key, KEY.add_modifier(Modifier::BOLD)));
             spans.push(Span::styled(format!(" {what}   "), MUTED));
         }
         Line::from(spans)
+    }
+
+    fn history_keys(&self) -> Vec<(String, &'static str)> {
+        if self.shown().is_none() {
+            return Vec::new();
+        }
+        let compact = self.compact.get();
+        if compact && !self.history_shown {
+            return vec![("Tab".to_string(), "spending"), ("u".to_string(), "advice")];
+        }
+        let mut keys = Vec::new();
+        if compact {
+            keys.push(("Tab".to_string(), "limits"));
+        }
+        keys.push(("← →".to_string(), "group"));
+        keys.push(("t".to_string(), "time"));
+        if let Some(does) = self.history.enter_does(self.history_account()) {
+            keys.push(("Enter".to_string(), does));
+        }
+        keys.push(("u".to_string(), "advice"));
+        if let Some(does) = self.history.every_repo_does(self.history_account()) {
+            keys.push(("e".to_string(), does));
+        }
+        keys
     }
 
     fn announcement(&self, found: &Announcement) -> String {

@@ -22,6 +22,7 @@ pub fn run(
     app: &mut App,
     snapshot_path: &Path,
     mut rebuild: impl FnMut(&mut App),
+    mut load_history: impl FnMut(&mut App),
     engine_running: impl Fn() -> bool,
     mut remember: impl FnMut(&BTreeSet<String>) -> io::Result<()>,
     local_minute: &dyn Fn(i64) -> String,
@@ -33,6 +34,7 @@ pub fn run(
     let mut terminal = ratatui::try_init().inspect_err(|_| ratatui::restore())?;
     let mut queued = None;
     let shown = loop {
+        load_history(app);
         if let Err(error) = terminal.draw(|frame| app.draw(frame, now_ms(), local_minute)) {
             break Err(error);
         }

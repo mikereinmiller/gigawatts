@@ -362,7 +362,7 @@ fn lines_without_a_skill_or_agent_belong_to_the_main_conversation() {
         labels(&scratch.rows(GroupBy::Agent, &[])),
         vec![
             ("code-reviewer".to_string(), 1),
-            ("main conversation".to_string(), 1)
+            ("you (no subagent)".to_string(), 1)
         ]
     );
 }

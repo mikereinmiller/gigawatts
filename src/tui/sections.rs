@@ -29,6 +29,26 @@ const DETAIL_GAP: usize = 2;
 
 type LocalMinute<'a> = &'a dyn Fn(i64) -> String;
 
+pub(crate) fn one_account_height(
+    account: &AccountToday,
+    problems: &[Problem],
+    now_ms: i64,
+    local_minute: LocalMinute,
+    width: u16,
+) -> u16 {
+    let inner_width = width.saturating_sub(4);
+    let limits = limit_lines(account, problems, now_ms, local_minute, inner_width, false);
+    let today = today_lines(account, problems, inner_width, false);
+    (limits.len() + today.len() + session_rows(account) + 6) as u16
+}
+
+fn session_rows(account: &AccountToday) -> usize {
+    match account.active_sessions.len() {
+        0 => 1,
+        count => count + 1,
+    }
+}
+
 pub(crate) fn one_account(
     frame: &mut Frame,
     area: Rect,
@@ -40,10 +60,7 @@ pub(crate) fn one_account(
     let inner_width = area.width.saturating_sub(4);
     let limits = limit_lines(account, problems, now_ms, local_minute, inner_width, false);
     let today = today_lines(account, problems, inner_width, false);
-    let session_rows = match account.active_sessions.len() {
-        0 => 1,
-        count => count + 1,
-    };
+    let session_rows = session_rows(account);
     let [limits_area, today_area, sessions_area, _] = Layout::vertical([
         Constraint::Length(limits.len() as u16 + 2),
         Constraint::Length(today.len() as u16 + 2),
@@ -65,6 +82,35 @@ pub(crate) fn one_account(
     sessions(frame, sessions_area, &account.active_sessions);
 }
 
+pub(crate) fn every_account_height(snapshot: &Snapshot, now_ms: i64, width: u16) -> u16 {
+    let blocks: usize = every_account_lines(snapshot, now_ms, width.saturating_sub(4))
+        .iter()
+        .map(|(_, lines)| lines.len() + 2)
+        .sum();
+    (blocks + 2) as u16
+}
+
+fn every_account_lines(
+    snapshot: &Snapshot,
+    now_ms: i64,
+    inner_width: u16,
+) -> Vec<(&AccountToday, Vec<Line<'static>>)> {
+    let mut blocks = Vec::new();
+    for account in &snapshot.accounts {
+        let mut lines = limit_lines(
+            account,
+            &snapshot.problems,
+            now_ms,
+            &|_| String::new(),
+            inner_width,
+            true,
+        );
+        lines.extend(today_lines(account, &snapshot.problems, inner_width, true));
+        blocks.push((account, lines));
+    }
+    blocks
+}
+
 pub(crate) fn every_account(frame: &mut Frame, area: Rect, snapshot: &Snapshot, now_ms: i64) {
     let inner_width = area.width.saturating_sub(4);
     let combined: f64 = snapshot
@@ -81,19 +127,7 @@ pub(crate) fn every_account(frame: &mut Frame, area: Rect, snapshot: &Snapshot, 
     } else {
         ""
     };
-    let mut blocks = Vec::new();
-    for account in &snapshot.accounts {
-        let mut lines = limit_lines(
-            account,
-            &snapshot.problems,
-            now_ms,
-            &|_| String::new(),
-            inner_width,
-            true,
-        );
-        lines.extend(today_lines(account, &snapshot.problems, inner_width, true));
-        blocks.push((account, lines));
-    }
+    let blocks = every_account_lines(snapshot, now_ms, inner_width);
     let mut constraints = vec![Constraint::Length(2)];
     constraints.extend(
         blocks
@@ -123,7 +157,7 @@ pub(crate) fn every_account(frame: &mut Frame, area: Rect, snapshot: &Snapshot, 
     }
 }
 
-fn section(title: &str) -> Block<'static> {
+pub(crate) fn section(title: &str) -> Block<'static> {
     Block::bordered()
         .border_type(BorderType::Rounded)
         .border_style(MUTED)
@@ -483,10 +517,18 @@ pub(crate) fn help(frame: &mut Frame, area: Rect) {
     };
     let lines = vec![
         key("1-9", "show that account"),
-        key("← →", "step through the tabs, including all"),
+        key("[ ]", "step through the account tabs, including all"),
         key("a", "show every account, or go back to one"),
+        key("Tab", "switch to spending in a small window"),
+        key("← → g", "spending by repo, skill, subagent, model"),
+        key("t T", "spending today, this week, this month, all time"),
+        key("↑ ↓", "highlight a spending row"),
+        key("Enter", "show or hide a repo's branches"),
+        key("e", "show or hide every repo's branches"),
+        key("u", "show Anthropic's usage advice for today"),
         key("?", "open or close this help"),
-        key("q", "quit (Esc and Ctrl-C too)"),
+        key("Esc", "close help or advice"),
+        key("q", "quit (Ctrl-C too)"),
         Line::default(),
         color("━━━", Style::new().fg(UNDER), "under your pace"),
         color("━━━", Style::new().fg(EVEN), "on pace"),
@@ -499,7 +541,7 @@ pub(crate) fn help(frame: &mut Frame, area: Rect) {
         ),
         color("▸", KEY, "the session spending fastest"),
     ];
-    let popup = super::centered(area, 56, lines.len() as u16 + 2);
+    let popup = super::centered(area, 64, lines.len() as u16 + 2);
     frame.render_widget(Clear, popup);
     frame.render_widget(Paragraph::new(lines).block(section("Keys")), popup);
 }

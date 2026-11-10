@@ -117,6 +117,7 @@ fn label_sql(level: Level) -> &'static str {
             "coalesce(dir.repo_name, cwd.text, 'unknown folder') || ' · '
              || coalesce(branch.text, 'no branch')"
         }
+        Level::Agent => "coalesce(agent.text, 'you (no subagent)')",
         Level::Session => {
             "coalesce(session.title, session.uuid, 'older sessions, detail not kept')"
         }
