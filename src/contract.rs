@@ -1,7 +1,7 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-pub const SCHEMA_VERSION: u32 = 1;
+pub const SCHEMA_VERSION: u32 = 2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema, clap::ValueEnum)]
 #[serde(rename_all = "lowercase")]
@@ -26,7 +26,7 @@ impl GroupBy {
     pub fn levels(self) -> &'static [Level] {
         match self {
             GroupBy::Repo => &[Level::Repo, Level::Branch, Level::Session],
-            GroupBy::Branch => &[Level::Branch, Level::Session],
+            GroupBy::Branch => &[Level::RepoBranch, Level::Session],
             GroupBy::Skill => &[Level::Skill, Level::Session],
             GroupBy::Agent => &[Level::Agent, Level::Session],
             GroupBy::Model => &[Level::Model, Level::Session],
@@ -39,6 +39,8 @@ impl GroupBy {
 pub enum Level {
     Repo,
     Branch,
+    #[serde(rename = "repo_branch")]
+    RepoBranch,
     Skill,
     Agent,
     Model,
@@ -50,6 +52,7 @@ impl Level {
         match self {
             Level::Repo => "repo",
             Level::Branch => "branch",
+            Level::RepoBranch => "repo and branch",
             Level::Skill => "skill",
             Level::Agent => "agent",
             Level::Model => "model",

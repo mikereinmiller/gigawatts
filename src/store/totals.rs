@@ -40,6 +40,10 @@ fn key_sql(level: Level) -> &'static str {
     match level {
         Level::Repo => "coalesce(dir.repo_path, dir.repo_name, cwd.text, '')",
         Level::Branch => "coalesce(branch.text, 'no branch')",
+        Level::RepoBranch => {
+            "coalesce(dir.repo_path, dir.repo_name, cwd.text, '') || char(31)
+             || coalesce(branch.text, 'no branch')"
+        }
         Level::Skill => "coalesce(skill.text, 'no skill')",
         Level::Agent => "coalesce(agent.text, 'main conversation')",
         Level::Model => "model.text",
@@ -47,24 +51,39 @@ fn key_sql(level: Level) -> &'static str {
     }
 }
 
+fn label_is(column: &str, empty: &str, value: &str) -> String {
+    format!(
+        "(spend.{column} IN (SELECT id FROM labels WHERE text = {value})
+          OR (spend.{column} IS NULL AND {value} = '{empty}'))"
+    )
+}
+
+fn repo_is(value: &str) -> String {
+    format!(
+        "(spend.cwd_label IN (
+            SELECT cwd.id FROM labels AS cwd
+            LEFT JOIN directories AS dir ON dir.cwd_label = cwd.id
+            WHERE coalesce(dir.repo_path, dir.repo_name, cwd.text, '') = {value})
+          OR (spend.cwd_label IS NULL AND {value} = ''))"
+    )
+}
+
 fn filter_sql(level: Level, n: usize) -> String {
-    let label_is = |column: &str, empty: &str| {
-        format!(
-            "(spend.{column} IN (SELECT id FROM labels WHERE text = ?{n})
-              OR (spend.{column} IS NULL AND ?{n} = '{empty}'))"
-        )
-    };
+    let value = format!("?{n}");
     match level {
-        Level::Repo => format!(
-            "(spend.cwd_label IN (
-                SELECT cwd.id FROM labels AS cwd
-                LEFT JOIN directories AS dir ON dir.cwd_label = cwd.id
-                WHERE coalesce(dir.repo_path, dir.repo_name, cwd.text, '') = ?{n})
-              OR (spend.cwd_label IS NULL AND ?{n} = ''))"
+        Level::Repo => repo_is(&value),
+        Level::Branch => label_is("branch_label", "no branch", &value),
+        Level::RepoBranch => format!(
+            "({} AND {})",
+            repo_is(&format!("substr(?{n}, 1, instr(?{n}, char(31)) - 1)")),
+            label_is(
+                "branch_label",
+                "no branch",
+                &format!("substr(?{n}, instr(?{n}, char(31)) + 1)")
+            )
         ),
-        Level::Branch => label_is("branch_label", "no branch"),
-        Level::Skill => label_is("skill_label", "no skill"),
-        Level::Agent => label_is("agent_label", "main conversation"),
+        Level::Skill => label_is("skill_label", "no skill", &value),
+        Level::Agent => label_is("agent_label", "main conversation", &value),
         Level::Model => format!("spend.model_label IN (SELECT id FROM labels WHERE text = ?{n})"),
         Level::Session => {
             format!("spend.session_id IN (SELECT id FROM sessions WHERE uuid = ?{n})")
@@ -75,6 +94,10 @@ fn filter_sql(level: Level, n: usize) -> String {
 fn label_sql(level: Level) -> &'static str {
     match level {
         Level::Repo => "coalesce(dir.repo_name, cwd.text, 'unknown folder')",
+        Level::RepoBranch => {
+            "coalesce(dir.repo_name, cwd.text, 'unknown folder') || ' · '
+             || coalesce(branch.text, 'no branch')"
+        }
         Level::Session => {
             "coalesce(session.title, session.uuid, 'older sessions, detail not kept')"
         }
@@ -92,6 +115,12 @@ fn level_joins(level: Level) -> (&'static str, &'static str) {
         Level::Branch => (
             "branch_label",
             "LEFT JOIN labels AS branch ON branch.id = spend.branch_label",
+        ),
+        Level::RepoBranch => (
+            "cwd_label, branch_label",
+            "LEFT JOIN labels AS cwd ON cwd.id = spend.cwd_label
+             LEFT JOIN directories AS dir ON dir.cwd_label = spend.cwd_label
+             LEFT JOIN labels AS branch ON branch.id = spend.branch_label",
         ),
         Level::Skill => (
             "skill_label",
@@ -137,12 +166,17 @@ impl Store {
             Level::Model => format!("{DAILY_TOTALS} UNION ALL {NOT_IN_TRANSCRIPT}"),
             _ => DAILY_TOTALS.to_string(),
         };
-        let (column, joins) = level_joins(level);
+        let (columns, joins) = level_joins(level);
+        let columns: Vec<String> = columns
+            .split(", ")
+            .map(|column| format!("spend.{column} AS {column}"))
+            .collect();
         let sql = format!(
             "SELECT DISTINCT {key}, {label}
-             FROM (SELECT DISTINCT spend.{column} AS {column} FROM ({spend}) AS spend
+             FROM (SELECT DISTINCT {columns} FROM ({spend}) AS spend
                    {where_clause}) AS spend
              {joins}",
+            columns = columns.join(", "),
             key = key_sql(level),
             label = label_sql(level),
             where_clause = where_sql(filters),

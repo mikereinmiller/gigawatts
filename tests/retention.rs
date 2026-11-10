@@ -244,7 +244,7 @@ fn sessions_in_a_branch_still_add_up_to_the_branch_after_cleanup() {
         &history.store,
         Range::All,
         GroupBy::Branch,
-        &["main"],
+        &["gigawatts · main"],
         TODAY,
     )
     .unwrap()

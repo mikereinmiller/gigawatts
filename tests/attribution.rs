@@ -329,7 +329,7 @@ fn head_in_a_folder_git_cant_read_is_detached() {
 
     assert_eq!(
         labels(&scratch.rows(GroupBy::Branch, &[])),
-        vec![("detached".to_string(), 1)]
+        vec![("gone · detached".to_string(), 1)]
     );
 }
 
@@ -691,7 +691,7 @@ fn drilling_past_sessions_or_into_a_missing_name_is_refused() {
         &scratch.store,
         Range::All,
         GroupBy::Branch,
-        &["main", "s1"],
+        &["gone · main", "s1"],
         DAY,
     );
     let missing = query(&scratch.store, Range::All, GroupBy::Repo, &["nope"], DAY);
@@ -818,4 +818,38 @@ fn a_folder_that_counted_as_itself_is_resolved_again_after_upgrading() {
         labels(&scratch.rows(GroupBy::Repo, &[])),
         vec![("orchard-api".to_string(), 1)]
     );
+}
+
+#[test]
+fn grouping_by_branch_keeps_the_same_branch_in_two_repos_apart() {
+    let mut scratch = Scratch::new();
+    let line = |session, request, cwd| Line {
+        session,
+        request,
+        cwd,
+        ..Line::default()
+    };
+    scratch.append(
+        "s1.jsonl",
+        &line("s1", "r1", "/Users/nobody/orchard").json(),
+    );
+    scratch.append(
+        "s2.jsonl",
+        &(line("s2", "r2", "/Users/nobody/wiki").json()
+            + &line("s2", "r3", "/Users/nobody/wiki").json()),
+    );
+    scratch.ingest();
+
+    let branches = query(&scratch.store, Range::All, GroupBy::Branch, &[], DAY).unwrap();
+    let sessions = scratch.rows(GroupBy::Branch, &["orchard · main"]);
+
+    assert_eq!(branches.level, Level::RepoBranch);
+    assert_eq!(
+        labels(&branches.rows),
+        vec![
+            ("wiki · main".to_string(), 2),
+            ("orchard · main".to_string(), 1)
+        ]
+    );
+    assert_eq!(labels(&sessions), vec![("s1".to_string(), 1)]);
 }

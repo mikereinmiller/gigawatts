@@ -105,7 +105,7 @@ fn a_response_carries_its_schema_version() {
         query(&store, Range::All, GroupBy::Model, &[], "2026-01-05").unwrap();
 
     assert_eq!(response.schema_version, SCHEMA_VERSION);
-    assert_eq!(SCHEMA_VERSION, 1);
+    assert_eq!(SCHEMA_VERSION, 2);
 }
 
 #[test]
