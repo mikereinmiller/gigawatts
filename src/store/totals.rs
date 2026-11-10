@@ -1,6 +1,14 @@
 use super::{Result, Store, reconcile};
 use crate::contract::{DataRow, Level};
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct TopItem {
+    pub account: Option<String>,
+    pub key: Option<String>,
+    pub label: String,
+    pub cost_usd: f64,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Filter {
     pub level: Level,
@@ -36,6 +44,16 @@ const REQUESTS: &str = "
            web_searches, cost_usd
     FROM requests
     WHERE day >= coalesce(?1, '')";
+
+const SPEND_JOINS: &str = "
+    LEFT JOIN accounts ON accounts.id = spend.account_id
+    LEFT JOIN labels AS cwd ON cwd.id = spend.cwd_label
+    LEFT JOIN directories AS dir ON dir.cwd_label = spend.cwd_label
+    LEFT JOIN labels AS branch ON branch.id = spend.branch_label
+    LEFT JOIN labels AS skill ON skill.id = spend.skill_label
+    LEFT JOIN labels AS agent ON agent.id = spend.agent_label
+    JOIN labels AS model ON model.id = spend.model_label
+    LEFT JOIN sessions AS session ON session.id = spend.session_id";
 
 fn key_sql(level: Level) -> &'static str {
     match level {
@@ -242,14 +260,7 @@ impl Store {
                     sum(requests), sum(input_tokens), sum(output_tokens), sum(cache_read_tokens),
                     sum(cache_write_tokens), sum(web_searches), sum(cost_usd)
              FROM ({source}) AS spend
-             LEFT JOIN accounts ON accounts.id = spend.account_id
-             LEFT JOIN labels AS cwd ON cwd.id = spend.cwd_label
-             LEFT JOIN directories AS dir ON dir.cwd_label = spend.cwd_label
-             LEFT JOIN labels AS branch ON branch.id = spend.branch_label
-             LEFT JOIN labels AS skill ON skill.id = spend.skill_label
-             LEFT JOIN labels AS agent ON agent.id = spend.agent_label
-             JOIN labels AS model ON model.id = spend.model_label
-             LEFT JOIN sessions AS session ON session.id = spend.session_id
+             {SPEND_JOINS}
              {where_clause}
              GROUP BY spend.account_id, shown_apart, row_key
              ORDER BY spend.account_id IS NULL, accounts.account_uuid,
@@ -282,5 +293,42 @@ impl Store {
             })
         })?;
         Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
+    pub fn top_within(
+        &self,
+        level: Level,
+        within: Level,
+        since: Option<&str>,
+    ) -> Result<Vec<TopItem>> {
+        let sql = format!(
+            "SELECT accounts.account_uuid || '/' || accounts.organization_uuid,
+                    {key} AS row_key, {within_label}, sum(cost_usd)
+             FROM ({DAILY_TOTALS}) AS spend
+             {SPEND_JOINS}
+             GROUP BY spend.account_id, row_key, {within_key}
+             ORDER BY sum(cost_usd) DESC",
+            key = key_sql(level),
+            within_label = label_sql(within),
+            within_key = key_sql(within),
+        );
+        let mut statement = self.connection.prepare_cached(&sql)?;
+        let pairs = statement.query_map([since], |row| {
+            Ok(TopItem {
+                account: row.get(0)?,
+                key: row.get(1)?,
+                label: row.get(2)?,
+                cost_usd: row.get::<_, Option<f64>>(3)?.unwrap_or(0.0),
+            })
+        })?;
+        let mut seen = std::collections::HashSet::new();
+        let mut top = Vec::new();
+        for pair in pairs {
+            let pair = pair?;
+            if seen.insert((pair.account.clone(), pair.key.clone())) {
+                top.push(pair);
+            }
+        }
+        Ok(top)
     }
 }

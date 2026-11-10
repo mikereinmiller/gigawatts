@@ -802,6 +802,22 @@ fn a_cost_state_recording_no_cost_keeps_table_prices() {
     assert_eq!(sessions[0].status, Some(CostStatus::Estimated));
 }
 
+fn mixed_session(scratch: &Scratch) {
+    let line = |request, skill, agent, input| Line {
+        request,
+        skill,
+        agent,
+        input,
+        ..Line::default()
+    };
+    scratch.append(
+        "s1.jsonl",
+        &(line("r1", Some("review"), Some("code-reviewer"), 300_000).json()
+            + &line("r2", Some("review"), None, 200_000).json()
+            + &line("r3", None, None, 100_000).json()),
+    );
+}
+
 #[test]
 fn a_folder_that_counted_as_itself_is_resolved_again_after_upgrading() {
     let mut scratch = Scratch::new();
@@ -838,6 +854,51 @@ fn a_folder_that_counted_as_itself_is_resolved_again_after_upgrading() {
         labels(&scratch.rows(GroupBy::Repo, &[])),
         vec![("orchard-api".to_string(), 1)]
     );
+}
+
+#[test]
+fn each_repo_names_the_skill_that_spent_most_in_it() {
+    let mut scratch = Scratch::new();
+    mixed_session(&scratch);
+    scratch.append(
+        "s2.jsonl",
+        &Line {
+            session: "s2",
+            request: "r4",
+            cwd: "/Users/nobody/other",
+            skill: Some("commit"),
+            ..Line::default()
+        }
+        .json(),
+    );
+    scratch.ingest();
+    let review = scratch
+        .rows(GroupBy::Skill, &[])
+        .into_iter()
+        .find(|row| row.label == "review")
+        .unwrap();
+
+    let mut top = scratch
+        .store
+        .top_within(Level::Repo, Level::Skill, None)
+        .unwrap();
+    top.sort_by(|a, b| a.key.cmp(&b.key));
+
+    let named: Vec<(Option<String>, String)> = top
+        .iter()
+        .map(|item| (item.key.clone(), item.label.clone()))
+        .collect();
+    assert_eq!(
+        named,
+        vec![
+            (Some("/Users/nobody/gone".to_string()), "review".to_string()),
+            (
+                Some("/Users/nobody/other".to_string()),
+                "commit".to_string()
+            ),
+        ]
+    );
+    assert_cost(Some(top[0].cost_usd), review.cost_usd.unwrap());
 }
 
 #[test]
