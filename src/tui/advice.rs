@@ -6,7 +6,8 @@ use ratatui::widgets::{Clear, Paragraph, Wrap};
 use serde_json::Value;
 
 use super::history::LoadedAdvice;
-use super::sections::{MUTED, WARNING, section};
+use super::sections::section;
+use super::style::{DANGER, MUTED};
 use crate::limits::age;
 
 const WIDTH: u16 = 76;
@@ -21,7 +22,7 @@ pub(crate) fn draw(frame: &mut Frame, area: Rect, advice: Option<&LoadedAdvice>,
             "Usage advice".to_string(),
             vec![Line::styled(
                 format!("Can't read usage advice: {error}"),
-                WARNING,
+                DANGER,
             )],
         ),
         Some(Ok(None)) => (

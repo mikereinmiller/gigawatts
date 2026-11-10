@@ -347,11 +347,8 @@ pub(crate) fn limit_name(limit: &Limit) -> String {
 }
 
 pub(crate) fn percent(value: f64) -> String {
-    if value.fract() == 0.0 {
-        format!("{value:.0}")
-    } else {
-        format!("{value:.1}")
-    }
+    let tenths = format!("{value:.1}");
+    tenths.strip_suffix(".0").unwrap_or(&tenths).to_string()
 }
 
 fn detail(shown: &ShownLimit) -> String {

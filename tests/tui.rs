@@ -3,7 +3,7 @@ use std::collections::BTreeSet;
 use gigawatts::contract::{
     AccountLimits, AccountToday, Credits, DataResponse, DataRow, DollarPace, GroupBy, Limit,
     LimitPace, LimitSource, PaceBasis, PaceState, PacedLimit, Problem, ProblemKind, Range,
-    SCHEMA_VERSION, SessionSpend, Snapshot,
+    SCHEMA_VERSION, SessionSpend, Share, Snapshot,
 };
 use gigawatts::store::{Store, TopItem, UsageAdvice};
 use gigawatts::tui::{App, Flow, HistoryQuery, Spending};
@@ -332,39 +332,6 @@ fn with_no_accounts_the_view_says_where_to_look() {
 }
 
 #[test]
-fn the_fastest_session_is_bold_and_the_others_are_not() {
-    let app = open(snapshot(vec![personal()]), None);
-    let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
-
-    terminal
-        .draw(|frame| app.draw(frame, NOW_MS, &utc_minute))
-        .unwrap();
-
-    let buffer = terminal.backend().buffer();
-    let row = |text: &str| {
-        (0..buffer.area.height)
-            .find(|&y| {
-                (0..buffer.area.width)
-                    .map(|x| buffer[(x, y)].symbol())
-                    .collect::<String>()
-                    .contains(text)
-            })
-            .unwrap()
-    };
-    let bold = Modifier::BOLD;
-    assert!(
-        buffer[(2, row("Fix the login redirect"))]
-            .modifier
-            .contains(bold)
-    );
-    assert!(
-        !buffer[(2, row("Write release notes"))]
-            .modifier
-            .contains(bold)
-    );
-}
-
-#[test]
 fn a_failed_read_keeps_the_last_numbers_and_says_so_until_a_read_succeeds() {
     let mut app = open(snapshot(vec![personal()]), None);
 
@@ -413,7 +380,7 @@ fn a_limit_anthropic_marks_with_a_severity_shows_it() {
     let shown = screen(&app, 120, 24);
 
     assert!(
-        shown.contains("63%  over your usual pace · 50% expected · resets in 2d 17h · warning "),
+        shown.contains("│                     over your usual pace · 50% expected · resets in 2d 17h · warning "),
         "{shown}"
     );
     assert!(!shown.contains("normal"), "{shown}");
@@ -469,11 +436,11 @@ fn a_problem_marks_only_the_account_it_belongs_to_and_one_with_no_account_marks_
         "{stacked}"
     );
     assert!(
-        stacked.find("limits: refresh failing") < stacked.find("Limits from cachedUsage"),
+        stacked.find("limits: refresh failing") < stacked.find("Limits · from cachedUsage"),
         "{stacked}"
     );
     assert!(
-        stacked.find("Limits from cachedUsage") < stacked.find("limits from /home/x"),
+        stacked.find("Limits · from cachedUsage") < stacked.find("limits from /home/x"),
         "{stacked}"
     );
     assert_eq!(stacked.matches("aren't read").count(), 2, "{stacked}");
@@ -794,11 +761,13 @@ fn each_limit_shows_the_expected_percentage_and_a_countdown_to_its_reset() {
     let shown = screen(&app, 120, 24);
 
     assert!(
-        shown.contains("5%  on even pace · 50% expected · resets in 2h 40m"),
+        shown.contains("│                     on even pace · 50% expected · resets in 2h 40m"),
         "{shown}"
     );
     assert!(
-        shown.contains("63%  over your usual pace · 50% expected · resets in 2d 17h"),
+        shown.contains(
+            "│                     over your usual pace · 50% expected · resets in 2d 17h"
+        ),
         "{shown}"
     );
 }
@@ -811,9 +780,9 @@ fn a_limit_is_colored_by_its_pace() {
     let over = cell_at(&app, 120, 24, "63%");
     let under = cell_at(&app, 120, 24, "20%");
 
-    assert_eq!(even.fg, ratatui::style::Color::Yellow);
-    assert_eq!(over.fg, ratatui::style::Color::Red);
-    assert_eq!(under.fg, ratatui::style::Color::Green);
+    assert_eq!(even.fg, ratatui::style::Color::LightYellow);
+    assert_eq!(over.fg, ratatui::style::Color::LightRed);
+    assert_eq!(under.fg, ratatui::style::Color::LightGreen);
 }
 
 #[test]
@@ -824,11 +793,11 @@ fn spend_today_is_even_within_a_tenth_of_usual_and_colored_like_limit_pace() {
         cell_at(&open(snapshot(vec![account]), None), 80, 24, "× your usual").fg
     };
 
-    assert_eq!(color_at(6.0), ratatui::style::Color::Green);
-    assert_eq!(color_at(6.5), ratatui::style::Color::Yellow);
-    assert_eq!(color_at(7.1), ratatui::style::Color::Yellow);
-    assert_eq!(color_at(7.8), ratatui::style::Color::Yellow);
-    assert_eq!(color_at(8.0), ratatui::style::Color::Red);
+    assert_eq!(color_at(6.0), ratatui::style::Color::LightGreen);
+    assert_eq!(color_at(6.5), ratatui::style::Color::LightYellow);
+    assert_eq!(color_at(7.1), ratatui::style::Color::LightYellow);
+    assert_eq!(color_at(7.8), ratatui::style::Color::LightYellow);
+    assert_eq!(color_at(8.0), ratatui::style::Color::LightRed);
 }
 
 #[test]
@@ -840,17 +809,6 @@ fn spend_today_shows_the_usual_dollars_next_to_the_ratio() {
         shown.contains("2.0× your usual of $7.10 by 09:20"),
         "{shown}"
     );
-}
-
-#[test]
-fn active_sessions_have_column_headings() {
-    let shown = screen(&open(snapshot(vec![personal()]), None), 100, 24);
-
-    assert!(shown.contains("Session"), "{shown}");
-    assert!(shown.contains("Repo · branch"), "{shown}");
-    assert!(shown.contains("Last 15 min"), "{shown}");
-    assert!(shown.contains("Total"), "{shown}");
-    assert!(shown.contains("orchard · ab/login"), "{shown}");
 }
 
 #[test]
@@ -909,7 +867,7 @@ fn the_every_account_view_closes_when_only_one_account_is_left() {
     let shown = screen(&app, 80, 24);
 
     assert!(!shown.contains("today across"), "{shown}");
-    assert!(shown.contains("Active sessions"), "{shown}");
+    assert!(shown.contains("Running now"), "{shown}");
 }
 
 #[test]
@@ -1181,14 +1139,17 @@ fn each_row_shows_its_cost_share_and_the_skill_that_spent_most_in_it() {
     assert!(shown.contains("Spending · $40.00 this week"), "{shown}");
     assert!(shown.contains("Top skill"), "{shown}");
     assert!(
-        shown.contains("$30.00 ━━━━━━━──   75%  60% review"),
+        shown.contains("$30.00  ▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆    75%  60% review"),
         "{shown}"
     );
     assert!(
-        shown.contains("$6.00 ━────────   15%  50% no skill"),
+        shown.contains("$6.00  ▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆    15%  50% no skill"),
         "{shown}"
     );
-    assert!(shown.contains("$4.00 ━────────   10%      "), "{shown}");
+    assert!(
+        shown.contains("$4.00  ▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆    10%  "),
+        "{shown}"
+    );
 }
 
 #[test]
@@ -1422,11 +1383,13 @@ fn up_and_down_move_a_highlight_through_the_rows() {
     }
     let top = cell_at(&app, 100, 34, "orchard  ");
 
-    assert!(first.modifier.contains(Modifier::REVERSED));
-    assert!(!moved_from.modifier.contains(Modifier::REVERSED));
-    assert!(moved_to.modifier.contains(Modifier::REVERSED));
-    assert!(last.modifier.contains(Modifier::REVERSED));
-    assert!(top.modifier.contains(Modifier::REVERSED));
+    let cyan = ratatui::style::Color::Cyan;
+    assert_eq!(first.fg, cyan);
+    assert!(!first.modifier.contains(Modifier::REVERSED));
+    assert_ne!(moved_from.fg, cyan);
+    assert_eq!(moved_to.fg, cyan);
+    assert_eq!(last.fg, cyan);
+    assert_eq!(top.fg, cyan);
 }
 
 #[test]
@@ -1466,7 +1429,7 @@ fn the_repo_tab_lists_each_repo_with_its_branches_under_it() {
     app.handle(KeyCode::Down.into());
     app.handle(KeyCode::Enter.into());
 
-    let shown = screen(&app, 100, 34);
+    let shown = screen(&app, 100, 44);
 
     insta::assert_snapshot!(shown);
 }
@@ -1508,7 +1471,7 @@ fn the_repo_tab_shows_a_repos_top_three_branches_and_adds_up_the_rest() {
     app.set_history(&wanted, Ok(spending(&wanted, branches, Vec::new())));
     app.handle(KeyCode::Enter.into());
 
-    let shown = screen(&app, 100, 34);
+    let shown = screen(&app, 100, 44);
 
     assert!(shown.contains("  - ab/b "), "{shown}");
     assert!(!shown.contains("ab/c"), "{shown}");
@@ -1593,11 +1556,11 @@ fn e_opens_every_repo_then_closes_them_and_keeps_the_highlight_on_its_repo() {
     assert!(expanded.contains("▾ gigawatts"), "{expanded}");
     assert!(expanded.contains("    - ab/login "), "{expanded}");
     assert!(expanded.contains("    - main "), "{expanded}");
-    assert!(highlighted_open.modifier.contains(Modifier::REVERSED));
+    assert_eq!(highlighted_open.fg, ratatui::style::Color::Cyan);
     assert!(after_expand.contains("e collapse all"), "{after_expand}");
     assert!(collapsed.contains("▸ orchard"), "{collapsed}");
     assert!(!collapsed.contains("- ab/login"), "{collapsed}");
-    assert!(highlighted_closed.modifier.contains(Modifier::REVERSED));
+    assert_eq!(highlighted_closed.fg, ratatui::style::Color::Cyan);
     assert!(!on_skills.contains("e expand"), "{on_skills}");
 }
 
@@ -1628,4 +1591,1017 @@ fn the_key_strip_keeps_a_later_key_that_fits_after_one_that_does_not() {
     assert!(!strip.contains("Enter branches"), "{strip}");
     assert!(strip.contains("u advice"), "{strip}");
     assert!(strip.contains("q quit"), "{strip}");
+}
+
+#[test]
+fn a_notice_that_the_numbers_stopped_updating_is_red_and_a_new_account_is_not_a_warning() {
+    let mut app = open(snapshot(vec![personal()]), None);
+    app.set_engine_running(false);
+    app.failed_to_read("disk I/O error".to_string());
+
+    let stopped = cell_at(&app, 80, 30, "The engine stopped");
+    let unreadable = cell_at(&app, 80, 30, "Can't read the history database");
+    let announced = App::new(snapshot(vec![personal()]), None, Some(&BTreeSet::new()));
+    let new_account = cell_at(&announced, 80, 24, "New account");
+
+    assert_eq!(stopped.fg, ratatui::style::Color::LightRed);
+    assert!(stopped.modifier.contains(Modifier::BOLD));
+    assert_eq!(unreadable.fg, ratatui::style::Color::LightRed);
+    assert_eq!(new_account.fg, ratatui::style::Color::Cyan);
+}
+
+#[test]
+fn a_limit_with_no_pace_is_drawn_in_the_terminals_own_color_not_the_key_color() {
+    let mut account = personal();
+    account.limits.as_mut().unwrap().limits[0].pace = None;
+    let app = open(snapshot(vec![account]), None);
+
+    let reading = cell_at(&app, 120, 24, " 5%");
+
+    assert_eq!(reading.fg, ratatui::style::Color::Reset);
+}
+
+#[test]
+fn the_every_account_view_names_each_limits_source_the_way_one_account_does() {
+    let mut app = open(snapshot(vec![personal(), work()]), None);
+
+    app.handle(KeyCode::Char('a').into());
+    let stacked = screen(&app, 80, 40);
+
+    assert!(
+        stacked.contains("Limits · from get_usage, read 3 minutes ago"),
+        "{stacked}"
+    );
+}
+
+#[test]
+fn a_percentage_that_rounds_to_a_whole_number_shows_no_decimal() {
+    let mut account = personal();
+    let shown = &mut account.limits.as_mut().unwrap().limits[1];
+    shown.limit.percent = 12.04;
+    shown.pace.as_mut().unwrap().expected_percent = 35.04;
+    let app = open(snapshot(vec![account]), None);
+
+    let screen = screen(&app, 120, 24);
+
+    assert!(screen.contains("   12% │"), "{screen}");
+    assert!(
+        screen.contains("│                     over your usual pace · 35% expected"),
+        "{screen}"
+    );
+}
+
+#[test]
+fn at_100_columns_and_wider_limits_and_today_sit_side_by_side() {
+    let app = open(snapshot(vec![personal()]), None);
+
+    let wide = screen(&app, 120, 40);
+    let narrow = screen(&app, 80, 40);
+
+    assert!(
+        wide.lines()
+            .any(|line| line.contains("╭ Limits") && line.contains("╭ Today")),
+        "{wide}"
+    );
+    assert!(
+        !narrow
+            .lines()
+            .any(|line| line.contains("╭ Limits") && line.contains("╭ Today")),
+        "{narrow}"
+    );
+}
+
+#[test]
+fn each_limit_gets_a_name_row_a_full_width_thick_bar_and_its_details_below() {
+    let app = open(snapshot(vec![personal()]), None);
+
+    let shown = screen(&app, 150, 40);
+    let lines: Vec<&str> = shown.lines().collect();
+    let name_row = lines
+        .iter()
+        .position(|line| line.contains("│ Session "))
+        .unwrap();
+    let bar_cells = lines[name_row + 1]
+        .chars()
+        .filter(|cell| matches!(cell, '█' | '░' | '▌'))
+        .count();
+
+    assert!(bar_cells >= 60, "{shown}");
+    assert!(
+        lines[name_row + 2].contains("on even pace · 50% expected · resets in 2h 40m at 12:00"),
+        "{shown}"
+    );
+}
+
+#[test]
+fn todays_spend_is_drawn_in_large_digits_above_how_it_compares_with_usual() {
+    let app = open(snapshot(vec![personal()]), None);
+
+    let shown = screen(&app, 120, 40);
+
+    assert!(shown.contains("▄█▄ ▀█  █ █   ▀▀█ █▀█"), "{shown}");
+    assert!(shown.contains("█    █  █ █     █ █ █"), "{shown}");
+    assert!(shown.contains("▀█▄  █  ▀▀█   █▀▀ █ █"), "{shown}");
+    assert!(shown.contains("  █  █    █   █   █ █"), "{shown}");
+    assert!(shown.contains("▀█▀ ▄█▄   █ ▄ █▄▄ █▄█"), "{shown}");
+    assert!(
+        shown.contains("2.0× your usual of $7.10 by 09:20"),
+        "{shown}"
+    );
+}
+
+#[test]
+fn on_a_weekend_the_sparkline_says_it_compares_weekend_days() {
+    let mut account = personal();
+    account.pace.weekend = true;
+    account.pace.earlier_days_usd.truncate(6);
+    let app = open(snapshot(vec![account]), None);
+
+    let shown = screen(&app, 120, 40);
+
+    assert!(shown.contains("Last 6 weekend days by 09:20"), "{shown}");
+}
+
+#[test]
+fn a_sparkline_shows_the_earlier_days_by_this_clock_time_ending_with_today() {
+    let app = open(snapshot(vec![personal()]), None);
+
+    let shown = screen(&app, 120, 40);
+
+    assert!(shown.contains("Last 20 workdays by 09:20"), "{shown}");
+    assert!(!shown.contains("days ago"), "{shown}");
+    assert!(shown.contains("▃▄▅▃▅▆▄▅▆▃▅▅▅▄▄▆▅▃▄▅█"), "{shown}");
+    assert_eq!(
+        last_cell_of(&app, 120, 40, "▄▅█").fg,
+        ratatui::style::Color::LightRed
+    );
+    assert_eq!(
+        cell_at(&app, 120, 40, "▃▄▅▃").fg,
+        ratatui::style::Color::Cyan
+    );
+}
+
+fn last_cell_of(app: &App, width: u16, height: u16, text: &str) -> ratatui::buffer::Cell {
+    let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+    terminal
+        .draw(|frame| app.draw(frame, NOW_MS, &utc_minute))
+        .unwrap();
+    let buffer = terminal.backend().buffer().clone();
+    for y in 0..buffer.area.height {
+        let joined: String = (0..buffer.area.width)
+            .map(|x| buffer[(x, y)].symbol())
+            .collect();
+        if let Some(byte) = joined.find(text) {
+            let x = (joined[..byte].chars().count() + text.chars().count() - 1) as u16;
+            return buffer[(x, y)].clone();
+        }
+    }
+    panic!("{text} isn't on screen");
+}
+
+#[test]
+fn section_titles_are_bold_in_the_terminals_own_color_not_the_border_color() {
+    let app = open(snapshot(vec![personal()]), None);
+
+    let title = cell_at(&app, 120, 40, "Limits ·");
+
+    assert_eq!(title.fg, ratatui::style::Color::Reset);
+    assert!(title.modifier.contains(Modifier::BOLD));
+}
+
+#[test]
+fn todays_large_digits_and_the_ratio_under_them_carry_the_pace_color_like_the_mock() {
+    let app = open(snapshot(vec![personal()]), None);
+
+    let digits = cell_at(&app, 120, 40, "▄█▄ ▀█");
+    let times = cell_at(&app, 120, 40, "2.0×");
+    let words = cell_at(&app, 120, 40, " your usual of ");
+    let usual = cell_at(&app, 120, 40, "$7.10 by");
+
+    assert_eq!(digits.fg, ratatui::style::Color::LightRed);
+    assert!(digits.modifier.contains(Modifier::BOLD));
+    assert_eq!(times.fg, ratatui::style::Color::LightRed);
+    assert!(times.modifier.contains(Modifier::BOLD));
+    assert_eq!(words.fg, ratatui::style::Color::LightRed);
+    assert!(!words.modifier.contains(Modifier::BOLD));
+    assert!(usual.modifier.contains(Modifier::BOLD));
+}
+
+fn gruvbox(app: &mut App) {
+    app.set_palette(
+        gigawatts::tui::palette::Rgb(0xeb, 0xdb, 0xb2),
+        gigawatts::tui::palette::Rgb(0x28, 0x28, 0x28),
+    );
+}
+
+#[test]
+fn with_the_terminals_colors_known_every_muted_part_shares_one_soft_shade() {
+    let mut app = open(snapshot(vec![personal()]), None);
+    gruvbox(&mut app);
+    let muted = ratatui::style::Color::Rgb(0x63, 0x5e, 0x51);
+
+    let track = last_cell_of(&app, 150, 40, "▌░");
+    let border = cell_at(&app, 150, 40, "╭ Limits");
+    let details = cell_at(&app, 150, 40, "on even pace · 50% expected");
+    let label = cell_at(&app, 150, 40, "Spent so far");
+
+    assert_eq!(track.fg, muted);
+    assert_eq!(border.fg, muted);
+    assert_eq!(details.fg, muted);
+    assert_eq!(label.fg, muted);
+}
+
+#[test]
+fn without_the_terminals_colors_muted_parts_fall_back_to_dark_gray() {
+    let app = open(snapshot(vec![personal()]), None);
+
+    let track = last_cell_of(&app, 150, 40, "▌░");
+    let details = cell_at(&app, 150, 40, "on even pace · 50% expected");
+
+    assert_eq!(track.fg, ratatui::style::Color::DarkGray);
+    assert_eq!(details.fg, ratatui::style::Color::DarkGray);
+}
+
+#[test]
+fn each_limits_percentage_ends_its_name_row_in_bold_pace_color() {
+    let app = open(snapshot(vec![personal()]), None);
+
+    let shown = screen(&app, 150, 40);
+    let name_row = shown
+        .lines()
+        .find(|line| line.contains("│ Session "))
+        .unwrap();
+    let reading = cell_at(&app, 150, 40, "5% │");
+
+    assert!(name_row.contains(" 5% │"), "{shown}");
+    assert_eq!(reading.fg, ratatui::style::Color::LightYellow);
+    assert!(reading.modifier.contains(Modifier::BOLD));
+}
+
+#[test]
+fn side_by_side_limits_and_today_leave_a_blank_row_under_their_titles() {
+    let app = open(snapshot(vec![personal()]), None);
+
+    let shown = screen(&app, 150, 40);
+    let lines: Vec<&str> = shown.lines().collect();
+    let title_row = lines
+        .iter()
+        .position(|line| line.contains("╭ Limits") && line.contains("╭ Today"))
+        .unwrap();
+    let padding: String = lines[title_row + 1]
+        .chars()
+        .filter(|cell| !matches!(cell, '│' | ' ' | '"'))
+        .collect();
+
+    assert_eq!(padding, "", "{shown}");
+    assert!(lines[title_row + 2].contains("│ Session "), "{shown}");
+    assert!(lines[title_row + 2].contains("│ Spent so far "), "{shown}");
+}
+
+#[test]
+fn side_by_side_limits_sit_one_blank_row_apart() {
+    let app = open(snapshot(vec![personal()]), None);
+
+    let shown = screen(&app, 150, 40);
+    let lines: Vec<&str> = shown.lines().collect();
+    let row = |name: &str| lines.iter().position(|line| line.contains(name)).unwrap();
+
+    assert_eq!(
+        row("│ Weekly, all models ") - row("│ Session "),
+        4,
+        "{shown}"
+    );
+    assert_eq!(
+        row("│ Weekly, Fable ") - row("│ Weekly, all models "),
+        4,
+        "{shown}"
+    );
+}
+
+#[test]
+fn todays_digits_sit_right_under_spent_so_far() {
+    let app = open(snapshot(vec![personal()]), None);
+
+    let shown = screen(&app, 150, 40);
+    let lines: Vec<&str> = shown.lines().collect();
+    let row = |text: &str| {
+        lines
+            .iter()
+            .position(|line| line.contains(text))
+            .unwrap_or_else(|| panic!("{text} isn't on screen:\n{shown}"))
+    };
+
+    assert_eq!(row("▄█▄ ▀█  █ █") - row("Spent so far"), 1, "{shown}");
+}
+
+fn cell_after(
+    app: &App,
+    width: u16,
+    height: u16,
+    text: &str,
+    offset: u16,
+) -> ratatui::buffer::Cell {
+    let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+    terminal
+        .draw(|frame| app.draw(frame, NOW_MS, &utc_minute))
+        .unwrap();
+    let buffer = terminal.backend().buffer().clone();
+    for y in 0..buffer.area.height {
+        let joined: String = (0..buffer.area.width)
+            .map(|x| buffer[(x, y)].symbol())
+            .collect();
+        if let Some(byte) = joined.find(text) {
+            let x = joined[..byte].chars().count() as u16 + offset;
+            return buffer[(x, y)].clone();
+        }
+    }
+    panic!("{text} isn't on screen");
+}
+
+#[test]
+fn a_spending_bar_fills_with_the_key_color_and_its_track_is_muted_at_the_same_height() {
+    let app = with_spending(open(snapshot(vec![personal()]), None));
+
+    let last_filled = cell_after(&app, 100, 44, "$30.00 ", 8 + 21);
+    let first_empty = cell_after(&app, 100, 44, "$30.00 ", 8 + 22);
+
+    assert_eq!(last_filled.symbol(), "▆");
+    assert_eq!(last_filled.fg, ratatui::style::Color::Cyan);
+    assert_eq!(first_empty.symbol(), "▆");
+    assert_eq!(first_empty.fg, ratatui::style::Color::DarkGray);
+}
+
+#[test]
+fn spending_bars_are_a_fixed_30_cells_and_spare_width_stays_after_the_last_column() {
+    let app = with_spending(open(snapshot(vec![personal()]), None));
+
+    let shown = screen(&app, 200, 44);
+    let row = shown
+        .lines()
+        .find(|line| line.contains("▸ orchard"))
+        .unwrap();
+
+    let spending = &row[row.find("▸ orchard").unwrap()..];
+    assert_eq!(spending.matches('▆').count(), 29, "{shown}");
+    assert!(row.contains("▸ orchard             $30.00  "), "{shown}");
+}
+
+#[test]
+fn a_name_or_top_item_too_long_for_its_column_ends_with_an_ellipsis() {
+    let mut app = open(snapshot(vec![personal()]), None);
+    app.take_history_query();
+    app.handle(KeyCode::Char('g').into());
+    let wanted = app.take_history_query().unwrap();
+    let skill = "a-very-long-skill-name-that-runs-past-forty-columns";
+    app.set_history(
+        &wanted,
+        Ok(spending(
+            &wanted,
+            vec![row(PERSONAL, Some(skill), skill, 10.0)],
+            vec![top(
+                PERSONAL,
+                skill,
+                "a-repository-with-a-really-long-name-indeed",
+                7.0,
+            )],
+        )),
+    );
+
+    let shown = screen(&app, 100, 34);
+
+    assert!(
+        shown.contains("a-very-long-skill-name-that-run… "),
+        "{shown}"
+    );
+    assert!(
+        shown.contains("70% a-repository-with-a-really-…"),
+        "{shown}"
+    );
+}
+
+#[test]
+fn the_top_skill_header_lines_up_with_its_values() {
+    let app = with_spending(open(snapshot(vec![personal()]), None));
+
+    let shown = screen(&app, 100, 44);
+    let column = |row: &str, text: &str| {
+        let line = shown.lines().find(|line| line.contains(row)).unwrap();
+        line[..line.find(text).unwrap()].chars().count()
+    };
+
+    assert_eq!(
+        column("Top skill", "Top skill"),
+        column("▸ orchard", "60% review"),
+        "{shown}"
+    );
+}
+
+#[test]
+fn a_long_repo_and_branch_is_cut_from_the_middle() {
+    let mut account = personal();
+    account.active_sessions[0].repo = "inventory".to_string();
+    account.active_sessions[0].branch = Some(format!(
+        "cloud-agent/inv-917/{}update-dep-rails-8.1.4.1-5-action_view",
+        "x".repeat(120)
+    ));
+    let app = open(snapshot(vec![account]), None);
+
+    let shown = screen(&app, 120, 44);
+    let line = shown
+        .lines()
+        .find(|line| line.contains("inventory · cloud-agent/"))
+        .unwrap();
+
+    assert!(line.contains("…"), "{shown}");
+    assert!(line.contains("action_view │"), "{shown}");
+}
+
+#[test]
+fn from_180_columns_active_sessions_and_spending_sit_side_by_side_and_below_that_they_stack() {
+    let app = with_spending(open(snapshot(vec![personal()]), None));
+
+    let wide = screen(&app, 200, 44);
+    let narrow = screen(&app, 150, 44);
+    let side_by_side = |shown: &str| {
+        shown
+            .lines()
+            .any(|line| line.contains("╭ Running now") && line.contains("╭ Spending"))
+    };
+
+    assert!(side_by_side(&wide), "{wide}");
+    assert!(!side_by_side(&narrow), "{narrow}");
+}
+
+#[test]
+fn the_spending_box_ends_after_its_rows_instead_of_running_to_the_bottom() {
+    let app = with_spending(open(snapshot(vec![personal()]), None));
+
+    let shown = screen(&app, 150, 60);
+    let lines: Vec<&str> = shown.lines().collect();
+    let last_row = lines
+        .iter()
+        .position(|line| line.contains("unlogged usage"))
+        .unwrap();
+
+    assert!(lines[last_row + 1].contains("╰"), "{shown}");
+}
+
+#[test]
+fn a_session_with_no_title_yet_is_called_untitled_with_a_short_id() {
+    let mut account = personal();
+    account.active_sessions[0].session = "624c5b71-1579-43af-9d9a-1882a9e5dabb".to_string();
+    account.active_sessions[0].label = account.active_sessions[0].session.clone();
+    let app = open(snapshot(vec![account]), None);
+
+    let shown = screen(&app, 120, 44);
+
+    assert!(shown.contains("untitled session · 624c5b71 "), "{shown}");
+    assert!(!shown.contains("1882a9e5dabb"), "{shown}");
+}
+
+#[test]
+fn with_sessions_beside_spending_a_200_by_40_window_keeps_the_side_by_side_top_row() {
+    let app = with_spending(open(snapshot(vec![personal()]), None));
+
+    let shown = screen(&app, 200, 40);
+
+    assert!(
+        shown
+            .lines()
+            .any(|line| line.contains("╭ Limits") && line.contains("╭ Today")),
+        "{shown}"
+    );
+    assert!(shown.contains("▄█▄ ▀█  █ █   ▀▀█ █▀█"), "{shown}");
+    assert!(
+        shown
+            .lines()
+            .any(|line| line.contains("╭ Running now") && line.contains("╭ Spending")),
+        "{shown}"
+    );
+}
+
+fn card_session(label: &str, today: f64, last_15_minutes: f64) -> SessionSpend {
+    let mut spend = session(label, "orchard", "main", last_15_minutes, today + 1.0);
+    spend.today_usd = today;
+    spend
+}
+
+#[test]
+fn each_running_session_is_a_card_with_its_cost_today_where_and_share_of_today() {
+    let app = open(snapshot(vec![personal()]), None);
+
+    let shown = screen(&app, 100, 40);
+    let lines: Vec<&str> = shown.lines().collect();
+    let top = lines
+        .iter()
+        .position(|line| line.contains("│ Fix the login redirect "))
+        .unwrap();
+
+    assert!(
+        lines[top - 2].contains("╭ Running now · 2 sessions · $8.90 of today's $14.20 ─"),
+        "{shown}"
+    );
+    assert!(
+        lines[top].contains(" $8.40 │ Write release notes "),
+        "{shown}"
+    );
+    assert!(lines[top + 1].contains("│ orchard · ab/login "), "{shown}");
+    assert!(lines[top + 2].contains("  59% of today │"), "{shown}");
+}
+
+#[test]
+fn a_session_names_the_skill_or_subagent_that_spent_most_and_its_top_model_when_it_used_several() {
+    let mut account = personal();
+    account.active_sessions[0].top_driver = Some(Share {
+        label: "review".to_string(),
+        share: 0.6,
+    });
+    account.active_sessions[0].models = vec![
+        Share {
+            label: "claude-opus-5-5".to_string(),
+            share: 0.8,
+        },
+        Share {
+            label: "claude-sonnet-5-5".to_string(),
+            share: 0.2,
+        },
+    ];
+    account.active_sessions[1].top_driver = Some(Share {
+        label: "code-reviewer subagent".to_string(),
+        share: 1.0,
+    });
+    account.active_sessions[1].models = vec![Share {
+        label: "claude-opus-5-5".to_string(),
+        share: 1.0,
+    }];
+    let app = open(snapshot(vec![account]), None);
+
+    let shown = screen(&app, 100, 40);
+
+    assert!(shown.contains("│ 60% review · 80% opus-5-5 "), "{shown}");
+    assert!(shown.contains("│ 100% code-reviewer subagent "), "{shown}");
+    assert!(!shown.contains("100% opus-5-5"), "{shown}");
+}
+
+#[test]
+fn cards_go_by_cost_today_and_a_session_spending_fast_always_gets_one() {
+    let mut account = personal();
+    account.cost_usd = 40.0;
+    account.active_sessions = vec![
+        card_session("Session A", 9.0, 0.5),
+        card_session("Session B", 8.0, 0.5),
+        card_session("Session C", 7.0, 0.5),
+        card_session("Session D", 6.0, 0.5),
+        card_session("Session E", 0.5, 6.0),
+    ];
+    let app = open(snapshot(vec![account]), None);
+
+    let shown = screen(&app, 100, 34);
+
+    assert!(shown.contains("│ Session A "), "{shown}");
+    assert!(shown.contains("│ Session E "), "{shown}");
+    assert!(shown.contains("▲ $24/hr now"), "{shown}");
+    assert!(!shown.contains("Session D"), "{shown}");
+    assert!(shown.contains("+ "), "{shown}");
+}
+
+#[test]
+fn fast_sessions_beyond_the_cards_are_flagged_in_the_line_that_adds_up_the_rest() {
+    let mut account = personal();
+    account.cost_usd = 40.0;
+    account.active_sessions = vec![
+        card_session("Session A", 9.0, 6.0),
+        card_session("Session B", 8.0, 6.0),
+        card_session("Session C", 7.0, 6.0),
+        card_session("Session D", 6.0, 6.0),
+        card_session("Session E", 5.0, 6.0),
+        card_session("Session F", 0.5, 0.5),
+    ];
+    let app = open(snapshot(vec![account]), None);
+
+    let shown = screen(&app, 100, 34);
+
+    assert!(
+        shown.contains("+ 4 more · $18.50 today · ▲ 3 at $20/hr+"),
+        "{shown}"
+    );
+}
+
+#[test]
+fn sessions_that_do_not_fit_and_background_runs_add_up_on_one_line() {
+    let mut account = personal();
+    account.cost_usd = 40.0;
+    let mut background = card_session("624c5b71-0000", 0.3, 0.1);
+    background.label = background.session.clone();
+    background.repo = "temporary".to_string();
+    account.active_sessions = vec![
+        card_session("Session A", 9.0, 0.5),
+        card_session("Session B", 8.0, 0.5),
+        card_session("Session C", 7.0, 0.5),
+        background,
+    ];
+    let app = open(snapshot(vec![account]), None);
+
+    let shown = screen(&app, 100, 34);
+
+    assert!(
+        shown.contains("+ 1 more · $7.00 today   1 background run · $0.30 today"),
+        "{shown}"
+    );
+    assert!(!shown.contains("untitled session"), "{shown}");
+}
+
+#[test]
+fn a_background_run_spending_fast_gets_its_own_card() {
+    let mut account = personal();
+    account.cost_usd = 40.0;
+    let mut runaway = card_session("624c5b71-0000", 5.0, 12.5);
+    runaway.label = runaway.session.clone();
+    runaway.repo = "temporary".to_string();
+    account.active_sessions = vec![card_session("Session A", 9.0, 0.5), runaway];
+    let app = open(snapshot(vec![account]), None);
+
+    let shown = screen(&app, 100, 34);
+
+    assert!(shown.contains("untitled session · 624c5b71"), "{shown}");
+    assert!(shown.contains("▲ $50/hr now"), "{shown}");
+    assert!(!shown.contains("background run"), "{shown}");
+}
+
+#[test]
+fn a_session_with_nothing_new_for_five_minutes_says_it_is_idle() {
+    let mut account = personal();
+    account.active_sessions[1].last_active_ms = NOW_MS - 9 * 60_000;
+    let app = open(snapshot(vec![account]), None);
+
+    let shown = screen(&app, 100, 40);
+
+    assert!(shown.contains("idle 9m │"), "{shown}");
+    assert_eq!(shown.matches("idle").count(), 1, "{shown}");
+}
+
+#[test]
+fn a_session_from_an_engine_that_did_not_record_last_activity_shows_no_idle_time() {
+    let mut account = personal();
+    account.active_sessions[1].last_active_ms = 0;
+    let app = open(snapshot(vec![account]), None);
+
+    let shown = screen(&app, 100, 40);
+
+    assert!(!shown.contains("idle"), "{shown}");
+}
+
+#[test]
+fn with_nothing_running_the_section_says_so_in_one_line() {
+    let mut account = personal();
+    account.active_sessions.clear();
+    let app = open(snapshot(vec![account]), None);
+
+    let shown = screen(&app, 100, 40);
+
+    assert!(shown.contains("╭ Running now ─"), "{shown}");
+    assert!(shown.contains("Nothing in the last 15 minutes."), "{shown}");
+}
+
+#[test]
+fn s_shows_every_running_session_in_the_spending_tables_place_and_esc_goes_back() {
+    let mut account = personal();
+    account.cost_usd = 40.0;
+    account.active_sessions = (0..6)
+        .map(|n| card_session(&format!("Session {n}"), 6.0 - n as f64, 0.5))
+        .collect();
+    let mut app = with_spending(open(snapshot(vec![account]), None));
+
+    let before = screen(&app, 100, 40);
+    app.handle(KeyCode::Char('s').into());
+    let open_list = screen(&app, 100, 40);
+    app.handle(KeyCode::Esc.into());
+    let after = screen(&app, 100, 40);
+
+    assert!(!before.contains("Session 5"), "{before}");
+    assert!(before.contains("╭ Spending"), "{before}");
+    for n in 0..6 {
+        assert!(
+            open_list.contains(&format!("│ Session {n} ")),
+            "{open_list}"
+        );
+    }
+    assert!(!open_list.contains("╭ Spending"), "{open_list}");
+    assert!(after.contains("╭ Spending"), "{after}");
+}
+
+#[test]
+fn in_80_by_24_the_sessions_list_reaches_every_session_and_background_run_with_down() {
+    let mut account = personal();
+    account.cost_usd = 40.0;
+    let mut background = card_session("624c5b71-0000", 0.3, 0.1);
+    background.label = background.session.clone();
+    background.repo = "temporary".to_string();
+    account.active_sessions = (0..6)
+        .map(|n| card_session(&format!("Session {n}"), 6.0 - n as f64, 0.5))
+        .chain([background])
+        .collect();
+    let mut app = with_spending(open(snapshot(vec![account]), None));
+
+    app.handle(KeyCode::Char('s').into());
+    let mut seen = screen(&app, 80, 24);
+    for _ in 0..10 {
+        app.handle(KeyCode::Down.into());
+        seen.push_str(&screen(&app, 80, 24));
+    }
+    let bottom = screen(&app, 80, 24);
+    app.handle(KeyCode::Up.into());
+    let one_up = screen(&app, 80, 24);
+
+    for n in 0..6 {
+        assert!(seen.contains(&format!("│ Session {n} ")), "{seen}");
+    }
+    assert!(seen.contains("untitled session · 624c5b71"), "{seen}");
+    assert!(!seen.contains("more ·"), "{seen}");
+    assert_ne!(one_up, bottom, "{one_up}");
+}
+
+#[test]
+fn with_the_sessions_list_open_the_spending_keys_do_nothing_and_quit_still_shows() {
+    let mut app = with_spending(open(snapshot(vec![personal()]), None));
+    let before = screen(&app, 100, 40);
+
+    app.handle(KeyCode::Char('s').into());
+    let open_list = screen(&app, 100, 40);
+    for key in ['t', 'g', 'e'] {
+        app.handle(KeyCode::Char(key).into());
+    }
+    app.handle(KeyCode::Esc.into());
+
+    assert!(open_list.contains("↑ ↓ scroll   s Esc back"), "{open_list}");
+    assert!(open_list.contains("q quit"), "{open_list}");
+    assert_eq!(screen(&app, 100, 40), before);
+}
+
+#[test]
+fn in_80_by_24_tab_does_nothing_while_the_sessions_list_is_open() {
+    let mut app = with_spending(open(snapshot(vec![personal()]), None));
+    let before = screen(&app, 80, 24);
+
+    app.handle(KeyCode::Char('s').into());
+    app.handle(KeyCode::Tab.into());
+    app.handle(KeyCode::Esc.into());
+
+    assert_eq!(screen(&app, 80, 24), before);
+}
+
+#[test]
+fn beside_spending_the_running_now_pane_splits_where_limits_and_today_do_and_matches_spendings_height()
+ {
+    let app = with_spending(open(snapshot(vec![personal()]), None));
+
+    let shown = screen(&app, 200, 44);
+    let lines: Vec<&str> = shown.lines().collect();
+    let column = |line: &str, text: &str| line[..line.find(text).unwrap()].chars().count();
+    let top = lines.iter().find(|line| line.contains("╭ Today")).unwrap();
+    let bottom = lines
+        .iter()
+        .position(|line| line.contains("╭ Running now") && line.contains("╭ Spending"))
+        .unwrap();
+    let closing = lines[bottom..]
+        .iter()
+        .find(|line| line.contains('╰'))
+        .unwrap();
+
+    assert_eq!(
+        column(lines[bottom], "╭ Spending"),
+        column(top, "╭ Today"),
+        "{shown}"
+    );
+    assert_eq!(closing.matches('╰').count(), 2, "{shown}");
+}
+
+#[test]
+fn the_running_now_heading_has_a_blank_row_under_it_and_its_dollars_stand_out() {
+    let app = open(snapshot(vec![personal()]), None);
+
+    let shown = screen(&app, 100, 40);
+    let lines: Vec<&str> = shown.lines().collect();
+    let heading = lines
+        .iter()
+        .position(|line| line.contains("╭ Running now"))
+        .unwrap();
+    let cost = cell_at(&app, 100, 40, "$8.40 │");
+    let running = cell_at(&app, 100, 40, "$8.90 of");
+
+    assert!(
+        lines[heading + 1].trim_matches(['│', ' ', '"']).is_empty(),
+        "{shown}"
+    );
+    assert!(
+        lines[heading + 2].contains("│ Fix the login redirect"),
+        "{shown}"
+    );
+    assert_eq!(cost.fg, ratatui::style::Color::Cyan);
+    assert!(cost.modifier.contains(Modifier::BOLD));
+    assert_eq!(running.fg, ratatui::style::Color::Cyan);
+}
+
+#[test]
+fn with_limits_and_today_side_by_side_the_spending_heading_has_a_blank_row_under_it() {
+    let app = with_spending(open(snapshot(vec![personal()]), None));
+
+    let shown = screen(&app, 100, 44);
+    let lines: Vec<&str> = shown.lines().collect();
+    let heading = lines
+        .iter()
+        .position(|line| line.contains("╭ Spending"))
+        .unwrap();
+
+    assert!(
+        lines
+            .iter()
+            .any(|line| line.contains("╭ Today") && line.contains("╭ Limits")),
+        "{shown}"
+    );
+    assert!(
+        lines[heading + 1].trim_matches(['│', ' ', '"']).is_empty(),
+        "{shown}"
+    );
+    assert!(lines[heading + 2].contains("← →  repo"), "{shown}");
+}
+
+#[test]
+fn with_limits_and_today_stacked_no_pane_heading_has_a_blank_row_under_it() {
+    let app = with_spending(open(
+        snapshot(vec![personal(), work()]),
+        Some(PERSONAL.to_string()),
+    ));
+
+    let shown = screen(&app, 100, 34);
+    let lines: Vec<&str> = shown.lines().collect();
+    let below = |heading: &str| {
+        let at = lines
+            .iter()
+            .position(|line| line.contains(heading))
+            .unwrap();
+        lines[at + 1]
+    };
+
+    assert!(
+        below("╭ Running now").contains("│ Fix the login redirect"),
+        "{shown}"
+    );
+    assert!(below("╭ Spending").contains("← →  repo"), "{shown}");
+}
+
+fn every_account_screen(width: u16, height: u16) -> String {
+    let mut app = with_spending(open(snapshot(vec![personal(), work()]), None));
+    app.handle(KeyCode::Char('a').into());
+    answer(&mut app);
+    screen(&app, width, height)
+}
+
+#[test]
+fn with_room_the_all_view_gives_each_account_a_column_with_its_today_over_its_limits() {
+    let one = screen(&open(snapshot(vec![personal()]), None), 100, 56);
+    let shown = every_account_screen(100, 56);
+    let lines: Vec<&str> = shown.lines().collect();
+    let column = |line: &str, text: &str| line[..line.find(text).unwrap()].chars().count();
+    let today = lines
+        .iter()
+        .position(|line| line.contains("╭ personal · today"))
+        .unwrap();
+    let limits = lines
+        .iter()
+        .position(|line| line.contains("╭ personal · limits"))
+        .unwrap();
+    let single_today = one.lines().find(|line| line.contains("╭ Today")).unwrap();
+
+    assert!(
+        lines[today - 1].contains(" $14.60 today across 2 accounts · estimated"),
+        "{shown}"
+    );
+    assert!(lines[today].contains("╭ work · today"), "{shown}");
+    assert_eq!(
+        column(lines[today], "╭ work · today"),
+        column(single_today, "╭ Today"),
+        "{shown}"
+    );
+    assert!(lines[limits].contains("╭ work · limits"), "{shown}");
+    assert!(limits > today, "{shown}");
+    assert!(shown.contains("▄█▄ ▀█  █ █   ▀▀█ █▀█"), "{shown}");
+    assert!(
+        shown.contains("2.0× your usual of $7.10 by 09:20"),
+        "{shown}"
+    );
+    assert!(!shown.contains("workdays by"), "{shown}");
+}
+
+#[test]
+fn three_accounts_get_three_columns_from_150_columns_and_the_compact_boxes_below_that() {
+    let mut third = work();
+    third.account = Some(NEW.to_string());
+    third.account_label = "side".to_string();
+    let mut app = with_spending(open(snapshot(vec![personal(), work(), third]), None));
+    app.handle(KeyCode::Char('a').into());
+    answer(&mut app);
+
+    let wide = screen(&app, 160, 70);
+    let narrow = screen(&app, 120, 70);
+
+    assert!(
+        wide.lines().any(|line| line.contains("╭ personal · today")
+            && line.contains("╭ work · today")
+            && line.contains("╭ side · today")),
+        "{wide}"
+    );
+    assert!(!narrow.contains("· today ─"), "{narrow}");
+    assert!(narrow.contains("today across 3 accounts"), "{narrow}");
+}
+
+#[test]
+fn with_room_each_accounts_limits_sit_side_by_side_where_limits_and_today_split() {
+    let one = screen(&open(snapshot(vec![personal()]), None), 100, 56);
+    let every = every_account_screen(100, 56);
+    let column = |shown: &str, text: &str| {
+        let line = shown.lines().find(|line| line.contains(text)).unwrap();
+        line[..line.find(text).unwrap()].chars().count()
+    };
+    let lines: Vec<&str> = every.lines().collect();
+    let heading = lines
+        .iter()
+        .position(|line| line.contains("╭ personal · limits from get_usage, read 3 minutes ago"))
+        .unwrap();
+
+    assert!(lines[heading].contains("╭ work · limits "), "{every}");
+    assert_eq!(
+        column(&every, "╭ work · limits"),
+        column(&one, "╭ Today"),
+        "{every}"
+    );
+    assert!(lines[heading + 2].contains("│ Session "), "{every}");
+    assert!(every.contains("on even pace · 50% expected"), "{every}");
+}
+
+#[test]
+fn the_all_view_shows_every_accounts_running_sessions_with_the_account_named() {
+    let shown = every_account_screen(100, 56);
+
+    assert!(
+        shown.contains("╭ Running now · 2 sessions · $8.90 of today's $14.60"),
+        "{shown}"
+    );
+    assert!(
+        shown.contains("│ personal · orchard · ab/login "),
+        "{shown}"
+    );
+    assert!(shown.contains("╭ Spending"), "{shown}");
+}
+
+#[test]
+fn from_180_columns_the_all_view_puts_running_now_beside_spending() {
+    let shown = every_account_screen(200, 50);
+
+    assert!(
+        shown
+            .lines()
+            .any(|line| line.contains("╭ Running now") && line.contains("╭ Spending")),
+        "{shown}"
+    );
+}
+
+#[test]
+fn a_limits_heading_too_long_for_its_pane_keeps_the_age_and_drops_the_source() {
+    let shown = every_account_screen(100, 56);
+
+    assert!(
+        shown.contains("╭ work · limits read 2 hours ago ─"),
+        "{shown}"
+    );
+    assert!(
+        shown.contains("╭ personal · limits from get_usage, read 3 minutes ago"),
+        "{shown}"
+    );
+}
+
+#[test]
+fn a_limit_detail_longer_than_its_pane_wraps_instead_of_being_cut() {
+    let shown = every_account_screen(100, 56);
+
+    assert!(
+        shown.contains("│ under even pace (provisional until"),
+        "{shown}"
+    );
+    assert!(shown.contains("credit_reset is set)"), "{shown}");
+}
+
+#[test]
+fn a_window_wider_than_1170_columns_still_splits_limits_and_today() {
+    let app = with_spending(open(snapshot(vec![personal()]), None));
+
+    let shown = screen(&app, 1_200, 44);
+
+    let top = shown.lines().find(|line| line.contains("╭ Today")).unwrap();
+    let top = top.trim_start_matches('"');
+    assert_eq!(
+        top[..top.find("╭ Today").unwrap()].chars().count(),
+        672 + 1,
+        "{top}"
+    );
 }

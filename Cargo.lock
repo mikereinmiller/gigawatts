@@ -677,6 +677,7 @@ version = "0.1.12"
 dependencies = [
  "clap",
  "insta",
+ "libc",
  "notify",
  "proptest",
  "ratatui",

@@ -13,16 +13,22 @@ use crate::problems;
 use crate::store::UsageAdvice;
 mod advice;
 pub mod announced;
+mod digits;
+mod every;
 pub mod history;
+pub mod palette;
 mod sections;
+mod sessions;
+mod style;
 pub mod terminal;
 
 use history::{History, LoadedAdvice};
 pub use history::{HistoryQuery, Spending};
 
-const HISTORY_MIN_HEIGHT: u16 = 8;
+pub(crate) const HISTORY_MIN_HEIGHT: u16 = 8;
+const SESSIONS_BESIDE_SPENDING_FROM: u16 = 180;
 
-use sections::{KEY, MUTED, WARNING};
+use style::{DANGER, KEY, MUTED, NORMAL, WARNING};
 
 pub struct App {
     snapshot: Snapshot,
@@ -42,8 +48,11 @@ pub struct App {
     history_shown: bool,
     compact: Cell<bool>,
     advice_open: bool,
+    sessions_open: bool,
+    sessions_first_row: Cell<usize>,
     advice_wanted: bool,
     advice: Option<LoadedAdvice>,
+    palette: Option<palette::Palette>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -82,8 +91,11 @@ impl App {
             history_shown: false,
             compact: Cell::new(false),
             advice_open: false,
+            sessions_open: false,
+            sessions_first_row: Cell::new(0),
             advice_wanted: false,
             advice: None,
+            palette: None,
         };
         let accounts = std::mem::take(&mut app.snapshot.accounts);
         app.record_found(&accounts);
@@ -199,6 +211,25 @@ impl App {
                 self.advice_wanted = true;
                 self.advice = None;
             }
+            KeyCode::Esc if self.sessions_open => self.sessions_open = false,
+            KeyCode::Char('s') => {
+                self.sessions_open = !self.sessions_open;
+                self.sessions_first_row.set(0);
+            }
+            KeyCode::Down if self.sessions_open => {
+                self.sessions_first_row
+                    .set(self.sessions_first_row.get() + 1);
+            }
+            KeyCode::Up if self.sessions_open => {
+                let row = self.sessions_first_row.get().saturating_sub(1);
+                self.sessions_first_row.set(row);
+            }
+            KeyCode::Right
+            | KeyCode::Left
+            | KeyCode::Enter
+            | KeyCode::Tab
+            | KeyCode::Char('g' | 'G' | 't' | 'T' | 'e')
+                if self.sessions_open => {}
             KeyCode::Tab => self.history_shown = !self.history_shown,
             KeyCode::Right | KeyCode::Char('g') => self.history.next_grouping(1),
             KeyCode::Left | KeyCode::Char('G') => self.history.next_grouping(-1),
@@ -263,12 +294,23 @@ impl App {
         }
     }
 
+    fn running(&self) -> sessions::Running<'_> {
+        match (self.stacked, self.shown()) {
+            (false, Some(account)) => sessions::Running::of(account),
+            _ => sessions::Running::every(&self.snapshot.accounts),
+        }
+    }
+
     fn shown(&self) -> Option<&AccountToday> {
         self.snapshot
             .accounts
             .iter()
             .find(|account| account.account == self.current)
             .or(self.snapshot.accounts.first())
+    }
+
+    pub fn set_palette(&mut self, text: palette::Rgb, background: palette::Rgb) {
+        self.palette = Some(palette::Palette::between(text, background));
     }
 
     pub fn draw(&self, frame: &mut Frame, now_ms: i64, local_minute: &dyn Fn(i64) -> String) {
@@ -281,33 +323,118 @@ impl App {
         ])
         .areas(frame.area());
         frame.render_widget(Paragraph::new(self.header(now_ms, top.width)), top);
+        let sessions_open = self.sessions_open && self.shown().is_some();
+        let sessions_beside =
+            !sessions_open && self.shown().is_some() && body.width >= SESSIONS_BESIDE_SPENDING_FROM;
         let top_height = match (self.stacked, self.shown()) {
             (_, None) => 1,
-            (true, Some(_)) => sections::every_account_height(&self.snapshot, now_ms, body.width),
+            (true, Some(_)) => every::height(
+                &self.snapshot,
+                now_ms,
+                local_minute,
+                body.width,
+                body.height,
+                !sessions_beside && !sessions_open,
+            ),
             (false, Some(account)) => sections::one_account_height(
                 account,
                 &self.snapshot.problems,
                 now_ms,
                 local_minute,
                 body.width,
+                body.height,
+                !sessions_beside && !sessions_open,
             ),
         };
         let compact = body.height < top_height + HISTORY_MIN_HEIGHT;
         self.compact.set(compact);
-        let (overview, history) = match (compact, self.history_shown) {
+        let roomy = match (self.stacked, self.shown()) {
+            (false, Some(account)) => {
+                !compact
+                    && sections::roomy(
+                        account,
+                        &self.snapshot.problems,
+                        now_ms,
+                        local_minute,
+                        body.width,
+                        body.height,
+                        !sessions_beside && !sessions_open,
+                    )
+            }
+            (true, Some(_)) => {
+                !compact
+                    && every::fit(
+                        &self.snapshot,
+                        now_ms,
+                        local_minute,
+                        body.width,
+                        body.height,
+                        !sessions_beside && !sessions_open,
+                    )
+                    .roomy
+            }
+            _ => false,
+        };
+        let sessions_beside = sessions_beside && !compact;
+        let (overview, bottom_row) = match (compact, self.history_shown || sessions_open) {
             (false, _) => {
-                let [overview, history] =
+                let [overview, rest] =
                     Layout::vertical([Constraint::Length(top_height), Constraint::Fill(1)])
                         .areas(body);
-                (Some(overview), Some(history))
+                (Some(overview), Some(rest))
             }
             (true, false) => (Some(body), None),
             (true, true) => (None, Some(body)),
         };
         if let Some(overview) = overview {
-            self.draw_overview(frame, overview, now_ms, local_minute);
+            self.draw_overview(
+                frame,
+                overview,
+                body.height,
+                now_ms,
+                local_minute,
+                !sessions_beside && !sessions_open,
+            );
         }
-        if let (Some(history), Some(_)) = (history, self.shown()) {
+        if let (true, Some(rest)) = (sessions_open, bottom_row) {
+            sessions::draw_list(
+                frame,
+                rest,
+                &self.running(),
+                now_ms,
+                roomy,
+                &self.sessions_first_row,
+            );
+        } else if let (Some(rest), Some(_)) = (bottom_row, self.shown()) {
+            let history_height = self.history.height(self.history_account(), roomy);
+            let sessions_width = sections::limits_width(rest.width);
+            let height = if sessions_beside {
+                history_height.max(sessions::height(
+                    &self.running(),
+                    sessions_width,
+                    rest.height,
+                    roomy,
+                ))
+            } else {
+                history_height
+            };
+            let [row, _] = Layout::vertical([
+                Constraint::Length(height.min(rest.height)),
+                Constraint::Fill(1),
+            ])
+            .areas(rest);
+            let history_area = if sessions_beside {
+                let [sessions_area, _, history_area] = Layout::horizontal([
+                    Constraint::Length(sessions_width),
+                    Constraint::Length(sections::COLUMN_GAP),
+                    Constraint::Fill(1),
+                ])
+                .areas(row);
+                sessions::draw(frame, sessions_area, &self.running(), now_ms, roomy);
+                history_area
+            } else {
+                row
+            };
             let labels: HashMap<Option<String>, String> = self
                 .snapshot
                 .accounts
@@ -315,7 +442,7 @@ impl App {
                 .map(|account| (account.account.clone(), account.account_label.clone()))
                 .collect();
             self.history
-                .draw(frame, history, self.history_account(), &labels);
+                .draw(frame, history_area, self.history_account(), &labels, roomy);
         }
         frame.render_widget(Paragraph::new(notices), bottom);
         frame.render_widget(Paragraph::new(self.key_strip(keys.width)), keys);
@@ -325,14 +452,17 @@ impl App {
         if self.advice_open {
             advice::draw(frame, frame.area(), self.advice.as_ref(), now_ms);
         }
+        palette::apply(frame.buffer_mut(), self.palette.as_ref());
     }
 
     fn draw_overview(
         &self,
         frame: &mut Frame,
         body: Rect,
+        room: u16,
         now_ms: i64,
         local_minute: &dyn Fn(i64) -> String,
+        with_sessions: bool,
     ) {
         match (self.stacked, self.shown()) {
             (_, None) => frame.render_widget(
@@ -341,10 +471,22 @@ impl App {
                 ),
                 body,
             ),
-            (true, Some(_)) => sections::every_account(frame, body, &self.snapshot, now_ms),
+            (true, Some(_)) => every::draw(
+                frame,
+                body,
+                room,
+                &self.snapshot,
+                now_ms,
+                local_minute,
+                with_sessions,
+            ),
             (false, Some(account)) => sections::one_account(
                 frame,
                 body,
+                sections::Fit {
+                    room,
+                    with_sessions,
+                },
                 account,
                 &self.snapshot.problems,
                 now_ms,
@@ -371,9 +513,9 @@ impl App {
             self.account_tabs(),
         ];
         lines.extend(
-            self.announcements
-                .iter()
-                .map(|found| Line::styled(self.announcement(found), WARNING)),
+            self.announcements.iter().map(|found| {
+                Line::styled(self.announcement(found), KEY.add_modifier(Modifier::BOLD))
+            }),
         );
         lines
     }
@@ -403,29 +545,38 @@ impl App {
 
     fn notices(&self, width: u16) -> Vec<Line<'static>> {
         let mut lines = Vec::new();
-        let mut warn = |text: String| {
-            for row in sections::wrapped(&text, width.saturating_sub(1), WARNING) {
-                lines.push(Line::styled(format!(" {row}"), WARNING));
+        let mut notice = |text: String, style: Style| {
+            for row in sections::wrapped(&text, width.saturating_sub(1), style) {
+                lines.push(Line::styled(format!(" {row}"), style));
             }
         };
         if let Some(error) = &self.read_error {
-            warn("Showing the last numbers read.".to_string());
-            warn(format!("Can't read the history database: {error}"));
+            notice("Showing the last numbers read.".to_string(), DANGER);
+            notice(format!("Can't read the history database: {error}"), DANGER);
         }
         if !self.engine_running {
-            warn("The engine stopped, so these numbers don't update.".to_string());
-            warn("Reopen `gigawatts` to start it.".to_string());
+            notice(
+                "The engine stopped, so these numbers don't update.".to_string(),
+                DANGER,
+            );
+            notice("Reopen `gigawatts` to start it.".to_string(), DANGER);
         }
         if !self.watching_snapshot {
-            warn("Can't watch for new numbers, so these update once a minute.".to_string());
+            notice(
+                "Can't watch for new numbers, so these update once a minute.".to_string(),
+                WARNING,
+            );
         }
         if !self.config_readable {
-            warn("Can't read config.toml, so the view keeps the settings read before.".to_string());
-            warn("`gigawatts status` shows why.".to_string());
+            notice(
+                "Can't read config.toml, so the view keeps the settings read before.".to_string(),
+                WARNING,
+            );
+            notice("`gigawatts status` shows why.".to_string(), WARNING);
         }
         let problems = problems::footer(&self.snapshot.problems);
         if !problems.is_empty() {
-            warn(problems.trim().to_string());
+            notice(problems.trim().to_string(), WARNING);
         }
         lines
     }
@@ -481,8 +632,15 @@ impl App {
             return Vec::new();
         }
         let compact = self.compact.get();
+        if self.sessions_open {
+            return vec![("↑ ↓".to_string(), "scroll"), ("s Esc".to_string(), "back")];
+        }
         if compact && !self.history_shown {
-            return vec![("Tab".to_string(), "spending"), ("u".to_string(), "advice")];
+            return vec![
+                ("Tab".to_string(), "spending"),
+                ("u".to_string(), "advice"),
+                ("s".to_string(), "sessions"),
+            ];
         }
         let mut keys = Vec::new();
         if compact {
@@ -494,6 +652,7 @@ impl App {
             keys.push(("Enter".to_string(), does));
         }
         keys.push(("u".to_string(), "advice"));
+        keys.push(("s".to_string(), "sessions"));
         if let Some(does) = self.history.every_repo_does(self.history_account()) {
             keys.push(("e".to_string(), does));
         }
@@ -526,7 +685,7 @@ fn tab(text: String, on: bool) -> Span<'static> {
     if on {
         Span::styled(text, KEY.add_modifier(Modifier::REVERSED | Modifier::BOLD))
     } else {
-        Span::styled(text, Style::new())
+        Span::styled(text, NORMAL)
     }
 }
 

@@ -2,12 +2,13 @@ use std::collections::{HashMap, HashSet};
 
 use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint, Layout, Rect};
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Modifier;
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Cell, Paragraph, Row, Table, TableState};
 
 use super::App;
-use super::sections::{KEY, MUTED, WARNING, section};
+use super::sections::{clip, section};
+use super::style::{DANGER, KEY, MUTED, NORMAL};
 use crate::contract::{DataResponse, DataRow, GroupBy, Level, Range};
 use crate::data;
 use crate::sources::claude_json::Account;
@@ -20,7 +21,16 @@ const GROUPINGS: [GroupBy; 4] = [
     GroupBy::Model,
 ];
 const RANGES: [Range; 4] = [Range::Today, Range::Week, Range::Month, Range::All];
-const BAR_WIDTH: usize = 10;
+const BAR_MIN_WIDTH: u16 = 10;
+const BORDER_ROWS: usize = 2;
+const TAB_ROWS: usize = 1;
+const BAR_MAX_WIDTH: u16 = 30;
+const COLUMN_GAP: u16 = 2;
+const NAME_MIN_WIDTH: usize = 16;
+const NAME_MAX_WIDTH: usize = 40;
+const COST_WIDTH: u16 = 10;
+const PERCENT_WIDTH: u16 = 4;
+const BAR: &str = "▆";
 const WIDE: u16 = 90;
 const BRANCHES_PER_REPO: usize = 3;
 
@@ -290,12 +300,21 @@ impl History {
             .min(self.entries(account).len().saturating_sub(1))
     }
 
+    pub(crate) fn height(&self, account: Option<&Option<String>>, roomy: bool) -> u16 {
+        let table = match &self.loaded {
+            Some(Ok(_)) if !self.rows(account).is_empty() => 1 + self.entries(account).len(),
+            _ => 1,
+        };
+        (BORDER_ROWS + TAB_ROWS + table) as u16 + u16::from(roomy)
+    }
+
     pub(crate) fn draw(
         &self,
         frame: &mut Frame,
         area: Rect,
         account: Option<&Option<String>>,
         labels: &HashMap<Option<String>, String>,
+        roomy: bool,
     ) {
         let rows = self.rows(account);
         let total = sum_cost(&rows);
@@ -306,12 +325,16 @@ impl History {
         let block = section(&self.title(spending.map(|_| total)));
         let inner = block.inner(area);
         frame.render_widget(block, area);
-        let [tabs, body] =
-            Layout::vertical([Constraint::Length(1), Constraint::Fill(1)]).areas(inner);
+        let [_, tabs, body] = Layout::vertical([
+            Constraint::Length(u16::from(roomy)),
+            Constraint::Length(1),
+            Constraint::Fill(1),
+        ])
+        .areas(inner);
         frame.render_widget(Paragraph::new(self.tabs(tabs.width)), tabs);
         let message = match &self.loaded {
             None => Some(Line::styled("Reading…", MUTED)),
-            Some(Err(error)) => Some(Line::styled(error.clone(), WARNING)),
+            Some(Err(error)) => Some(Line::styled(error.clone(), DANGER)),
             Some(Ok(_)) if rows.is_empty() => Some(Line::styled("No spend in this range.", MUTED)),
             Some(Ok(_)) => None,
         };
@@ -337,21 +360,37 @@ impl History {
             ""
         };
         let right = |text: String| Cell::from(Text::from(text).alignment(Alignment::Right));
-        let line = |name: Span<'static>, account_label: String, cost: f64, top: String| {
+        let selected = self.selected.min(entries.len().saturating_sub(1));
+        let line = |highlighted: bool,
+                    name: Span<'static>,
+                    account_label: String,
+                    cost: f64,
+                    top: String,
+                    widths: (usize, usize, usize)| {
+            let (name_width, bar_width, top_width) = widths;
+            let name = Span::styled(clip(&name.content, name_width), name.style);
+            let name = if highlighted {
+                name.patch_style(KEY.add_modifier(Modifier::BOLD))
+            } else {
+                name
+            };
             let mut cells = vec![Cell::from(name)];
             if every_account {
                 cells.push(Cell::from(Span::styled(account_label, MUTED)));
             }
             cells.push(right(format!("${cost:.2}")));
-            cells.push(Cell::from(share_bar(cost, total)));
+            cells.push(Cell::from(share_bar(cost, total, bar_width)));
             cells.push(right(percent_of(cost, total)));
-            cells.push(Cell::from(Span::styled(top, MUTED)));
+            cells.push(Cell::from(Span::styled(clip(&top, top_width), MUTED)));
             Row::new(cells)
         };
-        let table_rows: Vec<Row> = entries
+        let mut named: Vec<(bool, Span<'static>, String, f64, String)> = entries
             .iter()
-            .map(|entry| match entry {
-                Entry::Row(row) => line(
+            .enumerate()
+            .map(|(index, entry)| (index == selected, entry))
+            .map(|(highlighted, entry)| match entry {
+                Entry::Row(row) => (
+                    highlighted,
                     Span::raw(format!("{indent}{}", data::row_name(row, level))),
                     account_label(&row.account, &row.account_label),
                     row.cost_usd.unwrap_or(0.0),
@@ -363,7 +402,8 @@ impl History {
                     name,
                     cost,
                     open,
-                } => line(
+                } => (
+                    highlighted,
                     Span::styled(
                         format!("{} {name}", if *open { "▾" } else { "▸" }),
                         Modifier::BOLD,
@@ -372,7 +412,8 @@ impl History {
                     *cost,
                     top_for(account, key, *cost, &spending.top),
                 ),
-                Entry::Branch(row, branch) => line(
+                Entry::Branch(row, branch) => (
+                    highlighted,
                     Span::raw(format!("    - {branch}")),
                     String::new(),
                     row.cost_usd.unwrap_or(0.0),
@@ -382,7 +423,8 @@ impl History {
                     count,
                     cost,
                     largest,
-                } => line(
+                } => (
+                    highlighted,
                     Span::styled(format!("    - {count} more, largest ${largest:.2}"), MUTED),
                     String::new(),
                     *cost,
@@ -390,27 +432,67 @@ impl History {
                 ),
             })
             .collect();
+        let shared_indent = named
+            .iter()
+            .map(|(.., top)| top)
+            .filter(|top| !top.is_empty())
+            .map(|top| top.len() - top.trim_start().len())
+            .min()
+            .unwrap_or(0);
+        for (.., top) in named.iter_mut().filter(|(.., top)| !top.is_empty()) {
+            top.drain(..shared_indent);
+        }
+        let top_cap: usize = if body.width >= WIDE { 32 } else { 24 };
+        let top_width = named
+            .iter()
+            .map(|(.., top)| top.chars().count())
+            .max()
+            .unwrap_or(0)
+            .max(top_heading(self.group_by).len())
+            .min(top_cap) as u16;
+        let account_width: u16 = if every_account { 12 } else { 0 };
+        let columns: u16 = if every_account { 6 } else { 5 };
+        let name_width = named
+            .iter()
+            .map(|(_, name, ..)| name.width())
+            .max()
+            .unwrap_or(0)
+            .max(level_heading(level).len())
+            .clamp(NAME_MIN_WIDTH, NAME_MAX_WIDTH) as u16;
+        let room = body
+            .width
+            .saturating_sub(name_width + account_width + COST_WIDTH + PERCENT_WIDTH + top_width)
+            .saturating_sub((columns - 1) * COLUMN_GAP);
+        let bar_width = room.clamp(BAR_MIN_WIDTH, BAR_MAX_WIDTH);
+        let name_width = name_width.saturating_sub(BAR_MIN_WIDTH.saturating_sub(room));
+        let name_column = Constraint::Length(name_width);
+        let widths = (name_width as usize, bar_width as usize, top_width as usize);
+        let table_rows: Vec<Row> = named
+            .into_iter()
+            .map(|(highlighted, name, account_label, cost, top)| {
+                line(highlighted, name, account_label, cost, top, widths)
+            })
+            .collect();
         let heading = |text: &str, alignment: Alignment| {
             Cell::from(Text::from(text.to_string()).alignment(alignment))
         };
         let mut header = vec![heading(level_heading(level), Alignment::Left)];
-        let mut widths = vec![Constraint::Fill(1)];
+        let mut widths = vec![name_column];
         if every_account {
             header.push(heading("Account", Alignment::Left));
-            widths.push(Constraint::Length(12));
+            widths.push(Constraint::Length(account_width));
         }
         header.push(heading("Cost", Alignment::Right));
-        widths.push(Constraint::Length(10));
+        widths.push(Constraint::Length(COST_WIDTH));
         header.push(heading("", Alignment::Left));
-        widths.push(Constraint::Length(BAR_WIDTH as u16));
+        widths.push(Constraint::Length(bar_width));
         header.push(heading("", Alignment::Right));
-        widths.push(Constraint::Length(4));
+        widths.push(Constraint::Length(PERCENT_WIDTH));
         header.push(heading(top_heading(self.group_by), Alignment::Left));
-        widths.push(Constraint::Length(if body.width >= WIDE { 32 } else { 24 }));
-        let selected = self.selected.min(table_rows.len().saturating_sub(1));
+        widths.push(Constraint::Length(top_width));
         let table = Table::new(table_rows, widths)
-            .header(Row::new(header).style(MUTED))
-            .row_highlight_style(Modifier::REVERSED);
+            .column_spacing(COLUMN_GAP)
+            .header(Row::new(header).style(MUTED));
         let mut state = TableState::default().with_selected(Some(selected));
         frame.render_stateful_widget(table, body, &mut state);
     }
@@ -436,7 +518,7 @@ impl History {
                     KEY.add_modifier(Modifier::REVERSED | Modifier::BOLD),
                 )
             } else {
-                Span::styled(format!(" {name} "), Style::new())
+                Span::styled(format!(" {name} "), NORMAL)
             }
         };
         let mut left = vec![Span::styled("← → ", KEY.add_modifier(Modifier::BOLD))];
@@ -522,16 +604,16 @@ fn percent_of(part: f64, whole: f64) -> String {
     format!("{:.0}%", (part / whole * 100.0).clamp(0.0, 100.0))
 }
 
-fn share_bar(cost: f64, total: f64) -> Line<'static> {
-    let bar = BAR_WIDTH - 1;
+fn share_bar(cost: f64, total: f64, width: usize) -> Line<'static> {
+    let bar = width - 1;
     let filled = if total > 0.0 {
         ((cost / total).clamp(0.0, 1.0) * bar as f64).round() as usize
     } else {
         0
     };
     Line::from(vec![
-        Span::styled("━".repeat(filled), KEY),
-        Span::styled("─".repeat(bar - filled), MUTED),
+        Span::styled(BAR.repeat(filled), KEY),
+        Span::styled(BAR.repeat(bar - filled), MUTED),
     ])
 }
 

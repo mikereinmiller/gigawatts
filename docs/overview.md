@@ -6,7 +6,7 @@ Status: version 1 shaped. Slice 1 (`gigawatts check-costs`) is built.
 
 ## Goals
 
-- **Glance.** Remaining limits, today's cost and pace, and which session is spending fastest, readable in a second.
+- **Glance.** Remaining limits, today's cost and pace, which sessions are running, and whether any is spending $20/hr or more, readable in a second.
 - **History.** A permanent local record that survives Claude Code deleting old transcripts (after 30 days by default, `cleanupPeriodDays`).
 - **Reports.** Cost by repo, branch, skill, agent, and model, over days, weeks, and months.
 - **Light.** No wakeups while Claude Code is idle, and a memory footprint in the tens of MB.
@@ -172,7 +172,7 @@ The price table comes from two layers. A built-in table is copied by hand from A
 
 - **Limit pace.** Each limit compares how much is used with how much of its window has passed. Used less than has passed means under pace: at your average rate so far, you won't run out before the reset. The 5-hour limit always compares against even pace. Weekly limits start with even pace and switch to your own usual progress at this point in the week once four full weeks of readings exist, and the view labels which comparison it shows. A credit limit with no reset time, like the enterprise account's monthly `spend`, is paced over the month from the account's credit reset setting and labeled provisional until that setting is set.
 - **Dollar pace.** Today's spend so far is compared with your usual spend by this clock time, meaning the median of your last 20 days of the same kind (workdays or weekend days) that had any usage. It flags an unusual day and says nothing about limits.
-- **Fastest-spending session.** Among sessions that wrote to their transcript in the last 15 minutes, the one that spent the most in those 15 minutes, shown with that rate and its total. Subagent requests count toward the session that launched them.
+- **Running sessions.** Every session that wrote to its transcript in the last 15 minutes, ordered by what it spent today. One that spent at the rate of $20/hr or more over those 15 minutes is flagged with that rate and gets a card ahead of slower ones; when more run fast than there are cards, the line adding up the rest counts them with a ▲. Subagent requests count toward the session that launched them.
 
 ## Attribution
 
@@ -183,7 +183,7 @@ The price table comes from two layers. A built-in table is copied by hand from A
 
 ## Terminal view and CLI
 
-The full view is one screen. The top always shows the current account's limits with pace and age, today's spend against usual, and active sessions with the fastest highlighted. Below it, a spending summary for one grouping at a time: `←` and `→` step through repo, skill, subagent, and model, and `t` through today, week, month, and all, both shown as tabs above the table. `↑` and `↓` move a highlight through the rows, and the table scrolls to keep it on screen. The repo tab lists each repo with its total and a `▸`; `Enter` on a repo shows its top three branches under it, then one line with the rest and the largest of them, `Enter` again hides them, and `e` shows or hides every repo's branches at once, since a branch is the closest thing to one piece of work and the same branch name in two repos is two pieces. Subagent rows are the agents Claude launched, with "you (no subagent)" for your own conversation; models are separate, since a subagent runs on a model. Each row has its cost, its share of the range's total, and the skill (or, on the skill tab, the repo) that spent most in it, such as "53% review" beside a branch. Spend with no skill shows as "no skill". It's for seeing where the money goes at a glance; `gigawatts data` has the full breakdown down to sessions. In a small window, such as Omarchy's floating terminal, the summary collapses behind a key. Anthropic's usage advice sits behind its own key.
+The full view is one screen. The top always shows the current account's limits with pace and age, today's spend against usual, and the sessions running now, each with its cost today, repo and branch, share of today's spend, and the skill or subagent that spent most of it, ordered by cost today, with any session spending $20/hr or more given a card ahead of slower ones and flagged, or counted with a ▲ when the cards are full. Sessions that don't fit add up on one "+ N more" line, and slow sessions in temporary folders add up as "N background runs". From about 180 columns, the running sessions sit beside the spending summary instead of in the top panel. The stacked view of every account shows them only when the window has room. `s` lists every running session in the spending table's place, and `↑` and `↓` scroll it. Below it, a spending summary for one grouping at a time: `←` and `→` step through repo, skill, subagent, and model, and `t` through today, week, month, and all, both shown as tabs above the table. `↑` and `↓` move a highlight through the rows, and the table scrolls to keep it on screen. The repo tab lists each repo with its total and a `▸`; `Enter` on a repo shows its top three branches under it, then one line with the rest and the largest of them, `Enter` again hides them, and `e` shows or hides every repo's branches at once, since a branch is the closest thing to one piece of work and the same branch name in two repos is two pieces. Subagent rows are the agents Claude launched, with "you (no subagent)" for your own conversation; models are separate, since a subagent runs on a model. Each row has its cost, its share of the range's total, and the skill (or, on the skill tab, the repo) that spent most in it, such as "53% review" beside a branch. Spend with no skill shows as "no skill". It's for seeing where the money goes at a glance; `gigawatts data` has the full breakdown down to sessions. In a small window, such as Omarchy's floating terminal, the summary collapses behind a key. Anthropic's usage advice sits behind its own key.
 
 It shows one account at a time, starting with the one used most recently, with a row of account tabs under the title. Number keys pick an account, `[` and `]` step through the tabs, and `a` toggles a stacked view with every account's limits, today's spend, and today's spend across all accounts. In a small window `Tab` switches between the limits and the spending summary. `?` opens help, and a key strip in the footer lists every key that works on the current screen. Limits show as bars with the expected percentage and a countdown to the reset.
 
@@ -272,7 +272,7 @@ Version 1, the engine and terminal view, working correctly on macOS and Omarchy 
 
 - Every limit Anthropic reports, with pace, source, and age.
 - Today's cost and pace against your own usual.
-- Active sessions, with the fastest-spending one highlighted.
+- Running sessions, with any spending $20/hr or more flagged.
 - Durable history that outlives transcript cleanup.
 - Breakdowns by repo, branch, skill, agent, and model.
 - Multiple accounts on one machine, tracked separately and shown one at a time or stacked.

@@ -27,6 +27,9 @@ pub fn run(
     mut remember: impl FnMut(&BTreeSet<String>) -> io::Result<()>,
     local_minute: &dyn Fn(i64) -> String,
 ) -> io::Result<()> {
+    if let Some((text, background)) = super::palette::query() {
+        app.set_palette(text, background);
+    }
     let (wake, woken) = mpsc::channel();
     forward_terminal_events(wake.clone());
     let watcher = watch_snapshot(snapshot_path, wake);
