@@ -3,7 +3,9 @@ use std::path::Path;
 
 use gigawatts::accounts::Attribution;
 use gigawatts::config::{Config, epoch_ms_from_text};
-use gigawatts::contract::{DollarPace, Limit, LimitPace, PaceBasis, PaceState, SessionSpend};
+use gigawatts::contract::{
+    DollarPace, Limit, LimitPace, PaceBasis, PaceState, SessionSpend, Share,
+};
 use gigawatts::ingest::ingest_tree;
 use gigawatts::pace::{active_sessions, dollar_pace, fastest_session, limit_pace};
 use gigawatts::pricing::PriceTable;
@@ -333,7 +335,109 @@ fn the_fastest_session_spent_most_in_the_last_15_minutes_counting_its_subagents(
             branch: Some("ab/carts".to_string()),
             last_15_minutes_usd: 5.0,
             total_usd: 5.0,
+            last_active_ms: local_ms("2026-11-04 13:58:00"),
+            today_usd: 5.0,
+            top_driver: Some(Share {
+                label: "no skill".to_string(),
+                share: 1.0,
+            }),
+            models: vec![Share {
+                label: "claude-opus-5-5".to_string(),
+                share: 1.0,
+            }],
         })
+    );
+}
+
+#[test]
+fn an_active_session_counts_what_it_spent_today_apart_from_its_total() {
+    let dir = tempfile::tempdir().unwrap();
+    let projects = dir.path().join("projects").join("-work-orchard");
+    fs::create_dir_all(&projects).unwrap();
+    fs::write(
+        projects.join("s1.jsonl"),
+        session_spend_line("s1", "a1", "2026-11-03 22:00:00", 7)
+            + &session_spend_line("s1", "a2", "2026-11-04 09:00:00", 10)
+            + &session_spend_line("s1", "a3", "2026-11-04 13:55:00", 4),
+    )
+    .unwrap();
+    let mut store = Store::open(&dir.path().join("history.sqlite3")).unwrap();
+    ingest_tree(
+        &mut store,
+        &dir.path().join("projects"),
+        &PriceTable::built_in(),
+        &Attribution::default(),
+        &Resolver::default(),
+    )
+    .unwrap();
+
+    let active = active_sessions(&store, None, local_ms("2026-11-04 14:00:00")).unwrap();
+
+    assert_eq!(active[0].total_usd, 21.0);
+    assert_eq!(active[0].today_usd, 14.0);
+}
+
+#[test]
+fn an_active_session_names_the_skill_or_subagent_and_the_models_that_spent_most_today() {
+    let dir = tempfile::tempdir().unwrap();
+    let projects = dir.path().join("projects").join("-work-orchard");
+    fs::create_dir_all(&projects).unwrap();
+    let with = |line: String, field: &str, value: &str| {
+        line.replace(
+            r#""gitBranch":"ab/carts","#,
+            &format!(r#""gitBranch":"ab/carts","{field}":"{value}","#),
+        )
+    };
+    fs::write(
+        projects.join("s1.jsonl"),
+        with(
+            session_spend_line("s1", "a0", "2026-11-03 22:00:00", 50),
+            "attributionSkill",
+            "implement",
+        ) + &with(
+            session_spend_line("s1", "a1", "2026-11-04 09:00:00", 6),
+            "attributionSkill",
+            "review",
+        ) + &with(
+            session_spend_line("s1", "a2", "2026-11-04 10:00:00", 2),
+            "attributionAgent",
+            "code-reviewer",
+        ) + &session_spend_line("s1", "a3", "2026-11-04 13:55:00", 4)
+            .replace("claude-opus-5-5", "claude-sonnet-5-5"),
+    )
+    .unwrap();
+    let mut store = Store::open(&dir.path().join("history.sqlite3")).unwrap();
+    ingest_tree(
+        &mut store,
+        &dir.path().join("projects"),
+        &PriceTable::built_in(),
+        &Attribution::default(),
+        &Resolver::default(),
+    )
+    .unwrap();
+
+    let active = active_sessions(&store, None, local_ms("2026-11-04 14:00:00")).unwrap();
+
+    assert_eq!(active[0].today_usd, 10.0);
+    assert_eq!(
+        active[0].top_driver,
+        Some(Share {
+            label: "review".to_string(),
+            share: 0.6
+        })
+    );
+    assert_eq!(
+        active[0].models,
+        vec![
+            Share {
+                label: "claude-opus-5-5".to_string(),
+                share: 0.8
+            },
+            Share {
+                label: "claude-sonnet-5-5".to_string(),
+                share: 0.2
+            }
+        ]
     );
 }
 
@@ -370,15 +474,32 @@ fn active_sessions_are_every_session_written_in_the_last_15_minutes_fastest_firs
 
     let active = active_sessions(&store, None, local_ms("2026-11-04 14:00:00")).unwrap();
 
-    let spend = |session: &str, last_15_minutes_usd: f64, total_usd: f64| SessionSpend {
-        session: session.to_string(),
-        label: session.to_string(),
-        repo: "orchard".to_string(),
-        branch: Some("ab/carts".to_string()),
-        last_15_minutes_usd,
-        total_usd,
-    };
-    assert_eq!(active, vec![spend("s2", 5.0, 5.0), spend("s1", 4.0, 14.0)]);
+    let spend =
+        |session: &str, last_15_minutes_usd: f64, total_usd: f64, last: &str| SessionSpend {
+            session: session.to_string(),
+            label: session.to_string(),
+            repo: "orchard".to_string(),
+            branch: Some("ab/carts".to_string()),
+            last_15_minutes_usd,
+            total_usd,
+            last_active_ms: local_ms(last),
+            today_usd: total_usd,
+            top_driver: Some(Share {
+                label: "no skill".to_string(),
+                share: 1.0,
+            }),
+            models: vec![Share {
+                label: "claude-opus-5-5".to_string(),
+                share: 1.0,
+            }],
+        };
+    assert_eq!(
+        active,
+        vec![
+            spend("s2", 5.0, 5.0, "2026-11-04 13:50:00"),
+            spend("s1", 4.0, 14.0, "2026-11-04 13:55:00")
+        ]
+    );
 }
 
 #[test]
@@ -413,6 +534,16 @@ fn a_session_with_only_unpriced_requests_in_the_last_15_minutes_counts_as_spendi
             branch: Some("ab/carts".to_string()),
             last_15_minutes_usd: 0.0,
             total_usd: 0.0,
+            last_active_ms: local_ms("2026-11-04 13:50:00"),
+            today_usd: 0.0,
+            top_driver: Some(Share {
+                label: "no skill".to_string(),
+                share: 0.0,
+            }),
+            models: vec![Share {
+                label: "claude-opus-9-9".to_string(),
+                share: 0.0,
+            }],
         })
     );
 }
@@ -483,4 +614,35 @@ fn a_credit_reading_from_before_this_month_has_no_pace() {
     );
 
     assert_eq!(pace, None);
+}
+
+#[test]
+fn an_active_session_counts_its_last_15_minutes_its_total_and_when_it_was_last_active() {
+    let dir = tempfile::tempdir().unwrap();
+    let projects = dir.path().join("projects").join("-work-orchard");
+    fs::create_dir_all(&projects).unwrap();
+    fs::write(
+        projects.join("s1.jsonl"),
+        session_spend_line("s1", "a0", "2026-11-04 12:58:00", 9)
+            + &session_spend_line("s1", "a1", "2026-11-04 13:02:00", 1)
+            + &session_spend_line("s1", "a2", "2026-11-04 13:07:00", 2)
+            + &session_spend_line("s1", "a3", "2026-11-04 13:30:00", 3)
+            + &session_spend_line("s1", "a4", "2026-11-04 13:59:00", 4),
+    )
+    .unwrap();
+    let mut store = Store::open(&dir.path().join("history.sqlite3")).unwrap();
+    ingest_tree(
+        &mut store,
+        &dir.path().join("projects"),
+        &PriceTable::built_in(),
+        &Attribution::default(),
+        &Resolver::default(),
+    )
+    .unwrap();
+
+    let active = active_sessions(&store, None, local_ms("2026-11-04 14:00:00")).unwrap();
+
+    assert_eq!(active[0].last_15_minutes_usd, 4.0);
+    assert_eq!(active[0].total_usd, 19.0);
+    assert_eq!(active[0].last_active_ms, local_ms("2026-11-04 13:59:00"));
 }

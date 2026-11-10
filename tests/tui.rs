@@ -69,6 +69,10 @@ fn session(label: &str, repo: &str, branch: &str, recent: f64, total: f64) -> Se
         branch: Some(branch.to_string()),
         last_15_minutes_usd: recent,
         total_usd: total,
+        last_active_ms: NOW_MS - 2 * 60_000,
+        today_usd: total,
+        top_driver: None,
+        models: Vec::new(),
     }
 }
 

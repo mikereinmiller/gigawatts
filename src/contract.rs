@@ -264,4 +264,18 @@ pub struct SessionSpend {
     pub branch: Option<String>,
     pub last_15_minutes_usd: f64,
     pub total_usd: f64,
+    #[serde(default)]
+    pub last_active_ms: i64,
+    #[serde(default)]
+    pub today_usd: f64,
+    #[serde(default)]
+    pub top_driver: Option<Share>,
+    #[serde(default)]
+    pub models: Vec<Share>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct Share {
+    pub label: String,
+    pub share: f64,
 }

@@ -1,8 +1,27 @@
 use rusqlite::{OptionalExtension, params};
 
 use super::{Result, Store};
-use crate::contract::SessionSpend;
+use crate::contract::{SessionSpend, Share};
 use crate::sources::claude_json::Account;
+
+const SPEND_TODAY_BY: &str = "
+    SELECT session.uuid, {label}, coalesce(sum(requests.cost_usd), 0)
+    FROM requests INDEXED BY requests_by_day
+    JOIN sessions AS session ON session.id = requests.session_id
+    {joins}
+    WHERE requests.day = date(?2 / 1000, 'unixepoch', 'localtime')
+      AND requests.account_id IS ?3
+      AND requests.session_id IN (
+          SELECT session_id FROM requests INDEXED BY requests_by_day
+          WHERE day >= date(?1 / 1000, 'unixepoch', 'localtime')
+            AND time_ms > ?1 AND time_ms <= ?2 AND account_id IS ?3)
+    GROUP BY session.uuid, 2";
+const DRIVER_LABEL: &str = "CASE WHEN agent.text IS NOT NULL THEN agent.text || ' subagent'
+         ELSE coalesce(skill.text, 'no skill') END";
+const DRIVER_JOINS: &str = "LEFT JOIN labels AS skill ON skill.id = requests.skill_label
+    LEFT JOIN labels AS agent ON agent.id = requests.agent_label";
+const MODEL_LABEL: &str = "model.text";
+const MODEL_JOINS: &str = "JOIN labels AS model ON model.id = requests.model_label";
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ClockSpend {
@@ -95,7 +114,7 @@ impl Store {
                 None => return Ok(Vec::new()),
             },
         };
-        let sessions = self
+        let mut sessions = self
             .connection
             .prepare_cached(
                 "WITH recent AS (
@@ -111,7 +130,11 @@ impl Store {
                         coalesce(dir.repo_name, cwd.text, 'unknown folder'), branch.text,
                         recent.usd,
                         (SELECT coalesce(sum(cost_usd), 0) FROM requests
-                         WHERE requests.session_id = recent.session_id)
+                         WHERE requests.session_id = recent.session_id),
+                        recent.last_ms,
+                        (SELECT coalesce(sum(cost_usd), 0) FROM requests
+                         WHERE requests.session_id = recent.session_id
+                           AND requests.day = date(?2 / 1000, 'unixepoch', 'localtime'))
                  FROM recent
                  JOIN sessions AS session ON session.id = recent.session_id
                  JOIN requests AS latest ON latest.id = recent.last_id
@@ -129,10 +152,65 @@ impl Store {
                     branch: row.get(3)?,
                     last_15_minutes_usd: row.get(4)?,
                     total_usd: row.get(5)?,
+                    last_active_ms: row.get(6)?,
+                    today_usd: row.get(7)?,
+                    top_driver: None,
+                    models: Vec::new(),
                 })
             })?
-            .collect::<rusqlite::Result<_>>()?;
+            .collect::<rusqlite::Result<Vec<SessionSpend>>>()?;
+        let window = (since_ms, now_ms, account_id);
+        for (uuid, share) in self.shares_today(window, DRIVER_LABEL, DRIVER_JOINS, &sessions)? {
+            let session = sessions.iter_mut().find(|session| session.session == uuid);
+            if let Some(session) = session.filter(|session| session.top_driver.is_none()) {
+                session.top_driver = Some(share);
+            }
+        }
+        for (uuid, share) in self.shares_today(window, MODEL_LABEL, MODEL_JOINS, &sessions)? {
+            if let Some(session) = sessions.iter_mut().find(|session| session.session == uuid) {
+                session.models.push(share);
+            }
+        }
         Ok(sessions)
+    }
+
+    fn shares_today(
+        &self,
+        (since_ms, now_ms, account_id): (i64, i64, Option<i64>),
+        label: &str,
+        joins: &str,
+        sessions: &[SessionSpend],
+    ) -> Result<Vec<(String, Share)>> {
+        let sql = SPEND_TODAY_BY
+            .replace("{label}", label)
+            .replace("{joins}", joins);
+        let mut rows = self
+            .connection
+            .prepare_cached(&sql)?
+            .query_map(params![since_ms, now_ms, account_id], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, f64>(2)?,
+                ))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        rows.sort_by(|a, b| b.2.total_cmp(&a.2).then_with(|| a.1.cmp(&b.1)));
+        Ok(rows
+            .into_iter()
+            .filter_map(|(uuid, label, usd)| {
+                let today_usd = sessions
+                    .iter()
+                    .find(|session| session.session == uuid)?
+                    .today_usd;
+                let share = if today_usd > 0.0 {
+                    usd / today_usd
+                } else {
+                    0.0
+                };
+                Some((uuid, Share { label, share }))
+            })
+            .collect())
     }
 
     pub fn cost_flags_on(&self, account: Option<&Account>, day: &str) -> Result<CostFlags> {

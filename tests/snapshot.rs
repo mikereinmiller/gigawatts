@@ -4,7 +4,7 @@ use gigawatts::accounts::Attribution;
 use gigawatts::config::Config;
 use gigawatts::contract::{
     AccountLimits, AccountToday, DollarPace, Limit, LimitPace, LimitSource, PaceBasis, PaceState,
-    PacedLimit, Problem, ProblemKind, SCHEMA_VERSION, SessionSpend, Snapshot,
+    PacedLimit, Problem, ProblemKind, SCHEMA_VERSION, SessionSpend, Share, Snapshot,
 };
 use gigawatts::engine::snapshot;
 use gigawatts::ingest::ingest_tree;
@@ -146,6 +146,16 @@ fn the_snapshot_carries_each_tracked_accounts_spend_today_and_the_engines_proble
         branch: None,
         last_15_minutes_usd: 0.028,
         total_usd: 0.042,
+        last_active_ms: local_ms(&today, "12:00:00"),
+        today_usd: 0.028,
+        top_driver: Some(Share {
+            label: "no skill".to_string(),
+            share: 1.0,
+        }),
+        models: vec![Share {
+            label: "claude-opus-5-5".to_string(),
+            share: 1.0,
+        }],
     };
     assert_eq!(
         snapshot,
