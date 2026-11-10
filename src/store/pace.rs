@@ -9,6 +9,7 @@ pub struct ClockSpend {
     pub clock: String,
     pub today_usd: f64,
     pub earlier_days_usd: Vec<f64>,
+    pub weekend: bool,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -41,6 +42,7 @@ impl Store {
                     return Ok(ClockSpend {
                         clock: shown_clock,
                         today_usd: 0.0,
+                        weekend,
                         earlier_days_usd: Vec::new(),
                     });
                 }
@@ -76,6 +78,7 @@ impl Store {
             clock: shown_clock,
             today_usd,
             earlier_days_usd,
+            weekend,
         })
     }
 

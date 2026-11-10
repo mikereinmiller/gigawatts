@@ -16,6 +16,8 @@ pub fn dollar_pace(
         usual_usd: median(spend.earlier_days_usd.clone()),
         usual_days: spend.earlier_days_usd.len() as u32,
         clock: spend.clock,
+        weekend: spend.weekend,
+        earlier_days_usd: spend.earlier_days_usd.into_iter().rev().collect(),
     })
 }
 

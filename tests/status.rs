@@ -66,6 +66,8 @@ fn usual(today_usd: f64, usual_usd: Option<f64>, usual_days: u32) -> DollarPace 
         usual_usd,
         usual_days,
         clock: "12:10".to_string(),
+        weekend: false,
+        earlier_days_usd: Vec::new(),
     }
 }
 

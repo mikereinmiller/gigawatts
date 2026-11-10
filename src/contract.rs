@@ -176,6 +176,10 @@ pub struct DollarPace {
     pub usual_usd: Option<f64>,
     pub usual_days: u32,
     pub clock: String,
+    #[serde(default)]
+    pub earlier_days_usd: Vec<f64>,
+    #[serde(default)]
+    pub weekend: bool,
 }
 
 impl DollarPace {
