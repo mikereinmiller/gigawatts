@@ -182,7 +182,8 @@ fn save_shortfall(
     transaction.execute(
         "INSERT INTO not_in_transcript (
             session_id, model_label, day, input_tokens, output_tokens, cache_read_tokens,
-            cache_write_5m_tokens, cache_write_1h_tokens, web_searches, cost_usd
+            cache_write_5m_tokens, cache_write_1h_tokens, web_searches, cost_usd,
+            cwd_label, branch_label
          )
          SELECT ?1, labels.id,
                 coalesce(
@@ -190,8 +191,15 @@ fn save_shortfall(
                     (SELECT date(start_time_ms / 1000, 'unixepoch', 'localtime')
                      FROM sessions WHERE id = ?1)
                 ),
-                ?3, ?4, ?5, ?6, ?7, ?8, ?9
-         FROM labels WHERE text = ?2",
+                ?3, ?4, ?5, ?6, ?7, ?8, ?9,
+                place.cwd_label, place.branch_label
+         FROM labels
+         LEFT JOIN (
+             SELECT cwd_label, coalesce(head_branch_label, git_branch_label) AS branch_label
+             FROM requests WHERE session_id = ?1
+             GROUP BY 1, 2 ORDER BY count(*) DESC LIMIT 1
+         ) AS place ON true
+         WHERE labels.text = ?2",
         params![
             session_id,
             check.model,

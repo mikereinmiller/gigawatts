@@ -392,7 +392,7 @@ fn a_session_is_estimated_until_its_cost_state_and_exact_after() {
 }
 
 #[test]
-fn spend_missing_from_the_transcript_gets_its_own_row() {
+fn unlogged_usage_counts_under_its_sessions_repo_and_branch_and_on_its_own_elsewhere() {
     let mut scratch = Scratch::new();
     scratch.append(
         "s1.jsonl",
@@ -401,26 +401,36 @@ fn spend_missing_from_the_transcript_gets_its_own_row() {
 
     scratch.ingest();
 
-    let rows = scratch.rows(GroupBy::Repo, &[]);
-    let rows: Vec<_> = rows
-        .iter()
-        .map(|row| {
-            (
-                row.label.clone(),
-                row.not_in_transcript,
-                row.requests,
-                row.input_tokens,
-                row.output_tokens,
-            )
-        })
-        .collect();
+    let summary = |rows: Vec<DataRow>| -> Vec<(String, bool, u64, u64, u64)> {
+        rows.iter()
+            .map(|row| {
+                (
+                    row.label.clone(),
+                    row.not_in_transcript,
+                    row.requests,
+                    row.input_tokens,
+                    row.output_tokens,
+                )
+            })
+            .collect()
+    };
     assert_eq!(
-        rows,
+        summary(scratch.rows(GroupBy::Repo, &[])),
+        vec![("gone".to_string(), false, 1, 150_000, 12_000)]
+    );
+    assert_eq!(
+        summary(scratch.rows(GroupBy::Branch, &[])),
+        vec![("gone · main".to_string(), false, 1, 150_000, 12_000)]
+    );
+    assert_eq!(
+        summary(scratch.rows(GroupBy::Skill, &[])),
         vec![
-            ("gone".to_string(), false, 1, 100_000, 10_000),
-            ("not in transcript".to_string(), true, 0, 50_000, 2_000),
+            ("no skill".to_string(), false, 1, 100_000, 10_000),
+            ("unlogged usage".to_string(), true, 0, 50_000, 2_000),
         ]
     );
+    let by_repo = scratch.rows(GroupBy::Repo, &[]);
+    assert_cost(by_repo[0].cost_usd, 1.0);
     let by_model = scratch.rows(GroupBy::Model, &[]);
     assert_cost(by_model[0].cost_usd, 0.6);
     assert_cost(by_model[1].cost_usd, 0.4);
@@ -430,6 +440,12 @@ fn spend_missing_from_the_transcript_gets_its_own_row() {
     );
     let sessions = scratch.rows(GroupBy::Model, &["claude-opus-5-5"]);
     assert_eq!(sessions[0].status, Some(CostStatus::Exact));
+    let in_repo: f64 = scratch
+        .rows(GroupBy::Repo, &["gone", "main"])
+        .iter()
+        .filter_map(|row| row.cost_usd)
+        .sum();
+    assert_cost(Some(in_repo), 1.0);
 }
 
 #[test]
@@ -808,7 +824,11 @@ fn a_folder_that_counted_as_itself_is_resolved_again_after_upgrading() {
 
     rusqlite::Connection::open(scratch.dir.path().join("history.sqlite3"))
         .unwrap()
-        .execute_batch("PRAGMA user_version = 9;")
+        .execute_batch(
+            "ALTER TABLE not_in_transcript DROP COLUMN cwd_label;
+             ALTER TABLE not_in_transcript DROP COLUMN branch_label;
+             PRAGMA user_version = 9;",
+        )
         .unwrap();
     scratch.store = Store::open(&scratch.dir.path().join("history.sqlite3")).unwrap();
     scratch.ingest();
@@ -852,4 +872,115 @@ fn grouping_by_branch_keeps_the_same_branch_in_two_repos_apart() {
         ]
     );
     assert_eq!(labels(&sessions), vec![("s1".to_string(), 1)]);
+}
+
+fn session_in_three_folders(scratch: &Scratch) {
+    let line = |request, cwd, branch| {
+        Line {
+            request,
+            cwd,
+            branch,
+            ..Line::default()
+        }
+        .json()
+    };
+    scratch.append(
+        "s1.jsonl",
+        &(line("r1", "/Users/nobody/alpha", "main")
+            + &line("r2", "/Users/nobody/alpha", "main")
+            + &line("r3", "/Users/nobody/alpha", "main")
+            + &line("r4", "/Users/nobody/beta", "feat")
+            + &line("r5", "/Users/nobody/beta", "feat")
+            + &line("r6", "/Users/nobody/gamma", "feat")
+            + &line("r7", "/Users/nobody/gamma", "feat")
+            + &cost_state("s1", 1_000_000, 100_000, 10.0)),
+    );
+}
+
+fn branch_costs(scratch: &Scratch) -> Vec<(String, u64, String)> {
+    let mut rows: Vec<(String, u64, String)> = scratch
+        .rows(GroupBy::Branch, &[])
+        .iter()
+        .map(|row| {
+            (
+                row.label.clone(),
+                row.requests,
+                format!("{:.2}", row.cost_usd.unwrap_or(0.0)),
+            )
+        })
+        .collect();
+    rows.sort();
+    rows
+}
+
+#[test]
+fn unlogged_usage_lands_on_the_sessions_most_used_folder_and_branch_together() {
+    let mut scratch = Scratch::new();
+    session_in_three_folders(&scratch);
+
+    scratch.ingest();
+
+    let mut branches = labels(&scratch.rows(GroupBy::Branch, &[]));
+    branches.sort();
+    assert_eq!(
+        branches,
+        vec![
+            ("alpha · main".to_string(), 3),
+            ("beta · feat".to_string(), 2),
+            ("gamma · feat".to_string(), 2),
+        ]
+    );
+}
+
+#[test]
+fn upgrading_places_existing_unlogged_usage_under_its_folder_and_branch() {
+    let mut scratch = Scratch::new();
+    session_in_three_folders(&scratch);
+    scratch.ingest();
+    let before = branch_costs(&scratch);
+
+    rusqlite::Connection::open(scratch.dir.path().join("history.sqlite3"))
+        .unwrap()
+        .execute_batch(
+            "ALTER TABLE not_in_transcript DROP COLUMN cwd_label;
+             ALTER TABLE not_in_transcript DROP COLUMN branch_label;
+             PRAGMA user_version = 10;",
+        )
+        .unwrap();
+    scratch.store = Store::open(&scratch.dir.path().join("history.sqlite3")).unwrap();
+
+    assert_eq!(before.len(), 3);
+    assert_eq!(branch_costs(&scratch), before);
+}
+
+#[test]
+fn drilling_into_a_repo_listed_only_for_its_unlogged_usage_finds_it() {
+    let mut scratch = Scratch::new();
+    let line = |request, cwd| {
+        Line {
+            request,
+            cwd,
+            ..Line::default()
+        }
+        .json()
+    };
+    let yesterday = |text: String| text.replace(TIMESTAMP, "2026-01-07T12:00:00.000Z");
+    scratch.append(
+        "s1.jsonl",
+        &(yesterday(line("r1", "/Users/nobody/alpha"))
+            + &yesterday(line("r2", "/Users/nobody/alpha"))
+            + &line("r3", "/Users/nobody/beta")
+            + &cost_state("s1", 1_000_000, 100_000, 10.0)),
+    );
+    scratch.ingest();
+
+    let repos = query(&scratch.store, Range::Today, GroupBy::Repo, &[], DAY).unwrap();
+    let alpha = query(&scratch.store, Range::Today, GroupBy::Repo, &["alpha"], DAY);
+
+    assert!(
+        repos.rows.iter().any(|row| row.label == "alpha"),
+        "{:?}",
+        labels(&repos.rows)
+    );
+    assert!(alpha.is_ok(), "{alpha:?}");
 }

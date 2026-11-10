@@ -81,7 +81,7 @@ fn no_price(sighting: &ModelSighting) -> Problem {
         since: sighting.first_seen.clone(),
         cause: format!("no price for {}", sighting.model),
         fix: format!(
-            "Add [prices.{}] to {CONFIG_PATH} with input, cache_write_5m, cache_write_1h, cache_read, and output in dollars per million tokens, from {TABLE_SOURCE}, then run `gigawatts ingest`. Until then, the cost Claude Code recorded for it counts as not in transcript.",
+            "Add [prices.{}] to {CONFIG_PATH} with input, cache_write_5m, cache_write_1h, cache_read, and output in dollars per million tokens, from {TABLE_SOURCE}, then run `gigawatts ingest`. Until then, the cost Claude Code recorded for it counts as unlogged usage.",
             toml_key(&sighting.model)
         ),
         account: None,

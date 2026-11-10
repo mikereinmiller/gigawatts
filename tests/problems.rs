@@ -719,7 +719,9 @@ fn upgrading_to_problems_reports_lines_already_read_and_drops_gaps_on_no_cost() 
     );
     scratch.ingest();
     scratch.execute(
-        "DROP TABLE limit_fetches;
+        "ALTER TABLE not_in_transcript DROP COLUMN cwd_label;
+         ALTER TABLE not_in_transcript DROP COLUMN branch_label;
+         DROP TABLE limit_fetches;
          DROP TABLE limit_readings;
          DROP TABLE usage_advice;
          ALTER TABLE sessions DROP COLUMN requests_skipped;

@@ -99,7 +99,7 @@ pub struct Store {
     connection: Connection,
 }
 
-pub const MIGRATIONS: [&str; 10] = [
+pub const MIGRATIONS: [&str; 11] = [
     include_str!("migrations/001_history.sql"),
     include_str!("migrations/002_accounts.sql"),
     include_str!("migrations/003_repricing.sql"),
@@ -110,6 +110,7 @@ pub const MIGRATIONS: [&str; 10] = [
     include_str!("migrations/008_expired_requests.sql"),
     include_str!("migrations/009_limits.sql"),
     include_str!("migrations/010_reresolve_folders.sql"),
+    include_str!("migrations/011_unlogged_places.sql"),
 ];
 
 fn migrations() -> Migrations<'static> {
@@ -1195,6 +1196,7 @@ fn delete_unused_labels(transaction: &Transaction) -> Result<()> {
         "DELETE FROM directories WHERE cwd_label NOT IN (
             SELECT cwd_label FROM requests WHERE cwd_label IS NOT NULL
             UNION SELECT cwd_label FROM daily_totals WHERE cwd_label IS NOT NULL
+            UNION SELECT cwd_label FROM not_in_transcript WHERE cwd_label IS NOT NULL
          )",
         [],
     )?;
@@ -1223,6 +1225,8 @@ fn delete_unused_labels(transaction: &Transaction) -> Result<()> {
                 UNION SELECT cwd_label FROM daily_totals
                 UNION SELECT branch_label FROM daily_totals
                 UNION SELECT model_label FROM not_in_transcript
+                UNION SELECT cwd_label FROM not_in_transcript
+                UNION SELECT branch_label FROM not_in_transcript
                 UNION SELECT model_label FROM expired_requests
                 UNION SELECT skill_label FROM daily_totals
                 UNION SELECT agent_label FROM daily_totals

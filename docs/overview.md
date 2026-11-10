@@ -135,7 +135,7 @@ Rows are written only when something happens, never on a timer.
 | Requests | API request, keyed by `requestId` | Forever by default. A setting limits it to a number of days |
 | Daily totals | Day × account × repo × branch × skill × agent × model, updated in place | Forever |
 | Sessions | Session, updated in place | Forever |
-| Not in transcript | Session × model, rewritten on each `cost-state` while the model has request detail | Forever |
+| Unlogged usage | Session × model, with the session's main folder and branch, rewritten on each `cost-state` while the model has request detail | Forever |
 | Directories | Working directory, resolved once | Forever |
 | Limit readings | Change in a limit percentage, per account | Forever |
 | Usage advice | Day × account, from `behaviors` | Forever |
@@ -161,12 +161,12 @@ Claude Code records a dollar cost per session and model, and only when the sessi
 
 1. Each request is priced from its tokens by type and the price table, applying the pricing rules its line records (long prompts on Haiku 5.5, `inference_geo` of `us`, fast mode). Until the session ends, that cost is labeled "estimated."
 2. When the `cost-state` arrives, the requests of each model are added up and compared with Claude Code's figure. If they match, the costs are exact and carry no label.
-3. If Claude Code counted more tokens than the transcript holds, usually because it billed requests it never wrote there, the request costs stay exact, and the difference is stored as a "not in transcript" row for that session and model, so every breakdown still adds up to Claude Code's total without guessing which repo, skill, or agent spent it. On the work Mac's history this is about 14% of spend.
+3. If Claude Code counted more tokens than the transcript holds, usually because it billed requests it never wrote there, the request costs stay exact, and the difference is stored as "unlogged usage" for that session and model, with the folder and branch most of the session's requests ran in. Repo and branch breakdowns count it under that repo and branch, since a session's place is known. Skill and subagent breakdowns show it as its own row, since guessing which skill or subagent spent it would be wrong. Every breakdown still adds up to Claude Code's total. These requests come from Claude Code itself, not the desktop app or claude.ai, which never write to its transcripts; which requests they are is unknown, and the Haiku share suggests background calls. On the work Mac's history this is about 14% of spend.
 4. If the tokens match and the cost doesn't, a price or a pricing rule is out of date. The requests are scaled to Claude Code's total, the session is labeled "adjusted," the gap is recorded, and `gigawatts doctor` names the model.
 
 On a subscription, these dollars are what the usage would cost at API prices, not what you're charged.
 
-The price table comes from two layers. A built-in table is copied by hand from Anthropic's pricing page, with the date and link. Overrides in `config.toml` win over it, and `gigawatts doctor` names any model without a price. Until a model has a price, the cost Claude Code recorded for it goes into the "not in transcript" row, so totals still match without guessing which repo spent it. When either layer changes, stored history is repriced on the next ingest. The pricing rules are prose on the page and change rarely, so they live in code. A daily download of `pricing.md` as a third layer is in Later, gated on open question 2.
+The price table comes from two layers. A built-in table is copied by hand from Anthropic's pricing page, with the date and link. Overrides in `config.toml` win over it, and `gigawatts doctor` names any model without a price. Until a model has a price, the cost Claude Code recorded for it counts as unlogged usage, so totals still match. When either layer changes, stored history is repriced on the next ingest. The pricing rules are prose on the page and change rarely, so they live in code. A daily download of `pricing.md` as a third layer is in Later, gated on open question 2.
 
 ## Pace
 

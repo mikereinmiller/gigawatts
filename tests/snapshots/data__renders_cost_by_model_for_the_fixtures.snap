@@ -1,15 +1,14 @@
 ---
 source: tests/data.rs
-assertion_line: 125
 expression: render(&response)
 ---
 Cost by model, all history
 
 No account
-model                                requests       input      output     cache read  cache write       cost
-claude-opus-5-5                           322         662      252107      100950580      1262266     $35.21
-claude-fable-5-1                           45        1232      113351        1843991       518733     $12.63
-claude-haiku-5-5                            6          12       11548         334050       110697      $0.05
-claude-fable-5-1, not in transcript         0      109356         336        1642408        74765      $2.46
-claude-opus-5-5, not in transcript          0       10383         855         426095        50982      $0.55
-claude-haiku-5-5, not in transcript         0      209254        9440         168634         1903      $0.04
+model                         requests       input      output     cache read  cache write       cost
+claude-opus-5-5                    322         662      252107      100950580      1262266     $35.21
+claude-fable-5-1                    45        1232      113351        1843991       518733     $12.63
+claude-haiku-5-5                     6          12       11548         334050       110697      $0.05
+claude-fable-5-1, unlogged           0      109356         336        1642408        74765      $2.46
+claude-opus-5-5, unlogged            0       10383         855         426095        50982      $0.55
+claude-haiku-5-5, unlogged           0      209254        9440         168634         1903      $0.04

@@ -219,7 +219,7 @@ pub fn render(response: &DataResponse) -> String {
 
 fn row_name(row: &DataRow, level: Level) -> String {
     if row.not_in_transcript && matches!(level, Level::Model | Level::Session) {
-        format!("{}, not in transcript", row.label)
+        format!("{}, unlogged", row.label)
     } else {
         row.label.clone()
     }

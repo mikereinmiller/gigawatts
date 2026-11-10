@@ -19,7 +19,8 @@ const BEFORE_KEPT_REQUESTS: &str =
     "AND day < (SELECT value FROM store_settings WHERE key = 'requests_kept_from')";
 
 const NOT_IN_TRANSCRIPT: &str = "
-    SELECT sessions.account_id, NULL, NULL, NULL, NULL, missing.model_label,
+    SELECT sessions.account_id, missing.cwd_label, missing.branch_label,
+           NULL, NULL, missing.model_label,
            missing.session_id, 1, 0, missing.input_tokens, missing.output_tokens,
            missing.cache_read_tokens, missing.cache_write_5m_tokens + missing.cache_write_1h_tokens,
            missing.web_searches, missing.cost_usd
@@ -163,7 +164,9 @@ impl Store {
     ) -> Result<Vec<(Option<String>, String)>> {
         let spend = match level {
             Level::Session => REQUESTS.to_string(),
-            Level::Model => format!("{DAILY_TOTALS} UNION ALL {NOT_IN_TRANSCRIPT}"),
+            Level::Model | Level::Repo | Level::Branch | Level::RepoBranch => {
+                format!("{DAILY_TOTALS} UNION ALL {NOT_IN_TRANSCRIPT}")
+            }
             _ => DAILY_TOTALS.to_string(),
         };
         let (columns, joins) = level_joins(level);
@@ -203,7 +206,12 @@ impl Store {
         } else {
             DAILY_TOTALS.to_string()
         };
-        let only_models = filters.iter().all(|filter| filter.level == Level::Model);
+        let only_models = filters.iter().all(|filter| {
+            matches!(
+                filter.level,
+                Level::Model | Level::Repo | Level::Branch | Level::RepoBranch
+            )
+        });
         let source = if only_models {
             format!("{spend} UNION ALL {NOT_IN_TRANSCRIPT}")
         } else {
@@ -211,7 +219,13 @@ impl Store {
         };
         let (missing_key, missing_label) = match level {
             Level::Model | Level::Session => (key_sql(level), label_sql(level)),
-            _ => ("NULL", "'not in transcript'"),
+            _ => ("NULL", "'unlogged usage'"),
+        };
+        let separate = match level {
+            Level::Repo | Level::Branch | Level::RepoBranch => {
+                "(spend.missing AND spend.cwd_label IS NULL)"
+            }
+            _ => "spend.missing",
         };
         let status = if level == Level::Session {
             "session.cost_status"
@@ -222,9 +236,9 @@ impl Store {
         let sql = format!(
             "SELECT accounts.account_uuid || '/' || accounts.organization_uuid,
                     coalesce(accounts.email, accounts.account_uuid || '/' || accounts.organization_uuid, 'No account'),
-                    CASE WHEN spend.missing THEN {missing_key} ELSE {key} END AS row_key,
-                    CASE WHEN spend.missing THEN {missing_label} ELSE {label} END,
-                    spend.missing, {status},
+                    CASE WHEN {separate} THEN {missing_key} ELSE {key} END AS row_key,
+                    CASE WHEN {separate} THEN {missing_label} ELSE {label} END,
+                    {separate} AS shown_apart, {status},
                     sum(requests), sum(input_tokens), sum(output_tokens), sum(cache_read_tokens),
                     sum(cache_write_tokens), sum(web_searches), sum(cost_usd)
              FROM ({source}) AS spend
@@ -237,9 +251,9 @@ impl Store {
              JOIN labels AS model ON model.id = spend.model_label
              LEFT JOIN sessions AS session ON session.id = spend.session_id
              {where_clause}
-             GROUP BY spend.account_id, spend.missing, row_key
+             GROUP BY spend.account_id, shown_apart, row_key
              ORDER BY spend.account_id IS NULL, accounts.account_uuid,
-                      accounts.organization_uuid, spend.missing, row_key IS NULL,
+                      accounts.organization_uuid, shown_apart, row_key IS NULL,
                       sum(cost_usd) DESC, 4",
             key = key_sql(level),
             label = label_sql(level),
