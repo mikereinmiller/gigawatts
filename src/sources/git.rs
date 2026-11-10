@@ -54,7 +54,11 @@ impl Resolver {
                 Place::repo(main_checkout(Path::new(&common_dir)), remote)
             })
         } else {
-            self.captured_place(cwd)
+            self.captured_place(cwd).or_else(|| {
+                cwd.ancestors()
+                    .take_while(|folder| !folder.exists())
+                    .find_map(|folder| self.sibling_checkout(folder))
+            })
         };
         found.unwrap_or_else(|| {
             if is_temporary(cwd) {
@@ -78,6 +82,31 @@ impl Resolver {
             let head_name = std::fs::read_to_string(git_dir.join(state).join("head-name")).ok()?;
             let branch = head_name.trim().strip_prefix("refs/heads/")?;
             Some(branch.to_string())
+        })
+    }
+
+    fn sibling_checkout(&self, cwd: &Path) -> Option<Place> {
+        let name = cwd.file_name()?.to_str()?;
+        let mut siblings: Vec<PathBuf> = std::fs::read_dir(cwd.parent()?)
+            .ok()?
+            .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+            .filter(|sibling| {
+                sibling
+                    .file_name()
+                    .and_then(|sibling| sibling.to_str())
+                    .is_some_and(|sibling| {
+                        name.strip_prefix(sibling)
+                            .is_some_and(|rest| rest.starts_with('-'))
+                    })
+            })
+            .collect();
+        siblings.sort_by_key(|sibling| std::cmp::Reverse(sibling.as_os_str().len()));
+        siblings.into_iter().find_map(|sibling| {
+            let place = self.place(&sibling);
+            match &place {
+                Place::Repo { path, .. } if same_folder(path, &sibling) => Some(place),
+                _ => None,
+            }
         })
     }
 
@@ -124,6 +153,13 @@ fn git_output(cwd: &Path, args: &[&str]) -> std::io::Result<Option<String>> {
     let text = String::from_utf8(output.stdout).unwrap_or_default();
     let text = text.trim();
     Ok((output.status.success() && !text.is_empty()).then(|| text.to_string()))
+}
+
+fn same_folder(a: &Path, b: &Path) -> bool {
+    match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => false,
+    }
 }
 
 fn main_checkout(common_dir: &Path) -> PathBuf {

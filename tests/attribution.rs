@@ -785,3 +785,37 @@ fn a_cost_state_recording_no_cost_keeps_table_prices() {
     let sessions = scratch.rows(GroupBy::Model, &["claude-opus-5-5"]);
     assert_eq!(sessions[0].status, Some(CostStatus::Estimated));
 }
+
+#[test]
+fn a_folder_that_counted_as_itself_is_resolved_again_after_upgrading() {
+    let mut scratch = Scratch::new();
+    let root = fs::canonicalize(scratch.dir.path()).unwrap();
+    let gone = root.join("orchard-api-ab-rel42");
+    scratch.append(
+        "s1.jsonl",
+        &Line {
+            cwd: gone.to_str().unwrap(),
+            ..Line::default()
+        }
+        .json(),
+    );
+    scratch.ingest();
+    let before = labels(&scratch.rows(GroupBy::Repo, &[]));
+    let main = root.join("orchard-api");
+    fs::create_dir_all(&main).unwrap();
+    git(&main, &["init", "-q", "-b", "main"]);
+    git(&main, &["commit", "-q", "--allow-empty", "-m", "first"]);
+
+    rusqlite::Connection::open(scratch.dir.path().join("history.sqlite3"))
+        .unwrap()
+        .execute_batch("PRAGMA user_version = 9;")
+        .unwrap();
+    scratch.store = Store::open(&scratch.dir.path().join("history.sqlite3")).unwrap();
+    scratch.ingest();
+
+    assert_eq!(before, vec![("orchard-api-ab-rel42".to_string(), 1)]);
+    assert_eq!(
+        labels(&scratch.rows(GroupBy::Repo, &[])),
+        vec![("orchard-api".to_string(), 1)]
+    );
+}

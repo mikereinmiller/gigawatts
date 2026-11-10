@@ -99,7 +99,7 @@ pub struct Store {
     connection: Connection,
 }
 
-pub const MIGRATIONS: [&str; 9] = [
+pub const MIGRATIONS: [&str; 10] = [
     include_str!("migrations/001_history.sql"),
     include_str!("migrations/002_accounts.sql"),
     include_str!("migrations/003_repricing.sql"),
@@ -109,6 +109,7 @@ pub const MIGRATIONS: [&str; 9] = [
     include_str!("migrations/007_retention.sql"),
     include_str!("migrations/008_expired_requests.sql"),
     include_str!("migrations/009_limits.sql"),
+    include_str!("migrations/010_reresolve_folders.sql"),
 ];
 
 fn migrations() -> Migrations<'static> {

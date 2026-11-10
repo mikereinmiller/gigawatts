@@ -218,3 +218,80 @@ fn a_rebase_started_from_a_detached_head_is_detached() {
 
     assert_eq!(Resolver::default().head_branch(&main), None);
 }
+
+fn main_checkout(root: &Path, name: &str) -> PathBuf {
+    let main = root.join(name);
+    fs::create_dir_all(&main).unwrap();
+    git(&main, &["init", "-q", "-b", "main"]);
+    git(
+        &main,
+        &[
+            "remote",
+            "add",
+            "origin",
+            &format!("git@example.com:corp/{name}.git"),
+        ],
+    );
+    git(&main, &["commit", "-q", "--allow-empty", "-m", "first"]);
+    main
+}
+
+#[test]
+fn a_missing_folder_named_after_a_sibling_checkout_resolves_to_the_longest_match() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = fs::canonicalize(dir.path()).unwrap();
+    main_checkout(&root, "inventory");
+    main_checkout(&root, "inventory-cloud");
+    fs::create_dir_all(root.join("check")).unwrap();
+    let place = |name: &str| Resolver::default().place(&root.join(name));
+    let repo = |name: &str| Place::Repo {
+        name: name.to_string(),
+        path: root.join(name),
+        remote: Some(format!("git@example.com:corp/{name}.git")),
+    };
+
+    assert_eq!(place("inventory-ab-inv-917"), repo("inventory"));
+    assert_eq!(
+        place("inventory-cloud-agent-inv-1209"),
+        repo("inventory-cloud")
+    );
+    assert_eq!(
+        place("check-x"),
+        Place::Itself(root.join("check-x")),
+        "a sibling outside git doesn't count"
+    );
+    assert_eq!(
+        place("inventoryx"),
+        Place::Itself(root.join("inventoryx")),
+        "the name must continue with a dash"
+    );
+}
+
+#[test]
+fn a_missing_folder_beside_a_worktree_of_another_repo_counts_as_itself() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = fs::canonicalize(dir.path()).unwrap();
+    repo_with_worktree(&root);
+
+    let place = Resolver::default().place(&root.join("rel42-carts-old"));
+
+    assert_eq!(place, Place::Itself(root.join("rel42-carts-old")));
+}
+
+#[test]
+fn a_missing_subfolder_of_a_deleted_worktree_resolves_through_its_parent() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = fs::canonicalize(dir.path()).unwrap();
+    main_checkout(&root, "dotfiles");
+
+    let place = Resolver::default().place(&root.join("dotfiles-ab-fixup/claude/skills/deployer"));
+
+    assert_eq!(
+        place,
+        Place::Repo {
+            name: "dotfiles".to_string(),
+            path: root.join("dotfiles"),
+            remote: Some("git@example.com:corp/dotfiles.git".to_string()),
+        }
+    );
+}
