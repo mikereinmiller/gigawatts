@@ -2,8 +2,8 @@ use std::collections::BTreeSet;
 
 use gigawatts::contract::{
     AccountLimits, AccountToday, Credits, DataResponse, DataRow, DollarPace, GroupBy, Limit,
-    LimitPace, LimitSource, PaceBasis, PaceState, PacedLimit, Problem, ProblemKind, Range,
-    SCHEMA_VERSION, SessionSpend, Share, Snapshot,
+    LimitForecast, LimitPace, LimitSource, PaceBasis, PaceState, PacedLimit, Problem, ProblemKind,
+    Range, SCHEMA_VERSION, SessionSpend, Share, Snapshot,
 };
 use gigawatts::store::{Store, TopItem, UsageAdvice};
 use gigawatts::tui::{App, Flow, HistoryQuery, Spending};
@@ -47,6 +47,7 @@ fn timed(
             credits: None,
         },
         pace: Some(pace),
+        forecast: None,
     }
 }
 
@@ -177,6 +178,7 @@ fn work() -> AccountToday {
                     window_end_ms: 1_796_083_200_000,
                     provisional: true,
                 }),
+                forecast: None,
             }],
         }),
     }
@@ -770,6 +772,129 @@ fn each_limit_shows_the_expected_percentage_and_a_countdown_to_its_reset() {
         ),
         "{shown}"
     );
+}
+
+fn filling_fast() -> AccountToday {
+    let mut account = personal();
+    let session = &mut account.limits.as_mut().unwrap().limits[0];
+    session.limit.percent = 60.0;
+    session.pace = Some(pace(PaceState::Over, PaceBasis::Even));
+    session.forecast = Some(LimitForecast {
+        full_at_ms: NOW_MS + 80 * 60_000,
+    });
+    account
+}
+
+#[test]
+fn a_forecast_from_a_reading_over_an_hour_old_is_greyed_like_the_rest_of_the_limit() {
+    let mut account = filling_fast();
+    account.limits.as_mut().unwrap().fetched_at_ms = NOW_MS - 2 * 3_600_000;
+    let mut app = open(snapshot(vec![account, work()]), None);
+
+    assert_eq!(
+        cell_at(&app, 120, 24, "100% in").fg,
+        ratatui::style::Color::DarkGray
+    );
+    assert_eq!(
+        cell_at(&app, 80, 24, "100% in").fg,
+        ratatui::style::Color::DarkGray
+    );
+
+    app.handle(KeyCode::Char('a').into());
+
+    assert_eq!(
+        cell_at(&app, 80, 24, "100% in").fg,
+        ratatui::style::Color::DarkGray
+    );
+}
+
+#[test]
+fn a_credit_forecast_on_a_provisional_pace_is_labeled_provisional() {
+    let mut account = work();
+    account.limits.as_mut().unwrap().limits[0].forecast = Some(LimitForecast {
+        full_at_ms: NOW_MS + 80 * 60_000,
+    });
+    let app = open(snapshot(vec![account]), None);
+
+    let shown = screen(&app, 120, 24);
+
+    assert!(
+        shown.contains("100% in 1h 20m at 10:40 (provisional)"),
+        "{shown}"
+    );
+}
+
+#[test]
+fn a_limit_on_course_to_fill_before_its_reset_says_when_in_the_over_pace_color() {
+    let app = open(snapshot(vec![filling_fast()]), None);
+
+    let shown = screen(&app, 120, 24);
+
+    assert!(shown.contains("100% in 1h 20m at 10:40"), "{shown}");
+    assert_eq!(
+        cell_at(&app, 120, 24, "100% in").fg,
+        ratatui::style::Color::LightRed
+    );
+    insta::assert_snapshot!(screen(&app, 80, 24));
+}
+
+#[test]
+fn the_every_account_view_says_when_a_limit_will_fill() {
+    let mut app = open(snapshot(vec![filling_fast(), work()]), None);
+    app.handle(KeyCode::Char('a').into());
+
+    let shown = screen(&app, 80, 24);
+
+    assert!(
+        shown.contains("│                     100% in 1h 20m      "),
+        "{shown}"
+    );
+}
+
+#[test]
+fn a_forecast_time_already_past_says_by_when() {
+    let mut account = filling_fast();
+    account.limits.as_mut().unwrap().limits[0].forecast = Some(LimitForecast {
+        full_at_ms: NOW_MS - 10 * 60_000,
+    });
+    let mut app = open(snapshot(vec![account, work()]), None);
+
+    assert!(screen(&app, 120, 24).contains("100% by 09:10"));
+
+    app.handle(KeyCode::Char('a').into());
+
+    assert!(screen(&app, 80, 24).contains("100% by now"));
+}
+
+#[test]
+fn a_forecast_time_on_an_earlier_day_shows_its_date() {
+    let mut account = filling_fast();
+    account.limits.as_mut().unwrap().limits[1].forecast = Some(LimitForecast {
+        full_at_ms: NOW_MS - 2 * 24 * 3_600_000,
+    });
+    let app = open(snapshot(vec![account]), None);
+
+    let shown = screen(&app, 120, 24);
+
+    assert!(shown.contains("100% by 2026-11-07 09:20"), "{shown}");
+}
+
+#[test]
+fn a_limit_that_reset_since_its_reading_shows_no_forecast() {
+    let mut account = filling_fast();
+    account.limits.as_mut().unwrap().limits[0].limit.resets_at =
+        Some("2026-11-09T09:00:00Z".to_string());
+    let mut app = open(snapshot(vec![account, work()]), None);
+
+    for width in [120, 80] {
+        let shown = screen(&app, width, 24);
+        assert!(!shown.contains("100%"), "{shown}");
+    }
+
+    app.handle(KeyCode::Char('a').into());
+
+    let shown = screen(&app, 80, 24);
+    assert!(!shown.contains("100%"), "{shown}");
 }
 
 #[test]

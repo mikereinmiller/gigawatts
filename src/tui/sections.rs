@@ -10,7 +10,9 @@ use crate::contract::{
 };
 use crate::limits::{age, credits_used, limit_name, percent, unusual_severity};
 use crate::pace::USUAL_DAYS;
-use crate::status::{MAY_MISS_OUTSIDE_USE_MS, has_reset, pace_phrase, resets_ms};
+use crate::status::{
+    MAY_MISS_OUTSIDE_USE_MS, has_reset, pace_phrase, provisional_forecast, resets_ms,
+};
 
 use super::HISTORY_MIN_HEIGHT;
 use super::digits;
@@ -23,6 +25,7 @@ const NAME_WIDTH: usize = 20;
 const COLUMNS_FROM: u16 = 100;
 pub(crate) const COLUMN_GAP: u16 = 1;
 const PERCENT_WIDTH: usize = 6;
+const DAY_MS: i64 = 24 * 3_600_000;
 const LIMITS_SHARE: u32 = 56;
 const SPARK_LEVELS: [char; 8] = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
 
@@ -307,6 +310,7 @@ pub(crate) fn limit_lines(
                         shown,
                         stale,
                         false,
+                        forecast(shown, now_ms, local_minute),
                         &detail(shown, now_ms, local_minute),
                         width,
                     ),
@@ -314,6 +318,7 @@ pub(crate) fn limit_lines(
                         shown,
                         stale,
                         has_reset(shown, now_ms),
+                        forecast(shown, now_ms, local_minute),
                         &flags(shown, now_ms),
                         width,
                     ),
@@ -372,6 +377,9 @@ fn limit_row(
         ]),
         Line::from(bar(shown, width, color)),
     ];
+    if let Some(forecast) = forecast(shown, now_ms, local_minute) {
+        lines.extend(wrapped(&forecast, width as u16, forecast_style(stale)));
+    }
     for packed in pack(&detail(shown, now_ms, local_minute), width) {
         lines.extend(wrapped(&packed, width as u16, MUTED));
     }
@@ -382,6 +390,7 @@ fn named_limit_row(
     shown: &PacedLimit,
     stale: bool,
     reset: bool,
+    forecast: Option<String>,
     parts: &[String],
     width: u16,
 ) -> Vec<Line<'static>> {
@@ -409,6 +418,12 @@ fn named_limit_row(
     ));
     let style = if stale { MUTED } else { NORMAL };
     let mut lines = vec![Line::from(spans)];
+    if let Some(forecast) = forecast {
+        lines.push(Line::from(vec![
+            Span::raw(" ".repeat(NAME_WIDTH)),
+            Span::styled(forecast, forecast_style(stale)),
+        ]));
+    }
     for packed in pack(parts, (width as usize).saturating_sub(NAME_WIDTH)) {
         lines.push(Line::from(vec![
             Span::raw(" ".repeat(NAME_WIDTH)),
@@ -508,18 +523,48 @@ fn flags(shown: &PacedLimit, now_ms: i64) -> Vec<String> {
         .collect()
 }
 
+fn forecast_style(stale: bool) -> Style {
+    Style::new().fg(if stale { STALE } else { OVER })
+}
+
+fn forecast(shown: &PacedLimit, now_ms: i64, local_minute: LocalMinute) -> Option<String> {
+    let full_at_ms = shown.forecast?.full_at_ms;
+    if has_reset(shown, now_ms) {
+        return None;
+    }
+    let clock = clock(full_at_ms, local_minute);
+    let when = if full_at_ms > now_ms {
+        countdown(full_at_ms, now_ms, local_minute)
+    } else if clock.is_empty() {
+        "by now".to_string()
+    } else if now_ms - full_at_ms >= DAY_MS {
+        format!("by {}", local_minute(full_at_ms))
+    } else {
+        format!("by {clock}")
+    };
+    Some(format!("100% {when}{}", provisional_forecast(shown)))
+}
+
 fn resets(resets_ms: i64, now_ms: i64, local_minute: LocalMinute) -> String {
+    format!("resets {}", countdown(resets_ms, now_ms, local_minute))
+}
+
+fn clock(ms: i64, local_minute: LocalMinute) -> String {
+    local_minute(ms).chars().skip(11).collect()
+}
+
+fn countdown(resets_ms: i64, now_ms: i64, local_minute: LocalMinute) -> String {
     let minutes = (resets_ms - now_ms).max(0) / 60_000;
     let countdown = match minutes {
         0..60 => format!("{minutes}m"),
         60..1440 => format!("{}h {}m", minutes / 60, minutes % 60),
         _ => format!("{}d {}h", minutes / 1440, minutes % 1440 / 60),
     };
-    let clock: String = local_minute(resets_ms).chars().skip(11).collect();
+    let clock = clock(resets_ms, local_minute);
     if minutes < 1440 && !clock.is_empty() {
-        format!("resets in {countdown} at {clock}")
+        format!("in {countdown} at {clock}")
     } else {
-        format!("resets in {countdown}")
+        format!("in {countdown}")
     }
 }
 

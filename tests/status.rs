@@ -1,6 +1,6 @@
 use gigawatts::contract::{
-    AccountLimits, AccountToday, Credits, DollarPace, Limit, LimitPace, LimitSource, PaceBasis,
-    PaceState, PacedLimit,
+    AccountLimits, AccountToday, Credits, DollarPace, Limit, LimitForecast, LimitPace, LimitSource,
+    PaceBasis, PaceState, PacedLimit,
 };
 use gigawatts::status::render_line;
 
@@ -30,6 +30,7 @@ fn timed(kind: &str, percent: f64, resets_at: &str, pace: Option<LimitPace>) -> 
             credits: None,
         },
         pace,
+        forecast: None,
     }
 }
 
@@ -105,6 +106,169 @@ fn status_shows_the_closest_limit_with_its_pace_and_today_against_usual() {
 }
 
 #[test]
+fn a_limit_on_course_to_fill_before_its_reset_says_when_it_reaches_100_percent() {
+    let mut session = timed(
+        "session",
+        60.0,
+        "2026-11-04T19:40:00Z",
+        pace(PaceState::Over, PaceBasis::Even, false),
+    );
+    session.forecast = Some(LimitForecast {
+        full_at_ms: NOW_MS + 40 * 60_000,
+    });
+    let limits = AccountLimits {
+        source: LimitSource::GetUsage,
+        fetched_at_ms: NOW_MS - 3 * 60_000,
+        limits: vec![session],
+    };
+
+    let line = render_line(
+        &account(Some(limits), 14.2, usual(14.0, Some(7.0), 20)),
+        NOW_MS,
+        &utc_minute,
+    );
+
+    assert_eq!(
+        line,
+        "personal: Session 60% over even pace, 100% by 2026-11-04 18:50, resets 2026-11-04 19:40, read 3 minutes ago · today $14.20, 2.0× your usual by 12:10"
+    );
+}
+
+fn session_filling_by_18_50(percent: f64) -> PacedLimit {
+    let mut session = timed(
+        "session",
+        percent,
+        "2026-11-04T19:40:00Z",
+        pace(PaceState::Over, PaceBasis::Even, false),
+    );
+    session.forecast = Some(LimitForecast {
+        full_at_ms: NOW_MS + 40 * 60_000,
+    });
+    session
+}
+
+fn line_for(limits: Vec<PacedLimit>) -> String {
+    let limits = AccountLimits {
+        source: LimitSource::GetUsage,
+        fetched_at_ms: NOW_MS - 3 * 60_000,
+        limits,
+    };
+    render_line(
+        &account(Some(limits), 14.2, usual(14.0, Some(7.0), 20)),
+        NOW_MS,
+        &utc_minute,
+    )
+}
+
+#[test]
+fn the_fullest_limit_leads_and_another_limit_on_course_to_fill_is_named_after_it() {
+    let line = line_for(vec![
+        timed(
+            "weekly_all",
+            63.0,
+            "2026-11-08T02:59:59.945600+00:00",
+            pace(PaceState::Under, PaceBasis::Usual, false),
+        ),
+        session_filling_by_18_50(40.0),
+    ]);
+
+    assert_eq!(
+        line,
+        "personal: Weekly, all models 63% under your usual pace, resets 2026-11-08 02:59, Session 100% by 2026-11-04 18:50, read 3 minutes ago · today $14.20, 2.0× your usual by 12:10"
+    );
+}
+
+#[test]
+fn a_full_limit_stays_first_when_another_limit_is_on_course_to_fill() {
+    let line = line_for(vec![
+        session_filling_by_18_50(50.0),
+        timed(
+            "weekly_all",
+            100.0,
+            "2026-11-08T02:59:59.945600+00:00",
+            pace(PaceState::Over, PaceBasis::Usual, false),
+        ),
+    ]);
+
+    assert_eq!(
+        line,
+        "personal: Weekly, all models 100% over your usual pace, resets 2026-11-08 02:59, Session 100% by 2026-11-04 18:50, read 3 minutes ago · today $14.20, 2.0× your usual by 12:10"
+    );
+}
+
+fn weekly_filling_at(full_at_ms: i64) -> PacedLimit {
+    let mut weekly = timed(
+        "weekly_all",
+        63.0,
+        "2026-11-08T02:59:59.945600+00:00",
+        pace(PaceState::Over, PaceBasis::Usual, false),
+    );
+    weekly.forecast = Some(LimitForecast { full_at_ms });
+    weekly
+}
+
+#[test]
+fn the_fullest_limit_and_an_earlier_filling_limit_both_say_when_they_reach_100_percent() {
+    let line = line_for(vec![
+        weekly_filling_at(NOW_MS + 3 * 3_600_000),
+        session_filling_by_18_50(40.0),
+    ]);
+
+    assert_eq!(
+        line,
+        "personal: Weekly, all models 63% over your usual pace, 100% by 2026-11-04 21:10, resets 2026-11-08 02:59, Session 100% by 2026-11-04 18:50, read 3 minutes ago · today $14.20, 2.0× your usual by 12:10"
+    );
+}
+
+#[test]
+fn the_fullest_limit_filling_first_is_not_named_twice() {
+    let line = line_for(vec![
+        weekly_filling_at(NOW_MS + 20 * 60_000),
+        session_filling_by_18_50(40.0),
+    ]);
+
+    assert_eq!(
+        line,
+        "personal: Weekly, all models 63% over your usual pace, 100% by 2026-11-04 18:30, resets 2026-11-08 02:59, read 3 minutes ago · today $14.20, 2.0× your usual by 12:10"
+    );
+}
+
+#[test]
+fn a_credit_forecast_on_a_provisional_pace_is_labeled_provisional() {
+    let limits = AccountLimits {
+        source: LimitSource::CachedUsageUtilization,
+        fetched_at_ms: NOW_MS - 3 * 60_000,
+        limits: vec![PacedLimit {
+            limit: Limit {
+                kind: "credits".to_string(),
+                group: None,
+                scope: None,
+                percent: 20.0,
+                severity: None,
+                resets_at: None,
+                active: false,
+                credits: None,
+            },
+            pace: pace(PaceState::Over, PaceBasis::Even, true),
+            forecast: Some(LimitForecast {
+                full_at_ms: NOW_MS + 40 * 60_000,
+            }),
+        }],
+    };
+
+    let line = render_line(
+        &account(Some(limits), 14.2, usual(14.0, Some(7.0), 20)),
+        NOW_MS,
+        &utc_minute,
+    );
+
+    assert!(
+        line.contains(", 100% by 2026-11-04 18:50 (provisional), resets "),
+        "{line}"
+    );
+}
+
+#[test]
 fn monthly_credits_show_their_pace_window_end_and_the_provisional_label() {
     let limits = AccountLimits {
         source: LimitSource::CachedUsageUtilization,
@@ -125,6 +289,7 @@ fn monthly_credits_show_their_pace_window_end_and_the_provisional_label() {
                 }),
             },
             pace: pace(PaceState::Under, PaceBasis::Even, true),
+            forecast: None,
         }],
     };
 
@@ -183,6 +348,24 @@ fn a_limit_that_reset_since_the_reading_is_not_the_closest() {
 }
 
 #[test]
+fn a_limit_that_reset_since_its_reading_is_not_named_as_filling() {
+    let mut session = session_filling_by_18_50(40.0);
+    session.limit.resets_at = Some("2026-11-04T18:00:00Z".to_string());
+
+    let line = line_for(vec![
+        timed(
+            "weekly_all",
+            30.0,
+            "2026-11-08T02:59:59.945600+00:00",
+            pace(PaceState::Under, PaceBasis::Usual, false),
+        ),
+        session,
+    ]);
+
+    assert!(!line.contains("100%"), "{line}");
+}
+
+#[test]
 fn when_every_limit_reset_since_the_reading_the_line_says_so() {
     let limits = AccountLimits {
         source: LimitSource::GetUsage,
@@ -201,6 +384,7 @@ fn when_every_limit_reset_since_the_reading_the_line_says_so() {
                     credits: None,
                 },
                 pace: None,
+                forecast: None,
             },
         ],
     };

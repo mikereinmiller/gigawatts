@@ -168,6 +168,13 @@ pub struct PacedLimit {
     #[serde(flatten)]
     pub limit: Limit,
     pub pace: Option<LimitPace>,
+    #[serde(default)]
+    pub forecast: Option<LimitForecast>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct LimitForecast {
+    pub full_at_ms: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]

@@ -119,14 +119,19 @@ pub fn build(
                     )?,
                     _ => Vec::new(),
                 };
+                let limit_pace = pace::limit_pace(
+                    &limit,
+                    reading.fetched_at_ms,
+                    now_ms,
+                    &history,
+                    credit_reset.as_ref(),
+                );
+                let forecast = limit_pace.as_ref().and_then(|limit_pace| {
+                    pace::limit_forecast(&limit, limit_pace, reading.fetched_at_ms)
+                });
                 limits.push(PacedLimit {
-                    pace: pace::limit_pace(
-                        &limit,
-                        reading.fetched_at_ms,
-                        now_ms,
-                        &history,
-                        credit_reset.as_ref(),
-                    ),
+                    pace: limit_pace,
+                    forecast,
                     limit,
                 });
             }

@@ -1,5 +1,7 @@
 use crate::config::{CreditReset, days_from_civil, epoch_ms_from_text};
-use crate::contract::{DollarPace, Limit, LimitPace, PaceBasis, PaceState, SessionSpend};
+use crate::contract::{
+    DollarPace, Limit, LimitForecast, LimitPace, PaceBasis, PaceState, SessionSpend,
+};
 use crate::sources::claude_json::Account;
 use crate::store::{self, LimitPoint, Store};
 
@@ -94,6 +96,25 @@ pub fn limit_pace(
         window_end_ms: end_ms,
         provisional,
     })
+}
+
+const FORECAST_AFTER_WINDOW_SHARE: f64 = 0.1;
+
+pub fn limit_forecast(
+    limit: &Limit,
+    pace: &LimitPace,
+    fetched_at_ms: i64,
+) -> Option<LimitForecast> {
+    let elapsed_ms = (fetched_at_ms - pace.window_start_ms) as f64;
+    let window_ms = (pace.window_end_ms - pace.window_start_ms) as f64;
+    if limit.percent <= 0.0 || limit.percent >= 100.0 {
+        return None;
+    }
+    if elapsed_ms < window_ms * FORECAST_AFTER_WINDOW_SHARE {
+        return None;
+    }
+    let full_at_ms = pace.window_start_ms + (elapsed_ms * 100.0 / limit.percent).round() as i64;
+    (full_at_ms < pace.window_end_ms).then_some(LimitForecast { full_at_ms })
 }
 
 fn usual_weekly_percent(

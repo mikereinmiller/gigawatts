@@ -4,10 +4,10 @@ use std::path::Path;
 use gigawatts::accounts::Attribution;
 use gigawatts::config::{Config, epoch_ms_from_text};
 use gigawatts::contract::{
-    DollarPace, Limit, LimitPace, PaceBasis, PaceState, SessionSpend, Share,
+    DollarPace, Limit, LimitForecast, LimitPace, PaceBasis, PaceState, SessionSpend, Share,
 };
 use gigawatts::ingest::ingest_tree;
-use gigawatts::pace::{active_sessions, dollar_pace, fastest_session, limit_pace};
+use gigawatts::pace::{active_sessions, dollar_pace, fastest_session, limit_forecast, limit_pace};
 use gigawatts::pricing::PriceTable;
 use gigawatts::sources::claude_json::Account;
 use gigawatts::sources::get_usage;
@@ -239,6 +239,111 @@ fn the_5_hour_limit_compares_with_even_pace_through_its_window() {
     assert_eq!(pace.state, PaceState::Under);
     assert_eq!(pace.window_start_ms, utc_ms("2026-11-04T18:59:59.945Z"));
     assert!((pace.expected_percent - 40.0).abs() < 1e-9);
+}
+
+fn forecast_at(limit: &Limit, fetched_at: &str) -> Option<LimitForecast> {
+    let fetched_at_ms = utc_ms(fetched_at);
+    let pace = limit_pace(limit, fetched_at_ms, fetched_at_ms, &[], None).unwrap();
+    limit_forecast(limit, &pace, fetched_at_ms)
+}
+
+#[test]
+fn a_session_limit_at_60_percent_two_hours_in_reaches_100_percent_80_minutes_later() {
+    let limit = timed_limit("session", 60.0, "2026-11-11T15:00:00Z");
+
+    let forecast = forecast_at(&limit, "2026-11-11T12:00:00Z");
+
+    assert_eq!(
+        forecast,
+        Some(LimitForecast {
+            full_at_ms: utc_ms("2026-11-11T13:20:00Z"),
+        })
+    );
+}
+
+#[test]
+fn a_limit_has_no_forecast_before_a_tenth_of_its_window_has_passed() {
+    let limit = timed_limit("session", 50.0, "2026-11-11T15:00:00Z");
+
+    assert_eq!(forecast_at(&limit, "2026-11-11T10:29:59Z"), None);
+    assert_eq!(
+        forecast_at(&limit, "2026-11-11T10:30:00Z"),
+        Some(LimitForecast {
+            full_at_ms: utc_ms("2026-11-11T11:00:00Z"),
+        })
+    );
+}
+
+#[test]
+fn a_limit_at_0_percent_has_no_forecast() {
+    let limit = timed_limit("session", 0.0, "2026-11-11T15:00:00Z");
+
+    assert_eq!(forecast_at(&limit, "2026-11-11T12:00:00Z"), None);
+}
+
+#[test]
+fn a_limit_that_reaches_100_percent_at_or_after_its_reset_has_no_forecast() {
+    let after = timed_limit("session", 30.0, "2026-11-11T15:00:00Z");
+    let at = timed_limit("session", 40.0, "2026-11-11T15:00:00Z");
+
+    assert_eq!(forecast_at(&after, "2026-11-11T12:00:00Z"), None);
+    assert_eq!(forecast_at(&at, "2026-11-11T12:00:00Z"), None);
+}
+
+#[test]
+fn a_limit_already_at_100_percent_has_no_forecast() {
+    let limit = timed_limit("session", 100.0, "2026-11-11T15:00:00Z");
+
+    assert_eq!(forecast_at(&limit, "2026-11-11T12:00:00Z"), None);
+}
+
+#[test]
+fn a_weekly_limit_at_40_percent_two_days_in_reaches_100_percent_on_day_five() {
+    let limit = timed_limit("weekly_all", 40.0, "2026-11-08T04:00:00Z");
+
+    assert_eq!(
+        forecast_at(&limit, "2026-11-03T04:00:00Z"),
+        Some(LimitForecast {
+            full_at_ms: utc_ms("2026-11-06T04:00:00Z"),
+        })
+    );
+}
+
+#[test]
+fn monthly_credits_forecast_from_their_window_with_or_without_credit_reset() {
+    let credits = enterprise_credits();
+    let unset_fetch = utc_ms("2026-11-04T00:00:00Z");
+    let unset = limit_pace(&credits, unset_fetch, unset_fetch, &[], None).unwrap();
+
+    assert!(unset.provisional);
+    assert_eq!(
+        limit_forecast(&credits, &unset, unset_fetch),
+        Some(LimitForecast {
+            full_at_ms: utc_ms("2026-11-16T00:00:00Z"),
+        })
+    );
+
+    let set = Config::parse(
+        &format!("[accounts.\"{WORK}\"]\ncredit_reset = 2026-10-10T00:00:00Z\n"),
+        Path::new("/home/me"),
+    )
+    .unwrap();
+    let set_fetch = utc_ms("2026-11-13T00:00:00Z");
+    let set_pace = limit_pace(
+        &credits,
+        set_fetch,
+        set_fetch,
+        &[],
+        set.account(&work()).credit_reset.as_ref(),
+    )
+    .unwrap();
+
+    assert_eq!(
+        limit_forecast(&credits, &set_pace, set_fetch),
+        Some(LimitForecast {
+            full_at_ms: utc_ms("2026-11-25T00:00:00Z"),
+        })
+    );
 }
 
 #[test]

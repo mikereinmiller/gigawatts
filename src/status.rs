@@ -42,10 +42,12 @@ fn limit_part(
     now_ms: i64,
     local_minute: &dyn Fn(i64) -> String,
 ) -> String {
-    let closest = limits
-        .iter()
-        .filter(|limit| !has_reset(limit, now_ms))
-        .max_by(|a, b| a.limit.percent.total_cmp(&b.limit.percent));
+    let unreset = || limits.iter().filter(|limit| !has_reset(limit, now_ms));
+    let closest = unreset().max_by(|a, b| a.limit.percent.total_cmp(&b.limit.percent));
+    let filling_first = unreset()
+        .filter_map(|limit| limit.forecast.map(|forecast| (limit, forecast.full_at_ms)))
+        .min_by_key(|(_, full_at_ms)| *full_at_ms)
+        .map(|(limit, _)| limit);
     let elapsed_ms = now_ms - fetched_at_ms;
     match closest {
         None => format!(
@@ -54,9 +56,19 @@ fn limit_part(
         ),
         Some(limit) => {
             let mut parts = vec![closest_limit(limit)];
+            if let Some(forecast) = forecast_phrase(limit, local_minute) {
+                parts.push(forecast);
+            }
             if let Some(resets_ms) = resets_ms(limit) {
                 parts.push(format!("resets {}", local_minute(resets_ms)));
             }
+            let another_filling = filling_first
+                .filter(|filling| !std::ptr::eq(*filling, limit))
+                .and_then(|filling| {
+                    forecast_phrase(filling, local_minute)
+                        .map(|forecast| format!("{} {forecast}", limit_name(&filling.limit)))
+                });
+            parts.extend(another_filling);
             parts.push(format!("read {}", age(elapsed_ms)));
             if elapsed_ms > MAY_MISS_OUTSIDE_USE_MS {
                 parts.push("may not include use outside Claude Code".to_string());
@@ -83,6 +95,23 @@ fn closest_limit(shown: &PacedLimit) -> String {
         text.push_str(&format!(" {}", pace_phrase(pace)));
     }
     text
+}
+
+fn forecast_phrase(shown: &PacedLimit, local_minute: &dyn Fn(i64) -> String) -> Option<String> {
+    let forecast = shown.forecast?;
+    Some(format!(
+        "100% by {}{}",
+        local_minute(forecast.full_at_ms),
+        provisional_forecast(shown)
+    ))
+}
+
+pub(crate) fn provisional_forecast(shown: &PacedLimit) -> &'static str {
+    if shown.pace.as_ref().is_some_and(|pace| pace.provisional) {
+        " (provisional)"
+    } else {
+        ""
+    }
 }
 
 pub(crate) fn pace_phrase(pace: &LimitPace) -> String {
