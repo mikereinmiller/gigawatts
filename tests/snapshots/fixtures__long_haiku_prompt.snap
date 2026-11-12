@@ -3,7 +3,7 @@ source: tests/fixtures.rs
 expression: "check_costs(\"long-prompt\")"
 ---
 Checked 3 session-model pairs in 1 sessions from 10 files. 0 sessions have no cost-state and were skipped.
-Prices: built-in table copied 2026-11-02 from https://platform.claude.com/docs/en/about-claude/pricing.md
+Prices: built-in table copied 2026-11-11 from https://platform.claude.com/docs/en/about-claude/pricing.md
 
 model                         pairs  exact    rate    same-token exact       priced     recorded    share
 claude-fable-5-1                  1      0    0.0%           0/0             $12.63       $15.08    83.7%

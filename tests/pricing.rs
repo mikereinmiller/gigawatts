@@ -157,3 +157,26 @@ fn unknown_models_have_no_price() {
 
     assert_eq!(PriceTable::built_in().price(&unknown), None);
 }
+
+#[test]
+fn fable_5_2_and_mythos_5_2_have_built_in_prices_including_fast_mode() {
+    let tokens = Tokens {
+        input: 1_000_000,
+        cache_write_5m: 1_000_000,
+        cache_write_1h: 1_000_000,
+        cache_read: 1_000_000,
+        output: 1_000_000,
+        web_searches: 0,
+    };
+
+    for model in ["claude-fable-5-2", "claude-mythos-5-2"] {
+        assert_cost(
+            price(&request(model, tokens.clone(), "global", "standard")),
+            74.2,
+        );
+        assert_cost(
+            price(&request(model, tokens.clone(), "global", "fast")),
+            148.4,
+        );
+    }
+}

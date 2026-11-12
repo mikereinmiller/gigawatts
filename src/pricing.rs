@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::sources::transcript::{Request, Tokens};
 
 pub const TABLE_SOURCE: &str = "https://platform.claude.com/docs/en/about-claude/pricing.md";
-pub const TABLE_DATE: &str = "2026-11-02";
+pub const TABLE_DATE: &str = "2026-11-11";
 
 const WEB_SEARCH_USD: f64 = 10.0 / 1000.0;
 const US_GEO_MULTIPLIER: f64 = 1.1;
@@ -108,6 +108,7 @@ impl ModelPrices {
     }
 }
 
+const FABLE_5_2: Prices = Prices::new(8.0, 10.0, 16.0, 0.20, 40.0);
 const FABLE_5_1: Prices = Prices::new(10.0, 12.5, 20.0, 0.25, 50.0);
 const FABLE_5: Prices = Prices::new(10.0, 12.5, 20.0, 1.0, 50.0);
 const OPUS_5_5: Prices = Prices::new(4.0, 5.0, 8.0, 0.20, 20.0);
@@ -121,6 +122,10 @@ const HAIKU_5_5_LONG: Prices = Prices::new(0.50, 0.625, 1.0, 0.05, 2.50);
 const HAIKU_4_5: Prices = Prices::new(1.0, 1.25, 2.0, 0.10, 5.0);
 const HAIKU_3_5: Prices = Prices::new(0.80, 1.0, 1.60, 0.08, 4.0);
 
+const FAST_FABLE_5_2: FastPrices = FastPrices {
+    input: 16.0,
+    output: 80.0,
+};
 const FAST_OPUS_5_5: FastPrices = FastPrices {
     input: 8.0,
     output: 40.0,
@@ -138,6 +143,8 @@ fn built_in_models() -> HashMap<&'static str, ModelPrices> {
         fast: Some(fast),
     };
     HashMap::from([
+        ("claude-fable-5-2", with_fast(FABLE_5_2, FAST_FABLE_5_2)),
+        ("claude-mythos-5-2", with_fast(FABLE_5_2, FAST_FABLE_5_2)),
         ("claude-fable-5-1", standard(FABLE_5_1)),
         ("claude-mythos-5-1", standard(FABLE_5_1)),
         ("claude-fable-5", standard(FABLE_5)),
