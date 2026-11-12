@@ -158,6 +158,9 @@ h3 { font-size: var(--text-xs); line-height: 1.33; margin: 0 0 var(--space-3); f
 .limit-chart .limit-head { display: flex; justify-content: space-between; gap: var(--space-4); font-size: var(--text-sm); color: var(--ink-2); margin-bottom: var(--space-2); }
 .limit-chart .limit-head b { color: var(--ink); font-weight: 600; }
 .limits-account { font-size: var(--text-md); margin: var(--space-5) 0 var(--space-3); }
+.problems { background: var(--surface); border: 1px solid color-mix(in srgb, var(--warning) 45%, var(--ring)); border-radius: 14px; padding: var(--space-4) var(--pad); margin: 0 0 var(--space-6); font-size: var(--text-sm); }
+.problems ul { list-style: none; margin: var(--space-3) 0 0; padding: 0; display: grid; gap: var(--space-2); }
+.problems .faint { color: var(--muted); }
 
 .chart svg { display: block; width: 100%; height: auto; }
 .chart text { fill: var(--muted); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
@@ -363,8 +366,8 @@ tbody tr.loading td { color: var(--muted); font-size: var(--text-sm); height: 36
   </div>
 </header>
 <p class="source" id="source">Loading from the history database…</p>
+<div class="problems" id="problems" role="status" hidden></div>
 <div class="stack" id="content"></div>
-<p class="source" id="problems"></p>
 </main>
 <div class="panel-backdrop" id="backdrop"></div>
 <aside class="panel" id="panel" aria-label="Details" aria-hidden="true"></aside>
@@ -2502,9 +2505,31 @@ function render() {
   if (advice) sections.push(advice);
   sections.push(biggestSessions(view));
   document.getElementById('content').replaceChildren(...sections);
-  const count = latest.data.problems.length;
-  document.getElementById('problems').textContent = count === 0 ? '' :
-    `${count} ${count === 1 ? 'problem' : 'problems'} with the data. \`gigawatts doctor\` lists ${count === 1 ? 'it' : 'them'}.`;
+  drawProblems();
+}
+
+function drawProblems() {
+  const box = document.getElementById('problems');
+  const problems = latest.data.problems.filter(problem => state.account === ALL || !problem.account || problem.account === state.account);
+  box.hidden = problems.length === 0;
+  if (!problems.length) return box.replaceChildren();
+  const one = problems.length === 1;
+  const list = element('ul');
+  for (const problem of problems) {
+    const item = element('li');
+    const since = problem.since ? ` · since ${/^\d{4}-\d{2}-\d{2}/.test(problem.since) ? shortDate(problem.since.slice(0, 10)) : problem.since}` : '';
+    item.append(element('div', capitalized(problem.affects) + since), element('div', capitalized(problem.cause), 'faint'));
+    list.append(item);
+  }
+  const lead = element('span', `${one ? 'A problem with the data makes' : `${problems.length} problems with the data make`} some numbers here wrong. `, 'status-line warning');
+  const command = element('span');
+  command.append(element('code', 'gigawatts doctor'), ` says how to fix ${one ? 'it' : 'them'}.`);
+  lead.append(command);
+  box.replaceChildren(lead, list);
+}
+
+function capitalized(text) {
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
 function onAddressChange() {

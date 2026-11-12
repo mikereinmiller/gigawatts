@@ -19,6 +19,8 @@ From the old skills, the ideas that held up are credits left and how long they l
 
 One page, read top to bottom, one account at a time.
 
+When `gigawatts doctor` lists a problem, a box above the headline names what each one makes wrong and since when, with its cause, so a dip in a chart isn't taken at face value. The fix steps stay in `doctor`.
+
 1. **Filter row.** One toolbar: an account picker (each tracked account with its spend today, plus All accounts), a range picker, any scope chips, and Export. The range picker's button names the preset and its dates ("This month | Nov 1–11"), and its menu holds the presets with a custom from-and-to form below them. Account is context you switch rarely and range is a filter you change often, so both are menus behind one button each rather than tab bars, which keeps the row to one line on a phone. Everything below follows both. The view is kept in the address, so a reload or a bookmark returns to it.
 2. **Headline row, at most four tiles.**
    - *Spend* (the hero): the range's total, with the change against the previous period. This month compares with the same days of last month (Nov 1–11 with Oct 1–11), and last month with the whole month before, as monthly reporting does. Other ranges compare with the same number of days just before them. Every comparison names its dates. History counts as starting the day after the earliest record, because Claude Code's transcript cleanup usually cuts that first day part-way; a comparison that reaches further back says "No comparison" instead of showing a ratio.
