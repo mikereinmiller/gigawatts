@@ -3,7 +3,9 @@ use serde::{Deserialize, Serialize};
 
 pub const SCHEMA_VERSION: u32 = 2;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema, clap::ValueEnum)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, clap::ValueEnum,
+)]
 #[serde(rename_all = "lowercase")]
 pub enum Range {
     Today,
@@ -12,7 +14,9 @@ pub enum Range {
     All,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema, clap::ValueEnum)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, clap::ValueEnum,
+)]
 #[serde(rename_all = "lowercase")]
 pub enum GroupBy {
     Repo,
@@ -34,7 +38,7 @@ impl GroupBy {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum Level {
     Repo,
@@ -61,7 +65,7 @@ impl Level {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum CostStatus {
     Estimated,
@@ -69,14 +73,14 @@ pub enum CostStatus {
     Adjusted,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct DrillStep {
     pub level: Level,
     pub key: String,
     pub label: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct DataResponse {
     pub schema_version: u32,
     pub range: Range,
@@ -89,7 +93,7 @@ pub struct DataResponse {
     pub problems: Vec<Problem>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct DataRow {
     pub account: Option<String>,
     pub account_label: String,
@@ -161,6 +165,21 @@ pub struct AccountLimits {
     pub source: LimitSource,
     pub fetched_at_ms: i64,
     pub limits: Vec<PacedLimit>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct LimitsResponse {
+    pub schema_version: u32,
+    pub accounts: Vec<LatestLimits>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct LatestLimits {
+    pub account: String,
+    pub account_label: String,
+    pub source: LimitSource,
+    pub fetched_at_ms: i64,
+    pub limits: Vec<Limit>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]

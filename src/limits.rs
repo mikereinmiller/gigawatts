@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use crate::accounts::{Directory, attribution_for};
 use crate::config::Config;
-use crate::contract::{Limit, LimitSource};
+use crate::contract::{LatestLimits, Limit, LimitSource, LimitsResponse, SCHEMA_VERSION};
 use crate::sources::claude_json::{Account, read_cached_usage, read_login};
 use crate::sources::get_usage::{self, Runner};
 use crate::store::{self, LimitsReading, Store};
@@ -247,6 +247,7 @@ pub fn refresh(
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct LimitsRow {
+    pub account: Account,
     pub label: String,
     pub source: LimitSource,
     pub fetched_at_ms: i64,
@@ -284,6 +285,7 @@ pub fn rows(store: &Store, config: &Config) -> store::Result<Vec<LimitsRow>> {
             });
         }
         rows.push(LimitsRow {
+            account: account.clone(),
             label: settings
                 .label
                 .or_else(|| emails.get(&account).cloned().flatten())
@@ -298,6 +300,22 @@ pub fn rows(store: &Store, config: &Config) -> store::Result<Vec<LimitsRow>> {
         });
     }
     Ok(rows)
+}
+
+pub fn response(rows: &[LimitsRow]) -> LimitsResponse {
+    LimitsResponse {
+        schema_version: SCHEMA_VERSION,
+        accounts: rows
+            .iter()
+            .map(|row| LatestLimits {
+                account: row.account.to_string(),
+                account_label: row.label.clone(),
+                source: row.source,
+                fetched_at_ms: row.fetched_at_ms,
+                limits: row.limits.iter().map(|shown| shown.limit.clone()).collect(),
+            })
+            .collect(),
+    }
 }
 
 pub fn render(rows: &[LimitsRow], now_ms: i64) -> String {

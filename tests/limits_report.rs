@@ -21,6 +21,9 @@ fn window(kind: &str, scope: Option<&str>, percent: f64, severity: &str) -> Limi
 fn each_account_shows_its_limits_with_source_age_and_reset() {
     let rows = vec![
         LimitsRow {
+            account: "00000000-0000-4000-8000-00000000000a/00000000-0000-4000-8000-0000000000f0"
+                .parse()
+                .unwrap(),
             label: "Ultra".to_string(),
             source: LimitSource::GetUsage,
             fetched_at_ms: NOW - 3 * MINUTE,
@@ -41,6 +44,9 @@ fn each_account_shows_its_limits_with_source_age_and_reset() {
             ],
         },
         LimitsRow {
+            account: "00000000-0000-4000-8000-00000000000b/00000000-0000-4000-8000-0000000000f0"
+                .parse()
+                .unwrap(),
             label: "Enterprise".to_string(),
             source: LimitSource::CachedUsageUtilization,
             fetched_at_ms: NOW - 50 * 60 * MINUTE,

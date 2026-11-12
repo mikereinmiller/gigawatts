@@ -192,7 +192,7 @@ It shows one account at a time, starting with the one used most recently, with a
 | `gigawatts` | Opens the full view, starting the engine if needed |
 | `gigawatts status` | Prints one line: the closest limit with its pace, "100% by <time>" for the fullest limit and for whichever other limit fills first, when either is on course to fill before it resets, and today's spend against usual. `--account` picks an account and `--all` prints one line per account. Provisional until used for a while |
 | `gigawatts data` | Answers a history query by range and grouping. A readable table by default, versioned JSON with `--json` |
-| `gigawatts schema` | Prints the JSON Schema for the snapshot and `data --json` |
+| `gigawatts schema` | Prints the JSON Schema for the snapshot, `data --json`, and `data --limits --json` |
 | `gigawatts accounts` | Lists accounts and their tracking state. `add <path>`, tracking on or off, and `forget <account>` to delete history |
 | `gigawatts service install` / `uninstall` | Adds or removes the login service |
 | `gigawatts stop` | Stops the engine |

@@ -7,7 +7,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 use gigawatts::accounts::{self, Directory};
 use gigawatts::check_costs::CheckReport;
 use gigawatts::config::{self, Config};
-use gigawatts::contract::{AccountToday, DataResponse, GroupBy, Range, Snapshot};
+use gigawatts::contract::{AccountToday, DataResponse, GroupBy, LimitsResponse, Range, Snapshot};
 use gigawatts::engine;
 use gigawatts::pace;
 use gigawatts::problems;
@@ -49,6 +49,9 @@ enum Command {
         /// Print each account's latest limits instead, after the running engine refreshes any over 10 minutes old
         #[arg(long, conflicts_with_all = ["range", "by", "drill"])]
         limits: bool,
+        /// Print versioned JSON instead of a table
+        #[arg(long)]
+        json: bool,
     },
     /// Print the closest limit with its pace and today's spend against usual, then ask the engine to refresh limits
     Status {
@@ -142,10 +145,16 @@ fn main() -> ExitCode {
     match command {
         Command::CheckCosts { path } => check_costs(path.unwrap_or_else(default_projects_dir)),
         Command::Ingest => ingest(),
-        Command::Data { limits: true, .. } => limits(),
         Command::Data {
-            range, by, drill, ..
-        } => data(range, by, &drill),
+            limits: true, json, ..
+        } => limits(json),
+        Command::Data {
+            range,
+            by,
+            drill,
+            json,
+            ..
+        } => data(range, by, &drill, json),
         Command::Status { account, all } => status(account.as_deref(), all),
         Command::Doctor => doctor(),
         Command::Accounts { action } => match action {
@@ -237,7 +246,7 @@ fn ingest() -> ExitCode {
     ExitCode::SUCCESS
 }
 
-fn data(range: Range, by: GroupBy, drill: &[String]) -> ExitCode {
+fn data(range: Range, by: GroupBy, drill: &[String], json: bool) -> ExitCode {
     let config = match load_config() {
         Ok(config) => config,
         Err(code) => return code,
@@ -259,7 +268,11 @@ fn data(range: Range, by: GroupBy, drill: &[String]) -> ExitCode {
     match response {
         Ok(mut response) => {
             gigawatts::data::label_accounts(&mut response, &config);
-            print!("{}", gigawatts::data::render(&response));
+            if json {
+                println!("{}", to_json(&response));
+            } else {
+                print!("{}", gigawatts::data::render(&response));
+            }
             ExitCode::SUCCESS
         }
         Err(gigawatts::data::Error::Store(error)) => {
@@ -273,7 +286,7 @@ fn data(range: Range, by: GroupBy, drill: &[String]) -> ExitCode {
     }
 }
 
-fn limits() -> ExitCode {
+fn limits(json: bool) -> ExitCode {
     let config = match load_config() {
         Ok(config) => config,
         Err(code) => return code,
@@ -286,6 +299,10 @@ fn limits() -> ExitCode {
         Err(code) => return code,
     };
     match gigawatts::limits::rows(&store, &config) {
+        Ok(rows) if json => {
+            println!("{}", to_json(&gigawatts::limits::response(&rows)));
+            ExitCode::SUCCESS
+        }
         Ok(rows) => {
             print!("{}", gigawatts::limits::render(&rows, now_ms()));
             ExitCode::SUCCESS
@@ -905,12 +922,14 @@ fn schema() -> ExitCode {
     let schemas = serde_json::json!({
         "snapshot": for_output().into_root_schema_for::<Snapshot>(),
         "data": for_output().into_root_schema_for::<DataResponse>(),
+        "limits": for_output().into_root_schema_for::<LimitsResponse>(),
     });
-    println!(
-        "{}",
-        serde_json::to_string_pretty(&schemas).expect("a JSON value always serializes")
-    );
+    println!("{}", to_json(&schemas));
     ExitCode::SUCCESS
+}
+
+fn to_json(value: &impl serde::Serialize) -> String {
+    serde_json::to_string_pretty(value).expect("contract types always serialize")
 }
 
 fn run_engine() -> ExitCode {
