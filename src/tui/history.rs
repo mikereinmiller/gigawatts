@@ -503,6 +503,7 @@ impl History {
             Range::Week => "this week",
             Range::Month => "this month",
             Range::All => "all time",
+            Range::Custom => "in this range",
         };
         match total {
             Some(total) => format!("Spending · ${total:.2} {range}"),
@@ -532,6 +533,7 @@ impl History {
                 Range::Week => "week",
                 Range::Month => "month",
                 Range::All => "all",
+                Range::Custom => "custom",
             };
             right.push(tab(name, range == self.range));
         }

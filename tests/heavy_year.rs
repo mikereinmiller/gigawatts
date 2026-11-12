@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 
 use gigawatts::accounts::Attribution;
 use gigawatts::config::epoch_ms_from_text;
-use gigawatts::contract::{GroupBy, ProblemKind, Range};
+use gigawatts::contract::{GroupBy, Level, ProblemKind, Range};
 use gigawatts::data::query;
 use gigawatts::pace;
 use gigawatts::pricing::PriceTable;
@@ -489,6 +489,9 @@ fn a_heavy_year_with_90_day_retention_stays_small_and_fast() {
     };
     let year = year_by(GroupBy::Model);
     let year_by_repo = year_by(GroupBy::Repo);
+    let year_series = fastest_of_three(|| {
+        store.daily_costs(Level::Repo, None, None, &[], 10).unwrap();
+    });
     let year_by_branch = year_by(GroupBy::Branch);
     let year_drill = fastest_of_three(|| {
         query(
@@ -504,6 +507,7 @@ fn a_heavy_year_with_90_day_retention_stays_small_and_fast() {
     println!(
         "{:.1} MB, {} bytes per stored request, today {today:?}, year {year:?}, \
          by repo {year_by_repo:?}, by branch {year_by_branch:?}, drill {year_drill:?}, \
+         daily series by repo {year_series:?}, \
          problems {problems:?}, pace {pace:?}",
         bytes as f64 / 1024.0 / 1024.0,
         bytes / requests
@@ -530,6 +534,10 @@ fn a_heavy_year_with_90_day_retention_stays_small_and_fast() {
     assert!(
         year_by_branch <= MAX_YEAR,
         "the yearly report by branch took {year_by_branch:?}"
+    );
+    assert!(
+        year_series <= MAX_YEAR,
+        "the yearly daily series by repo took {year_series:?}"
     );
     assert!(
         year_drill <= MAX_YEAR,

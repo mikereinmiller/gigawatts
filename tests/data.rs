@@ -4,8 +4,8 @@ use std::path::Path;
 
 use gigawatts::accounts::Attribution;
 use gigawatts::config::{Config, Switch};
-use gigawatts::contract::{DataResponse, GroupBy, Range, SCHEMA_VERSION};
-use gigawatts::data::{label_accounts, query, render};
+use gigawatts::contract::{DataResponse, GroupBy, Level, Range, SCHEMA_VERSION};
+use gigawatts::data::{label_accounts, query, query_between, render};
 use gigawatts::ingest::ingest_tree;
 use gigawatts::pricing::PriceTable;
 use gigawatts::sources::claude_json::Account;
@@ -404,5 +404,207 @@ fn tracking_a_forgotten_account_again_takes_a_shared_sessions_cost_state_back() 
     assert_eq!(
         not_in_transcript_by_account(&store),
         vec![(Some(enterprise.to_string()), 998)]
+    );
+}
+
+#[test]
+fn a_custom_range_leaves_out_the_day_after_until() {
+    let (_dir, store) =
+        store_with_requests_on(&["2026-01-04", "2026-01-05", "2026-01-06", "2026-01-07"]);
+
+    let response = query_between(
+        &store,
+        Some("2026-01-05"),
+        Some("2026-01-06"),
+        GroupBy::Model,
+        &[],
+        "2026-01-08",
+    )
+    .unwrap();
+
+    assert_eq!(response.range, Range::Custom);
+    assert_eq!(response.since.as_deref(), Some("2026-01-05"));
+    assert_eq!(response.until.as_deref(), Some("2026-01-06"));
+    let requests: u64 = response.rows.iter().map(|row| row.requests).sum();
+    assert_eq!(requests, 2);
+    assert!(
+        render(&response).starts_with("Cost by model, 2026-01-05 to 2026-01-06\n"),
+        "{}",
+        render(&response)
+    );
+}
+
+#[test]
+fn a_range_through_until_with_no_start_covers_every_earlier_day() {
+    let (_dir, store) = store_with_requests_on(&["2025-06-01", "2026-01-05", "2026-01-06"]);
+
+    let response = query_between(
+        &store,
+        None,
+        Some("2026-01-05"),
+        GroupBy::Model,
+        &[],
+        "2026-01-08",
+    )
+    .unwrap();
+
+    let requests: u64 = response.rows.iter().map(|row| row.requests).sum();
+    assert_eq!(requests, 2);
+    assert!(
+        render(&response).starts_with("Cost by model, all history through 2026-01-05\n"),
+        "{}",
+        render(&response)
+    );
+}
+
+fn cents(cost: f64) -> i64 {
+    (cost * 100.0).round() as i64
+}
+
+fn store_with_unlogged_spend_and_expired_requests() -> (tempfile::TempDir, Store) {
+    let dir = tempfile::tempdir().unwrap();
+    let projects = dir.path().join("projects");
+    fs::create_dir_all(&projects).unwrap();
+    let days = [
+        "2025-12-20",
+        "2025-12-31",
+        "2026-01-02",
+        "2026-01-05",
+        "2026-01-06",
+        "2026-01-07",
+    ];
+    let lines: String = days
+        .iter()
+        .enumerate()
+        .map(|(n, day)| request_line(&format!("r{n}"), day))
+        .collect::<String>()
+        + &cost_state_line("s1", 5_000_000, 100_000, 40.0);
+    fs::write(projects.join("s.jsonl"), lines).unwrap();
+    let mut store = Store::open(&dir.path().join("history.sqlite3")).unwrap();
+    ingest_tree(
+        &mut store,
+        &projects,
+        &PriceTable::built_in(),
+        &Attribution::default(),
+        &Resolver::default(),
+    )
+    .unwrap();
+    store.expire_requests(7, "2026-01-08").unwrap();
+    (dir, store)
+}
+
+#[test]
+fn each_days_series_adds_up_to_the_ranges_total() {
+    let (_dir, store) = store_with_unlogged_spend_and_expired_requests();
+    let today = "2026-01-08";
+    let all = query(&store, Range::All, GroupBy::Model, &[], today).unwrap();
+    assert!(
+        all.rows.iter().any(|row| row.not_in_transcript),
+        "the fixture needs unlogged spend: {:?}",
+        all.rows
+    );
+    let sessions = query(
+        &store,
+        Range::All,
+        GroupBy::Model,
+        &["claude-opus-5-5"],
+        today,
+    )
+    .unwrap();
+    assert!(
+        sessions.rows.iter().any(|row| row.key.is_none()),
+        "the fixture needs days before requests_kept_from: {:?}",
+        sessions.rows
+    );
+    let custom = query_between(
+        &store,
+        Some("2025-12-25"),
+        Some("2026-01-05"),
+        GroupBy::Model,
+        &[],
+        today,
+    )
+    .unwrap();
+    let responses = [
+        query(&store, Range::Week, GroupBy::Model, &[], today).unwrap(),
+        query(&store, Range::Month, GroupBy::Model, &[], today).unwrap(),
+        all,
+        custom,
+    ];
+
+    for response in responses {
+        let total: f64 = response.rows.iter().filter_map(|row| row.cost_usd).sum();
+        for (level, top_n) in [(Level::Model, 10), (Level::Repo, 1)] {
+            let series = store
+                .daily_costs(
+                    level,
+                    response.since.as_deref(),
+                    response.until.as_deref(),
+                    &[],
+                    top_n,
+                )
+                .unwrap();
+            let summed: f64 = series.iter().map(|day| day.cost_usd).sum();
+            assert_eq!(
+                cents(summed),
+                cents(total),
+                "{level:?} from {:?} to {:?}: {series:?}",
+                response.since,
+                response.until
+            );
+            assert!(series.iter().all(|day| {
+                response
+                    .since
+                    .as_deref()
+                    .is_none_or(|since| day.day.as_str() >= since)
+                    && response
+                        .until
+                        .as_deref()
+                        .is_none_or(|until| day.day.as_str() <= until)
+            }));
+        }
+    }
+}
+
+#[test]
+fn spend_past_the_top_n_folds_into_other_on_each_day() {
+    let dir = tempfile::tempdir().unwrap();
+    let projects = dir.path().join("projects");
+    fs::create_dir_all(&projects).unwrap();
+    let line = |request: &str, day: &str, model: &str, output: u64| {
+        format!(
+            r#"{{"type":"assistant","sessionId":"s1","requestId":"{request}","timestamp":"{}","message":{{"model":"{model}","usage":{{"input_tokens":0,"output_tokens":{output}}}}}}}"#,
+            local_noon_in_utc(day)
+        ) + "\n"
+    };
+    let lines = line("r1", "2026-01-05", "claude-opus-5-5", 1_000_000)
+        + &line("r2", "2026-01-05", "claude-sonnet-5-5", 1_000_000)
+        + &line("r3", "2026-01-06", "claude-haiku-5-5", 1_000_000)
+        + &line("r4", "2026-01-06", "claude-opus-5-5", 1_000_000);
+    fs::write(projects.join("s.jsonl"), lines).unwrap();
+    let mut store = Store::open(&dir.path().join("history.sqlite3")).unwrap();
+    ingest_tree(
+        &mut store,
+        &projects,
+        &PriceTable::built_in(),
+        &Attribution::default(),
+        &Resolver::default(),
+    )
+    .unwrap();
+
+    let series = store.daily_costs(Level::Model, None, None, &[], 1).unwrap();
+
+    let days: Vec<(&str, &str, bool)> = series
+        .iter()
+        .map(|day| (day.day.as_str(), day.label.as_str(), day.other))
+        .collect();
+    assert_eq!(
+        days,
+        [
+            ("2026-01-05", "claude-opus-5-5", false),
+            ("2026-01-05", "other", true),
+            ("2026-01-06", "claude-opus-5-5", false),
+            ("2026-01-06", "other", true),
+        ]
     );
 }

@@ -12,6 +12,8 @@ pub enum Range {
     Week,
     Month,
     All,
+    #[value(skip)]
+    Custom,
 }
 
 #[derive(
@@ -89,6 +91,8 @@ pub struct DataResponse {
     pub level: Level,
     pub today: String,
     pub since: Option<String>,
+    #[serde(default)]
+    pub until: Option<String>,
     pub rows: Vec<DataRow>,
     pub problems: Vec<Problem>,
 }

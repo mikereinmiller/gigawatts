@@ -247,3 +247,83 @@ fn data_limits_json_prints_each_accounts_latest_limits() {
         ]
     );
 }
+
+#[test]
+fn data_since_and_until_print_that_range() {
+    let transcript = opus_request("r1", "2026-01-04T12:00:00Z", 1_000, 0)
+        + &opus_request("r2", "2026-01-05T12:00:00Z", 1_000, 0)
+        + &opus_request("r3", "2026-01-06T12:00:00Z", 1_000, 0);
+    let home = logged_in_home(&transcript);
+    let ingested = gigawatts(Some(home.path()), home.path(), &["ingest"]);
+    assert_eq!(ingested.status.code(), Some(0), "{ingested:?}");
+
+    let output = gigawatts(
+        Some(home.path()),
+        home.path(),
+        &[
+            "data",
+            "--since",
+            "2026-01-05",
+            "--until",
+            "2026-01-05",
+            "--json",
+        ],
+    );
+
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    let response: gigawatts::contract::DataResponse =
+        serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(response.range, gigawatts::contract::Range::Custom);
+    assert_eq!(response.since.as_deref(), Some("2026-01-05"));
+    assert_eq!(response.until.as_deref(), Some("2026-01-05"));
+    assert_eq!(response.rows.iter().map(|row| row.requests).sum::<u64>(), 1);
+}
+
+#[test]
+fn data_rejects_a_date_that_isnt_on_the_calendar() {
+    let home = logged_in_home("");
+
+    let output = gigawatts(
+        Some(home.path()),
+        home.path(),
+        &["data", "--since", "2026-02-30"],
+    );
+
+    assert_eq!(output.status.code(), Some(2), "{output:?}");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("2026-02-30 isn't a date"), "{stderr}");
+}
+
+#[test]
+fn data_rejects_a_range_that_ends_before_it_starts() {
+    let home = logged_in_home("");
+
+    let output = gigawatts(
+        Some(home.path()),
+        home.path(),
+        &["data", "--since", "2026-01-06", "--until", "2026-01-05"],
+    );
+
+    assert_eq!(output.status.code(), Some(2), "{output:?}");
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "gigawatts: --until 2026-01-05 is before --since 2026-01-06.\n"
+    );
+}
+
+#[test]
+fn data_since_conflicts_with_range() {
+    let home = logged_in_home("");
+
+    let output = gigawatts(
+        Some(home.path()),
+        home.path(),
+        &["data", "--range", "week", "--since", "2026-01-05"],
+    );
+
+    assert_eq!(output.status.code(), Some(2), "{output:?}");
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("cannot be used with"),
+        "{output:?}"
+    );
+}

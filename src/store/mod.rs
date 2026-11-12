@@ -24,7 +24,7 @@ mod totals;
 pub use limits::{LimitPoint, LimitsReading, UsageAdvice};
 pub use pace::{ClockSpend, CostFlags};
 pub use problems::{ModelSighting, PriceGap, UnrecognizedKind};
-pub use totals::{Filter, TopItem};
+pub use totals::{DailyCost, Filter, TopItem};
 
 #[derive(Debug)]
 pub enum Error {
@@ -710,7 +710,7 @@ impl Store {
     }
 
     pub fn totals_by_model(&self, since: Option<&str>) -> Result<Vec<DataRow>> {
-        self.totals(Level::Model, since, &[])
+        self.totals(Level::Model, since, None, &[])
     }
 }
 

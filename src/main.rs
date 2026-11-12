@@ -8,6 +8,7 @@ use gigawatts::accounts::{self, Directory};
 use gigawatts::check_costs::CheckReport;
 use gigawatts::config::{self, Config};
 use gigawatts::contract::{AccountToday, DataResponse, GroupBy, LimitsResponse, Range, Snapshot};
+use gigawatts::data::Days;
 use gigawatts::engine;
 use gigawatts::pace;
 use gigawatts::problems;
@@ -41,13 +42,19 @@ enum Command {
     Data {
         #[arg(long, value_enum, default_value = "today")]
         range: Range,
+        /// The first day to include, as YYYY-MM-DD in local time (default: the first day of history)
+        #[arg(long, value_parser = gigawatts::data::local_date, conflicts_with = "range")]
+        since: Option<String>,
+        /// The last day to include, as YYYY-MM-DD in local time (default: today)
+        #[arg(long, value_parser = gigawatts::data::local_date, conflicts_with = "range")]
+        until: Option<String>,
         #[arg(long, value_enum, default_value = "model")]
         by: GroupBy,
         /// Narrow to one row, by name or key: a repo, then its branch; any other grouping, its sessions. Repeat to go deeper
         #[arg(long)]
         drill: Vec<String>,
         /// Print each account's latest limits instead, after the running engine refreshes any over 10 minutes old
-        #[arg(long, conflicts_with_all = ["range", "by", "drill"])]
+        #[arg(long, conflicts_with_all = ["range", "since", "until", "by", "drill"])]
         limits: bool,
         /// Print versioned JSON instead of a table
         #[arg(long)]
@@ -150,11 +157,20 @@ fn main() -> ExitCode {
         } => limits(json),
         Command::Data {
             range,
+            since,
+            until,
             by,
             drill,
             json,
             ..
-        } => data(range, by, &drill, json),
+        } => {
+            let days = if since.is_some() || until.is_some() {
+                Days::Between(since, until)
+            } else {
+                Days::Range(range)
+            };
+            data(days, by, &drill, json)
+        }
         Command::Status { account, all } => status(account.as_deref(), all),
         Command::Doctor => doctor(),
         Command::Accounts { action } => match action {
@@ -246,7 +262,13 @@ fn ingest() -> ExitCode {
     ExitCode::SUCCESS
 }
 
-fn data(range: Range, by: GroupBy, drill: &[String], json: bool) -> ExitCode {
+fn data(days: Days, by: GroupBy, drill: &[String], json: bool) -> ExitCode {
+    if let Days::Between(Some(since), Some(until)) = &days
+        && until < since
+    {
+        eprintln!("gigawatts: --until {until} is before --since {since}.");
+        return ExitCode::from(2);
+    }
     let config = match load_config() {
         Ok(config) => config,
         Err(code) => return code,
@@ -256,18 +278,17 @@ fn data(range: Range, by: GroupBy, drill: &[String], json: bool) -> ExitCode {
         Err(code) => return code,
     };
     let drill: Vec<&str> = drill.iter().map(String::as_str).collect();
-    let response = store
-        .local_today()
-        .map_err(gigawatts::data::Error::from)
-        .and_then(|today| gigawatts::data::query(&store, range, by, &drill, &today))
-        .and_then(|mut response| {
-            response.problems = problems::collect(&store, &config.price_table())?;
-            response.problems.extend(engine::running_problems(&paths()));
-            Ok(response)
-        });
+    let response = gigawatts::data::answer(
+        &store,
+        &config,
+        &days,
+        &[],
+        by,
+        &drill,
+        engine::running_problems(&paths()),
+    );
     match response {
-        Ok(mut response) => {
-            gigawatts::data::label_accounts(&mut response, &config);
+        Ok(response) => {
             if json {
                 println!("{}", to_json(&response));
             } else {

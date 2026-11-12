@@ -1,3 +1,5 @@
+use std::collections::{BTreeMap, HashMap};
+
 use super::{Result, Store, reconcile};
 use crate::contract::{DataRow, Level};
 
@@ -6,6 +8,17 @@ pub struct TopItem {
     pub account: Option<String>,
     pub key: Option<String>,
     pub label: String,
+    pub cost_usd: f64,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DailyCost {
+    pub account: Option<String>,
+    pub day: String,
+    pub key: Option<String>,
+    pub label: String,
+    pub not_in_transcript: bool,
+    pub other: bool,
     pub cost_usd: f64,
 }
 
@@ -19,9 +32,9 @@ const DAILY_TOTALS: &str = "
     SELECT account_id, cwd_label, branch_label, skill_label, agent_label, model_label,
            NULL AS session_id, 0 AS missing, requests, input_tokens, output_tokens,
            cache_read_tokens, cache_write_5m_tokens + cache_write_1h_tokens AS cache_write_tokens,
-           web_searches, cost_usd
+           web_searches, cost_usd, day
     FROM daily_totals
-    WHERE day >= coalesce(?1, '')";
+    WHERE day BETWEEN ?1 AND ?2";
 
 const BEFORE_KEPT_REQUESTS: &str =
     "AND day < (SELECT value FROM store_settings WHERE key = 'requests_kept_from')";
@@ -31,19 +44,19 @@ const NOT_IN_TRANSCRIPT: &str = "
            NULL, NULL, missing.model_label,
            missing.session_id, 1, 0, missing.input_tokens, missing.output_tokens,
            missing.cache_read_tokens, missing.cache_write_5m_tokens + missing.cache_write_1h_tokens,
-           missing.web_searches, missing.cost_usd
+           missing.web_searches, missing.cost_usd, missing.day
     FROM not_in_transcript AS missing
     JOIN sessions ON sessions.id = missing.session_id
-    WHERE missing.day >= coalesce(?1, '')";
+    WHERE missing.day BETWEEN ?1 AND ?2";
 
 const REQUESTS: &str = "
     SELECT account_id, cwd_label, coalesce(head_branch_label, git_branch_label) AS branch_label,
            skill_label, agent_label, model_label, session_id, 0 AS missing, 1 AS requests,
            input_tokens, output_tokens, cache_read_tokens,
            cache_write_5m_tokens + cache_write_1h_tokens AS cache_write_tokens,
-           web_searches, cost_usd
+           web_searches, cost_usd, day
     FROM requests
-    WHERE day >= coalesce(?1, '')";
+    WHERE day BETWEEN ?1 AND ?2";
 
 const SPEND_JOINS: &str = "
     LEFT JOIN accounts ON accounts.id = spend.account_id
@@ -161,11 +174,53 @@ fn level_joins(level: Level) -> (&'static str, &'static str) {
     }
 }
 
-fn where_sql(filters: &[Filter]) -> String {
+pub(super) fn day_bounds<'a>(since: Option<&'a str>, until: Option<&'a str>) -> [&'a str; 2] {
+    [since.unwrap_or(""), until.unwrap_or("9999-12-31")]
+}
+
+fn spend_source(level: Level, filters: &[Filter]) -> String {
+    let spend = if level == Level::Session {
+        format!("{REQUESTS} UNION ALL {DAILY_TOTALS} {BEFORE_KEPT_REQUESTS}")
+    } else {
+        DAILY_TOTALS.to_string()
+    };
+    if only_unlogged_filters(filters) {
+        format!("{spend} UNION ALL {NOT_IN_TRANSCRIPT}")
+    } else {
+        spend
+    }
+}
+
+fn only_unlogged_filters(filters: &[Filter]) -> bool {
+    filters.iter().all(|filter| {
+        matches!(
+            filter.level,
+            Level::Model | Level::Repo | Level::Branch | Level::RepoBranch
+        )
+    })
+}
+
+fn unlogged_row(level: Level) -> (&'static str, &'static str) {
+    match level {
+        Level::Model | Level::Session => (key_sql(level), label_sql(level)),
+        _ => ("NULL", "'unlogged usage'"),
+    }
+}
+
+fn shown_apart_sql(level: Level) -> &'static str {
+    match level {
+        Level::Repo | Level::Branch | Level::RepoBranch => {
+            "(spend.missing AND spend.cwd_label IS NULL)"
+        }
+        _ => "spend.missing",
+    }
+}
+
+pub(super) fn where_sql(filters: &[Filter]) -> String {
     let conditions: Vec<String> = filters
         .iter()
         .enumerate()
-        .map(|(n, filter)| filter_sql(filter.level, n + 2))
+        .map(|(n, filter)| filter_sql(filter.level, n + 3))
         .collect();
     if conditions.is_empty() {
         String::new()
@@ -179,6 +234,7 @@ impl Store {
         &self,
         level: Level,
         since: Option<&str>,
+        until: Option<&str>,
         filters: &[Filter],
     ) -> Result<Vec<(Option<String>, String)>> {
         let spend = match level {
@@ -203,8 +259,8 @@ impl Store {
             label = label_sql(level),
             where_clause = where_sql(filters),
         );
-        let mut values: Vec<Option<&str>> = vec![since];
-        values.extend(filters.iter().map(|filter| Some(filter.key.as_str())));
+        let mut values: Vec<&str> = day_bounds(since, until).to_vec();
+        values.extend(filters.iter().map(|filter| filter.key.as_str()));
         let mut statement = self.connection.prepare_cached(&sql)?;
         let keys = statement
             .query_map(rusqlite::params_from_iter(values), |row| {
@@ -218,34 +274,12 @@ impl Store {
         &self,
         level: Level,
         since: Option<&str>,
+        until: Option<&str>,
         filters: &[Filter],
     ) -> Result<Vec<DataRow>> {
-        let spend = if level == Level::Session {
-            format!("{REQUESTS} UNION ALL {DAILY_TOTALS} {BEFORE_KEPT_REQUESTS}")
-        } else {
-            DAILY_TOTALS.to_string()
-        };
-        let only_models = filters.iter().all(|filter| {
-            matches!(
-                filter.level,
-                Level::Model | Level::Repo | Level::Branch | Level::RepoBranch
-            )
-        });
-        let source = if only_models {
-            format!("{spend} UNION ALL {NOT_IN_TRANSCRIPT}")
-        } else {
-            spend
-        };
-        let (missing_key, missing_label) = match level {
-            Level::Model | Level::Session => (key_sql(level), label_sql(level)),
-            _ => ("NULL", "'unlogged usage'"),
-        };
-        let separate = match level {
-            Level::Repo | Level::Branch | Level::RepoBranch => {
-                "(spend.missing AND spend.cwd_label IS NULL)"
-            }
-            _ => "spend.missing",
-        };
+        let source = spend_source(level, filters);
+        let (missing_key, missing_label) = unlogged_row(level);
+        let separate = shown_apart_sql(level);
         let status = if level == Level::Session {
             "session.cost_status"
         } else {
@@ -270,8 +304,8 @@ impl Store {
             key = key_sql(level),
             label = label_sql(level),
         );
-        let mut values: Vec<Option<&str>> = vec![since];
-        values.extend(filters.iter().map(|filter| Some(filter.key.as_str())));
+        let mut values: Vec<&str> = day_bounds(since, until).to_vec();
+        values.extend(filters.iter().map(|filter| filter.key.as_str()));
         let mut statement = self.connection.prepare_cached(&sql)?;
         let rows = statement.query_map(rusqlite::params_from_iter(values), |row| {
             let key: Option<String> = row.get(2)?;
@@ -296,6 +330,52 @@ impl Store {
         Ok(rows.collect::<rusqlite::Result<_>>()?)
     }
 
+    pub fn daily_costs(
+        &self,
+        level: Level,
+        since: Option<&str>,
+        until: Option<&str>,
+        filters: &[Filter],
+        top_n: usize,
+    ) -> Result<Vec<DailyCost>> {
+        let source = spend_source(level, filters);
+        let (missing_key, missing_label) = unlogged_row(level);
+        let separate = shown_apart_sql(level);
+        let where_clause = where_sql(filters);
+        let sql = format!(
+            "SELECT accounts.account_uuid || '/' || accounts.organization_uuid,
+                    spend.day,
+                    CASE WHEN {separate} THEN {missing_key} ELSE {key} END AS row_key,
+                    CASE WHEN {separate} THEN {missing_label} ELSE {label} END,
+                    {separate} AS shown_apart,
+                    coalesce(sum(cost_usd), 0)
+             FROM ({source}) AS spend
+             {SPEND_JOINS}
+             {where_clause}
+             GROUP BY spend.account_id, spend.day, shown_apart, row_key
+             ORDER BY spend.day",
+            key = key_sql(level),
+            label = label_sql(level),
+        );
+        let mut values: Vec<&str> = day_bounds(since, until).to_vec();
+        values.extend(filters.iter().map(|filter| filter.key.as_str()));
+        let mut statement = self.connection.prepare_cached(&sql)?;
+        let days = statement
+            .query_map(rusqlite::params_from_iter(values), |row| {
+                Ok(DailyCost {
+                    account: row.get(0)?,
+                    day: row.get(1)?,
+                    key: row.get(2)?,
+                    label: row.get(3)?,
+                    not_in_transcript: row.get(4)?,
+                    other: false,
+                    cost_usd: row.get(5)?,
+                })
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(fold_past_top(days, top_n))
+    }
+
     pub fn top_within(
         &self,
         level: Level,
@@ -314,7 +394,7 @@ impl Store {
             within_key = key_sql(within),
         );
         let mut statement = self.connection.prepare_cached(&sql)?;
-        let pairs = statement.query_map([since], |row| {
+        let pairs = statement.query_map(day_bounds(since, None), |row| {
             Ok(TopItem {
                 account: row.get(0)?,
                 key: row.get(1)?,
@@ -332,4 +412,59 @@ impl Store {
         }
         Ok(top)
     }
+}
+
+type Series = (Option<String>, bool, Option<String>);
+
+fn fold_past_top(days: Vec<DailyCost>, top_n: usize) -> Vec<DailyCost> {
+    let series_of = |day: &DailyCost| -> Series {
+        (day.account.clone(), day.not_in_transcript, day.key.clone())
+    };
+    let mut totals: BTreeMap<Series, f64> = BTreeMap::new();
+    for day in &days {
+        *totals.entry(series_of(day)).or_default() += day.cost_usd;
+    }
+    let mut ranked: Vec<(Series, f64)> = totals.into_iter().collect();
+    ranked.sort_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    let mut kept_per_account: HashMap<Option<String>, usize> = HashMap::new();
+    let mut rank: HashMap<Series, usize> = HashMap::new();
+    for (position, (series, _)) in ranked.into_iter().enumerate() {
+        let kept = kept_per_account.entry(series.0.clone()).or_default();
+        if *kept < top_n {
+            *kept += 1;
+            rank.insert(series, position);
+        }
+    }
+    let mut folded: Vec<DailyCost> = Vec::new();
+    let mut other: BTreeMap<(Option<String>, String), f64> = BTreeMap::new();
+    for day in days {
+        if rank.contains_key(&series_of(&day)) {
+            folded.push(day);
+        } else {
+            *other.entry((day.account, day.day)).or_default() += day.cost_usd;
+        }
+    }
+    folded.extend(
+        other
+            .into_iter()
+            .map(|((account, day), cost_usd)| DailyCost {
+                account,
+                day,
+                key: None,
+                label: "other".to_string(),
+                not_in_transcript: false,
+                other: true,
+                cost_usd,
+            }),
+    );
+    folded.sort_by_cached_key(|day| {
+        (
+            day.account.is_none(),
+            day.account.clone(),
+            day.day.clone(),
+            day.other,
+            rank.get(&series_of(day)).copied().unwrap_or(usize::MAX),
+        )
+    });
+    folded
 }

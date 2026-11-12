@@ -2,7 +2,7 @@ use std::fmt::{self, Write};
 
 use crate::config::Config;
 use crate::contract::{
-    CostStatus, DataResponse, DataRow, DrillStep, GroupBy, Level, Range, SCHEMA_VERSION,
+    CostStatus, DataResponse, DataRow, DrillStep, GroupBy, Level, Problem, Range, SCHEMA_VERSION,
 };
 use crate::sources::claude_json::Account;
 use crate::store::{self, Filter, Store};
@@ -60,44 +60,151 @@ pub fn query(
     drill: &[&str],
     today: &str,
 ) -> Result<DataResponse, Error> {
-    let since = match range {
-        Range::Today => Some(today.to_string()),
-        Range::Week => Some(store.week_start(today)?),
-        Range::Month => Some(store.month_start(today)?),
-        Range::All => None,
-    };
+    let since = range_start(store, range, today)?;
+    let mut response = query_between(store, since.as_deref(), None, group_by, drill, today)?;
+    response.range = range;
+    Ok(response)
+}
+
+pub fn query_between(
+    store: &Store,
+    since: Option<&str>,
+    until: Option<&str>,
+    group_by: GroupBy,
+    drill: &[&str],
+    today: &str,
+) -> Result<DataResponse, Error> {
+    query_scoped(store, since, until, &[], group_by, drill, today)
+}
+
+fn query_scoped(
+    store: &Store,
+    since: Option<&str>,
+    until: Option<&str>,
+    scope: &[Filter],
+    group_by: GroupBy,
+    drill: &[&str],
+    today: &str,
+) -> Result<DataResponse, Error> {
+    let (steps, level) = resolve_drill(store, group_by, drill, since, until, scope)?;
+    let rows = store.totals(level, since, until, &scoped(scope, &steps))?;
+    Ok(DataResponse {
+        schema_version: SCHEMA_VERSION,
+        range: Range::Custom,
+        group_by,
+        drill: steps,
+        level,
+        today: today.to_string(),
+        since: since.map(str::to_string),
+        until: until.map(str::to_string),
+        rows,
+        problems: Vec::new(),
+    })
+}
+
+pub fn local_date(text: &str) -> Result<String, String> {
+    let not_a_date = || format!("{text} isn't a date. Use YYYY-MM-DD, like 2026-10-01");
+    let parsed: toml::value::Datetime = text.parse().map_err(|_| not_a_date())?;
+    match parsed {
+        toml::value::Datetime {
+            date: Some(_),
+            time: None,
+            offset: None,
+        } if parsed.to_string() == text => Ok(text.to_string()),
+        _ => Err(not_a_date()),
+    }
+}
+
+pub enum Days {
+    Range(Range),
+    Between(Option<String>, Option<String>),
+}
+
+pub fn answer(
+    store: &Store,
+    config: &Config,
+    days: &Days,
+    scope: &[Filter],
+    group_by: GroupBy,
+    drill: &[&str],
+    engine_problems: Vec<Problem>,
+) -> Result<DataResponse, Error> {
+    let today = store.local_today()?;
+    let scope = &resolve_scope(store, scope)?;
+    let (range, since, until) = bounds(store, days, &today)?;
+    let mut response = query_scoped(
+        store,
+        since.as_deref(),
+        until.as_deref(),
+        scope,
+        group_by,
+        drill,
+        &today,
+    )?;
+    response.range = range;
+    response.problems = crate::problems::collect(store, &config.price_table())?;
+    response.problems.extend(engine_problems);
+    label_accounts(&mut response, config);
+    Ok(response)
+}
+
+fn resolve_drill(
+    store: &Store,
+    group_by: GroupBy,
+    drill: &[&str],
+    since: Option<&str>,
+    until: Option<&str>,
+    scope: &[Filter],
+) -> Result<(Vec<DrillStep>, Level), Error> {
     let levels = group_by.levels();
     if drill.len() >= levels.len() {
         return Err(Error::TooDeep { group_by });
     }
     let mut steps: Vec<DrillStep> = Vec::new();
     for (&level, name) in levels.iter().zip(drill) {
-        let keys = store.keys(level, since.as_deref(), &filters(&steps))?;
+        let keys = store.keys(level, since, until, &scoped(scope, &steps))?;
         steps.push(find_step(level, name, &keys)?);
     }
-    let level = levels[drill.len()];
-    let rows = store.totals(level, since.as_deref(), &filters(&steps))?;
-    Ok(DataResponse {
-        schema_version: SCHEMA_VERSION,
-        range,
-        group_by,
-        drill: steps,
-        level,
-        today: today.to_string(),
-        since,
-        rows,
-        problems: Vec::new(),
+    Ok((steps, levels[drill.len()]))
+}
+
+type Bounds = (Range, Option<String>, Option<String>);
+
+fn bounds(store: &Store, days: &Days, today: &str) -> Result<Bounds, Error> {
+    Ok(match days {
+        Days::Range(range) => (*range, range_start(store, *range, today)?, None),
+        Days::Between(since, until) => (Range::Custom, since.clone(), until.clone()),
     })
 }
 
-fn filters(steps: &[DrillStep]) -> Vec<Filter> {
-    steps
-        .iter()
-        .map(|step| Filter {
-            level: step.level,
-            key: step.key.clone(),
-        })
-        .collect()
+fn range_start(store: &Store, range: Range, today: &str) -> Result<Option<String>, Error> {
+    Ok(match range {
+        Range::Today => Some(today.to_string()),
+        Range::Week => Some(store.week_start(today)?),
+        Range::Month => Some(store.month_start(today)?),
+        Range::All | Range::Custom => None,
+    })
+}
+
+fn resolve_scope(store: &Store, scope: &[Filter]) -> Result<Vec<Filter>, Error> {
+    let mut resolved: Vec<Filter> = Vec::new();
+    for filter in scope {
+        let keys = store.keys(filter.level, None, None, &resolved)?;
+        let step = find_step(filter.level, &filter.key, &keys)?;
+        resolved.push(Filter {
+            level: filter.level,
+            key: step.key,
+        });
+    }
+    Ok(resolved)
+}
+
+fn scoped(scope: &[Filter], steps: &[DrillStep]) -> Vec<Filter> {
+    let drilled = steps.iter().map(|step| Filter {
+        level: step.level,
+        key: step.key.clone(),
+    });
+    scope.iter().cloned().chain(drilled).collect()
 }
 
 fn find_step(
@@ -144,10 +251,12 @@ pub fn label_accounts(response: &mut DataResponse, config: &Config) {
 
 pub fn render(response: &DataResponse) -> String {
     let mut out = String::new();
-    let period = match &response.since {
-        Some(since) if since == &response.today => format!("today, {since}"),
-        Some(since) => format!("{since} to {}", response.today),
-        None => "all history".to_string(),
+    let period = match (&response.since, &response.until) {
+        (Some(since), None) if since == &response.today => format!("today, {since}"),
+        (Some(since), None) => format!("{since} to {}", response.today),
+        (Some(since), Some(until)) => format!("{since} to {until}"),
+        (None, Some(until)) => format!("all history through {until}"),
+        (None, None) => "all history".to_string(),
     };
     let within = if response.drill.is_empty() {
         String::new()

@@ -16,6 +16,7 @@ Measured 2026-11-11 on the Mac (Apple Silicon), across six runs: four debug, two
 | Yearly report by model | 250 ms | 61–87 ms |
 | Yearly report by repo | 250 ms | 77–113 ms |
 | Yearly report by branch | 250 ms | 84–138 ms |
+| Daily series by repo | 250 ms | 76–112 ms |
 | Drill to sessions | 250 ms | 58–78 ms |
 
 Release builds measured the same as debug builds, because nearly all the time is spent inside SQLite.

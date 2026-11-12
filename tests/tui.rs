@@ -1154,6 +1154,7 @@ fn spending(wanted: &HistoryQuery, rows: Vec<DataRow>, top: Vec<TopItem>) -> Spe
             level: wanted.group_by.levels()[0],
             today: "2026-11-09".to_string(),
             since: Some("2026-11-03".to_string()),
+            until: None,
             rows,
             problems: Vec::new(),
         },
