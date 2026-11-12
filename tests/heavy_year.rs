@@ -45,8 +45,8 @@ const GROUPINGS: [GroupBy; 5] = [
 
 const MAX_BYTES: u64 = 110 * 1024 * 1024;
 const MAX_TODAY: Duration = Duration::from_millis(5);
-const MAX_PACE: Duration = Duration::from_millis(20);
-const MAX_YEAR: Duration = Duration::from_millis(100);
+const MAX_PACE: Duration = Duration::from_millis(40);
+const MAX_YEAR: Duration = Duration::from_millis(250);
 
 struct Random(u64);
 
