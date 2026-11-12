@@ -55,8 +55,9 @@ impl Store {
                 serde_json::to_string(&reading.limits).expect("limits always serialize"),
             ],
         )?;
-        let mut last_percent = transaction.prepare(
-            "SELECT percent FROM limit_readings
+        let mut last_reading = transaction.prepare(
+            "SELECT percent, coalesce(unixepoch(resets_at, 'subsec') * 1000 <= ?4, 0)
+             FROM limit_readings
              WHERE account_id = ?1 AND kind = ?2 AND scope = ?3
              ORDER BY fetched_at_ms DESC LIMIT 1",
         )?;
@@ -67,10 +68,13 @@ impl Store {
         )?;
         for limit in &reading.limits {
             let scope = limit.scope.as_deref().unwrap_or_default();
-            let last: Option<f64> = last_percent
-                .query_row(params![account_id, limit.kind, scope], |row| row.get(0))
+            let last: Option<(f64, bool)> = last_reading
+                .query_row(
+                    params![account_id, limit.kind, scope, reading.fetched_at_ms],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
                 .optional()?;
-            if last == Some(limit.percent) {
+            if last == Some((limit.percent, false)) {
                 continue;
             }
             insert.execute(params![
@@ -82,7 +86,7 @@ impl Store {
                 limit.resets_at,
             ])?;
         }
-        drop(last_percent);
+        drop(last_reading);
         drop(insert);
         transaction.commit()?;
         Ok(true)

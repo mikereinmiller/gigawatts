@@ -1282,6 +1282,7 @@ fn limits_over_a_range_start_from_the_reading_in_effect_and_carry_reset_times() 
                         "scope": "Fable",
                         "points": [
                             {"at_ms": local_ms("2026-01-04 12:00"), "percent": 10.0, "resets_at": "2026-01-07T09:00:00+00:00"},
+                            {"at_ms": local_ms("2026-01-08 23:00"), "percent": 10.0, "resets_at": "2026-01-14T09:00:00+00:00"},
                         ],
                     },
                 ],

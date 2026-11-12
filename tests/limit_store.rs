@@ -259,3 +259,31 @@ fn readings_between_include_the_one_in_effect_at_the_start_and_nothing_after_the
     );
     assert_eq!(store.limit_readings_between(None, None).unwrap().len(), 6);
 }
+
+#[test]
+fn a_reading_after_the_last_reset_is_kept_even_at_the_same_percentage() {
+    let (_dir, mut store) = open();
+    let personal = account("00000000-0000-4000-8000-0000000000f0");
+    let before_reset = 1_794_100_000_000;
+    let after_reset = 1_794_110_000_000;
+    let mut next_window = limit("session", None, 20.0);
+    next_window.resets_at = Some("2026-11-08T08:00:00+00:00".to_string());
+    for (fetched_at_ms, limit) in [
+        (before_reset, limit("session", None, 20.0)),
+        (after_reset, next_window),
+    ] {
+        store
+            .record_limits(
+                &personal,
+                &reading(fetched_at_ms, LimitSource::GetUsage, vec![limit]),
+            )
+            .unwrap();
+    }
+
+    let mut kept = point("session", None, after_reset, 20.0);
+    kept.resets_at = Some("2026-11-08T08:00:00+00:00".to_string());
+    assert_eq!(
+        store.limit_history(&personal).unwrap(),
+        vec![point("session", None, before_reset, 20.0), kept]
+    );
+}
