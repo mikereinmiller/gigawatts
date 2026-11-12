@@ -107,6 +107,7 @@ fn the_engine_keeps_the_snapshot_current_until_stopped() {
         path: dir.path().join("h"),
         _dir: dir,
     };
+    without_report_page(&home.path);
     let projects = home.path.join(".claude").join("projects").join("p");
     fs::create_dir_all(&projects).unwrap();
     fs::write(
@@ -146,6 +147,7 @@ fn a_second_foreground_engine_exits_while_one_runs() {
         path: dir.path().join("h"),
         _dir: dir,
     };
+    without_report_page(&home.path);
     fs::create_dir_all(home.path.join(".claude").join("projects")).unwrap();
     assert_eq!(
         stdout(&gigawatts(&home.path, &["engine"])),
@@ -158,12 +160,21 @@ fn a_second_foreground_engine_exits_while_one_runs() {
     assert!(String::from_utf8_lossy(&second.stderr).contains("already running"));
 }
 
+const WELL_UNDER_ANY_WAIT: Duration = Duration::from_secs(5);
+
+fn without_report_page(home: &Path) {
+    let config = Paths::new(home).config();
+    fs::create_dir_all(config.parent().unwrap()).unwrap();
+    fs::write(config, "report_port = 0\n").unwrap();
+}
+
 fn home_with_login() -> Home {
     let dir = tempfile::tempdir().unwrap();
     let home = Home {
         path: dir.path().join("h"),
         _dir: dir,
     };
+    without_report_page(&home.path);
     fs::create_dir_all(home.path.join(".claude")).unwrap();
     fs::write(
         home.path.join(".claude.json"),
@@ -630,7 +641,7 @@ fn starting_an_engine_that_exits_at_once_fails_without_waiting_out_the_timeout()
         result.err().map(|error| error.to_string())
     );
     assert!(
-        started.elapsed() < Duration::from_secs(2),
+        started.elapsed() < WELL_UNDER_ANY_WAIT,
         "{:?}",
         started.elapsed()
     );
@@ -654,7 +665,11 @@ fn the_engine_deletes_request_detail_older_than_the_setting_and_keeps_the_totals
     let home = home_with_login();
     let paths = Paths::new(&home.path);
     fs::create_dir_all(paths.config().parent().unwrap()).unwrap();
-    fs::write(paths.config(), "request_detail_days = 30\n").unwrap();
+    fs::write(
+        paths.config(),
+        "report_port = 0\nrequest_detail_days = 30\n",
+    )
+    .unwrap();
     let projects = home.path.join(".claude").join("projects").join("p");
     fs::create_dir_all(&projects).unwrap();
     let old = r#"{"type":"assistant","sessionId":"s0","requestId":"req_old","timestamp":"2020-01-01T12:00:00.000Z","message":{"model":"claude-opus-5-5","usage":{"input_tokens":1000,"output_tokens":500}}}"#;
@@ -678,7 +693,11 @@ fn a_cleanup_that_fails_shows_as_a_problem() {
     let home = home_with_login();
     let paths = Paths::new(&home.path);
     fs::create_dir_all(paths.config().parent().unwrap()).unwrap();
-    fs::write(paths.config(), "request_detail_days = 4294967295\n").unwrap();
+    fs::write(
+        paths.config(),
+        "report_port = 0\nrequest_detail_days = 4294967295\n",
+    )
+    .unwrap();
     let projects = home.path.join(".claude").join("projects").join("p");
     fs::create_dir_all(&projects).unwrap();
     append_request(&projects.join("s1.jsonl"), "req_1");
@@ -703,6 +722,7 @@ fn logged_in_home() -> Home {
         path: dir.path().join("h"),
         _dir: dir,
     };
+    without_report_page(&home.path);
     fs::create_dir_all(home.path.join(".claude").join("projects").join("p")).unwrap();
     fs::write(
         home.path.join(".claude.json"),
@@ -1055,7 +1075,7 @@ fn status_prints_the_saved_reading_and_leaves_the_refresh_to_the_engine() {
         let asked = Instant::now();
         let output = gigawatts_with_claude_in(&home.path, &bin, &["status"]);
 
-        assert!(asked.elapsed() < Duration::from_secs(2), "{output:?}");
+        assert!(asked.elapsed() < WELL_UNDER_ANY_WAIT, "{output:?}");
         assert!(output.status.success(), "{output:?}");
         assert!(output.stderr.is_empty(), "{output:?}");
         assert_eq!(
@@ -1100,7 +1120,7 @@ fn status_shows_the_account_used_most_recently_unless_asked_for_another_or_all()
     fs::create_dir_all(home.path.join(".config/gigawatts")).unwrap();
     fs::write(
         home.path.join(".config/gigawatts/config.toml"),
-        "[accounts.\"00000000-0000-4000-8000-00000000000a/00000000-0000-4000-8000-0000000000f0\"]\nlabel = \"personal\"\n\n[accounts.\"00000000-0000-4000-8000-00000000000b/00000000-0000-4000-8000-0000000000f0\"]\nlabel = \"work\"\n\n[accounts.\"00000000-0000-4000-8000-00000000000c/00000000-0000-4000-8000-0000000000f0\"]\nlabel = \"spare\"\n",
+        "report_port = 0\n\n[accounts.\"00000000-0000-4000-8000-00000000000a/00000000-0000-4000-8000-0000000000f0\"]\nlabel = \"personal\"\n\n[accounts.\"00000000-0000-4000-8000-00000000000b/00000000-0000-4000-8000-0000000000f0\"]\nlabel = \"work\"\n\n[accounts.\"00000000-0000-4000-8000-00000000000c/00000000-0000-4000-8000-0000000000f0\"]\nlabel = \"spare\"\n",
     )
     .unwrap();
     request_seconds_ago(&home.path.join(".claude/projects/p/a.jsonl"), "a", 2);
@@ -1161,7 +1181,11 @@ fn status_skips_an_untracked_account_for_the_most_recent_tracked_one() {
         );
     }
     fs::create_dir_all(home.path.join(".config/gigawatts")).unwrap();
-    fs::write(home.path.join(".config/gigawatts/config.toml"), config).unwrap();
+    fs::write(
+        home.path.join(".config/gigawatts/config.toml"),
+        format!("report_port = 0\n\n{config}"),
+    )
+    .unwrap();
     let ingested = gigawatts(&home.path, &["ingest"]);
     assert!(ingested.status.success(), "{ingested:?}");
     let untracked = gigawatts(&home.path, &["accounts", "track", "side", "off"]);

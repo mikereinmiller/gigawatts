@@ -1,7 +1,8 @@
 use std::collections::{BTreeMap, HashMap};
 
 use super::{Result, Store, reconcile};
-use crate::contract::{DataRow, Level};
+use crate::contract::{AgentModel, DataRow, Level};
+use crate::sources::transcript::Tokens;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TopItem {
@@ -9,6 +10,22 @@ pub struct TopItem {
     pub key: Option<String>,
     pub label: String,
     pub cost_usd: f64,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SessionCount {
+    pub account: Option<String>,
+    pub key: Option<String>,
+    pub sessions: u64,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TokenMix {
+    pub account: Option<String>,
+    pub key: Option<String>,
+    pub not_in_transcript: bool,
+    pub model: String,
+    pub tokens: Tokens,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -55,6 +72,30 @@ const REQUESTS: &str = "
            input_tokens, output_tokens, cache_read_tokens,
            cache_write_5m_tokens + cache_write_1h_tokens AS cache_write_tokens,
            web_searches, cost_usd, day
+    FROM requests
+    WHERE day BETWEEN ?1 AND ?2";
+
+const DAILY_MIX: &str = "
+    SELECT account_id, cwd_label, branch_label, skill_label, agent_label, model_label,
+           NULL AS session_id, 0 AS missing, input_tokens, output_tokens, cache_read_tokens,
+           cache_write_5m_tokens, cache_write_1h_tokens
+    FROM daily_totals
+    WHERE day BETWEEN ?1 AND ?2";
+
+const NOT_IN_TRANSCRIPT_MIX: &str = "
+    SELECT sessions.account_id, missing.cwd_label, missing.branch_label, NULL, NULL,
+           missing.model_label, missing.session_id, 1, missing.input_tokens,
+           missing.output_tokens, missing.cache_read_tokens, missing.cache_write_5m_tokens,
+           missing.cache_write_1h_tokens
+    FROM not_in_transcript AS missing
+    JOIN sessions ON sessions.id = missing.session_id
+    WHERE missing.day BETWEEN ?1 AND ?2";
+
+const REQUESTS_MIX: &str = "
+    SELECT account_id, cwd_label, coalesce(head_branch_label, git_branch_label) AS branch_label,
+           skill_label, agent_label, model_label, session_id, 0 AS missing, input_tokens,
+           output_tokens,
+           cache_read_tokens, cache_write_5m_tokens, cache_write_1h_tokens
     FROM requests
     WHERE day BETWEEN ?1 AND ?2";
 
@@ -374,6 +415,146 @@ impl Store {
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         Ok(fold_past_top(days, top_n))
+    }
+
+    pub fn token_mix(
+        &self,
+        level: Level,
+        since: Option<&str>,
+        until: Option<&str>,
+        filters: &[Filter],
+    ) -> Result<Vec<TokenMix>> {
+        let spend = if level == Level::Session {
+            format!("{REQUESTS_MIX} UNION ALL {DAILY_MIX} {BEFORE_KEPT_REQUESTS}")
+        } else {
+            DAILY_MIX.to_string()
+        };
+        let source = if only_unlogged_filters(filters) {
+            format!("{spend} UNION ALL {NOT_IN_TRANSCRIPT_MIX}")
+        } else {
+            spend
+        };
+        let (missing_key, _) = unlogged_row(level);
+        let separate = shown_apart_sql(level);
+        let sql = format!(
+            "SELECT accounts.account_uuid || '/' || accounts.organization_uuid,
+                    CASE WHEN {separate} THEN {missing_key} ELSE {key} END AS row_key,
+                    {separate} AS shown_apart, model.text AS model_key,
+                    sum(input_tokens), sum(output_tokens), sum(cache_read_tokens),
+                    sum(cache_write_5m_tokens), sum(cache_write_1h_tokens)
+             FROM ({source}) AS spend
+             {SPEND_JOINS}
+             {where_clause}
+             GROUP BY spend.account_id, shown_apart, row_key, model_key",
+            key = key_sql(level),
+            where_clause = where_sql(filters),
+        );
+        let bounds = day_bounds(since, until);
+        let mut values: Vec<&str> = bounds.to_vec();
+        values.extend(filters.iter().map(|filter| filter.key.as_str()));
+        let mut statement = self.connection.prepare_cached(&sql)?;
+        let rows = statement.query_map(rusqlite::params_from_iter(values), |row| {
+            Ok(TokenMix {
+                account: row.get(0)?,
+                key: row.get(1)?,
+                not_in_transcript: row.get(2)?,
+                model: row.get(3)?,
+                tokens: Tokens {
+                    input: row.get::<_, i64>(4)? as u64,
+                    output: row.get::<_, i64>(5)? as u64,
+                    cache_read: row.get::<_, i64>(6)? as u64,
+                    cache_write_5m: row.get::<_, i64>(7)? as u64,
+                    cache_write_1h: row.get::<_, i64>(8)? as u64,
+                    web_searches: 0,
+                },
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
+    pub fn session_counts(
+        &self,
+        level: Level,
+        since: Option<&str>,
+        until: Option<&str>,
+        filters: &[Filter],
+    ) -> Result<Vec<SessionCount>> {
+        let (level_columns, joins) = level_joins(level);
+        let mut columns = vec!["account_id", "session_id"];
+        for column in level_columns.split(", ") {
+            if !columns.contains(&column) {
+                columns.push(column);
+            }
+        }
+        let columns: Vec<String> = columns
+            .iter()
+            .map(|column| format!("spend.{column} AS {column}"))
+            .collect();
+        let sql = format!(
+            "SELECT accounts.account_uuid || '/' || accounts.organization_uuid,
+                    {key} AS row_key, count(DISTINCT spend.session_id)
+             FROM (SELECT DISTINCT {columns} FROM ({REQUESTS}) AS spend
+                   {where_clause}) AS spend
+             LEFT JOIN accounts ON accounts.id = spend.account_id
+             {joins}
+             GROUP BY spend.account_id, row_key",
+            columns = columns.join(", "),
+            key = key_sql(level),
+            where_clause = where_sql(filters),
+        );
+        let bounds = day_bounds(since, until);
+        let mut values: Vec<&str> = bounds.to_vec();
+        values.extend(filters.iter().map(|filter| filter.key.as_str()));
+        let mut statement = self.connection.prepare_cached(&sql)?;
+        let rows = statement.query_map(rusqlite::params_from_iter(values), |row| {
+            Ok(SessionCount {
+                account: row.get(0)?,
+                key: row.get(1)?,
+                sessions: row.get::<_, i64>(2)? as u64,
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
+    pub fn agent_models(
+        &self,
+        since: Option<&str>,
+        until: Option<&str>,
+        filters: &[Filter],
+    ) -> Result<Vec<AgentModel>> {
+        let level = Level::Agent;
+        let separate = shown_apart_sql(level);
+        let sql = format!(
+            "SELECT accounts.account_uuid || '/' || accounts.organization_uuid,
+                    CASE WHEN {separate} THEN NULL ELSE {key} END AS agent_key,
+                    CASE WHEN {separate} THEN 'unlogged usage' ELSE {label} END,
+                    model.text AS model_key, {separate} AS shown_apart,
+                    coalesce(sum(cost_usd), 0)
+             FROM ({source}) AS spend
+             {SPEND_JOINS}
+             {where_clause}
+             GROUP BY spend.account_id, shown_apart, agent_key, model_key
+             ORDER BY spend.account_id IS NULL, accounts.account_uuid,
+                      accounts.organization_uuid, sum(cost_usd) DESC",
+            source = spend_source(level, filters),
+            key = key_sql(level),
+            label = label_sql(level),
+            where_clause = where_sql(filters),
+        );
+        let mut values: Vec<&str> = day_bounds(since, until).to_vec();
+        values.extend(filters.iter().map(|filter| filter.key.as_str()));
+        let mut statement = self.connection.prepare_cached(&sql)?;
+        let rows = statement.query_map(rusqlite::params_from_iter(values), |row| {
+            Ok(AgentModel {
+                account: row.get(0)?,
+                agent_key: row.get(1)?,
+                agent: row.get(2)?,
+                model: row.get(3)?,
+                not_in_transcript: row.get(4)?,
+                cost_usd: row.get(5)?,
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
     }
 
     pub fn top_within(

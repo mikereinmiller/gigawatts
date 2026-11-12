@@ -105,7 +105,7 @@ Claude Code's files ──▶ engine ──▶ SQLite history ──▶ snapshot
 
 - **Engine (Rust).** Always its own background process, and the only writer to the database while it runs. Commands that rewrite history, like `forget`, stop it, write, and start it again, and `gigawatts ingest` writes directly only when no engine runs. A lock file stops a second engine from starting. Opening the terminal view starts the engine if it isn't running, and `gigawatts service install` adds a systemd user unit on Linux or a launchd agent on macOS so it also starts at login (`gigawatts service uninstall` removes it). Once started, it runs until the machine restarts or `gigawatts stop`. Closing the view never stops it. While Claude Code is idle it sleeps with zero wakeups.
 - **Upgrades.** The engine writes its version into the snapshot. A newer view that finds an older engine stops it and starts its own, which runs any database migrations. If the engine is newer than the view, the view says to reopen it. Restarting is always safe, because read positions are saved in the same transaction as the data.
-- **View contract.** The database is private to the engine. Every consumer reads only two things: the snapshot, a JSON file the engine rewrites after each batch of changes with every "now" number per tracked account, and `gigawatts data --json`, which answers history queries by range and grouping. The terminal view calls the same Rust code in-process, and the skill and menu bar run the command. So every number has one implementation, and the database layout can change freely between releases. The engine rewrites the snapshot only after a batch or scan, so its `today` is the local date it was written. A reader on a later date treats every account as having no requests or spend yet today.
+- **View contract.** The database is private to the engine. Every consumer reads only two things: the snapshot, a JSON file the engine rewrites after each batch of changes with every "now" number per tracked account, and `gigawatts data --json`, which answers history queries by range and grouping. The terminal view calls the same Rust code in-process, and the skill and menu bar run the command. So every number has one implementation, and the database layout can change freely between releases. The report page is the one exception: the engine serves it `/api/*` routes that query the database through the same Rust code. Those routes are private to the page, aren't covered by `schema_version` or `gigawatts schema`, and can change in any release, so no other view, herdr mod included, reads them. The engine rewrites the snapshot only after a batch or scan, so its `today` is the local date it was written. A reader on a later date treats every account as having no requests or spend yet today.
 - **Schema versioning.** Every snapshot and data response carries an integer `schema_version`. Adding a field doesn't change it, and consumers ignore fields they don't know. Removing or renaming a field, or changing what one means, raises it. `gigawatts schema` prints a JSON Schema generated from the Rust types with `schemars`.
 - **Views.** Each platform gets the view that fits it. Views hold no logic.
 
@@ -197,7 +197,7 @@ It shows one account at a time, starting with the one used most recently, with a
 | `gigawatts service install` / `uninstall` | Adds or removes the login service |
 | `gigawatts stop` | Stops the engine |
 | `gigawatts doctor` | Lists every current problem with its cause and fix |
-| `gigawatts report` (1.1) | Writes a self-contained HTML report page with charts and opens it in the browser |
+| `gigawatts report` (1.1) | Opens the report page the engine serves at `http://localhost:7878` in the default browser, starting the engine if needed. `report_port` in `config.toml` changes the port, and `0` turns the page off. The page assumes a single-user machine: any account on the computer can reach the port, so on a shared one set `report_port = 0` |
 
 ## Stale data and errors
 
@@ -230,7 +230,7 @@ An [Agent Skill](https://agentskills.io/specification) in the Gigawatts repo, so
 |---|---|---|---|
 | Terminal: full view, one-line summary, and `gigawatts data` | All | Rust, [`ratatui`](https://ratatui.rs) 0.30, redrawn when data changes and once a minute while open | Version 1 |
 | Floating terminal window on a key binding | Omarchy | The terminal view | Version 1, no extra code |
-| HTML report page | All | A self-contained page with inline charts, written by `gigawatts report` | Version 1.1 |
+| HTML report page | All | A page the engine serves on 127.0.0.1 only, current on every reload, with an Export button that saves a summary as Markdown or PDF | Version 1.1 |
 | Menu bar with a popover and charts | macOS | SwiftUI, reading the view contract. No Rust bindings | Version 2 |
 | Bar widget with a popup | Omarchy | A QML plugin in `~/.config/omarchy/plugins/<id>/`, the same plugin format Omarchy's own widgets use | Later |
 | Tray icon | Windows | To be decided. Rust `tray-icon` is the likely candidate | Later |

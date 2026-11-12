@@ -251,3 +251,24 @@ fn a_credit_reset_without_a_time_zone_is_refused() {
         )
     );
 }
+
+#[test]
+fn the_report_port_defaults_to_7878_and_zero_turns_it_off() {
+    let home = Path::new(HOME);
+
+    assert_eq!(Config::parse("", home).unwrap().report_port(), Some(7878));
+    assert_eq!(Config::default().report_port(), Some(7878));
+    assert_eq!(
+        Config::parse("report_port = 9000\n", home)
+            .unwrap()
+            .report_port(),
+        Some(9000)
+    );
+    assert_eq!(
+        Config::parse("report_port = 0\n", home)
+            .unwrap()
+            .report_port(),
+        None
+    );
+    assert!(Config::parse("report_port = 70000\n", home).is_err());
+}

@@ -71,6 +71,8 @@ enum Command {
     },
     /// List every current problem with its cause and fix, and exit 1 if there are any
     Doctor,
+    /// Open the report page the engine serves in the default browser, starting the engine if it isn't running
+    Report,
     /// List Claude Code config directories, their accounts, and whether each is tracked
     Accounts {
         #[command(subcommand)]
@@ -173,6 +175,7 @@ fn main() -> ExitCode {
         }
         Command::Status { account, all } => status(account.as_deref(), all),
         Command::Doctor => doctor(),
+        Command::Report => report(),
         Command::Accounts { action } => match action {
             None => list_accounts(),
             Some(AccountsAction::Add { path }) => add_account_path(&path),
@@ -386,6 +389,7 @@ fn status(name: Option<&str>, all: bool) -> ExitCode {
             Ok(pace) => Some(AccountToday {
                 account: Some(row.account.to_string()),
                 account_label: row.label.clone(),
+                configured_label: None,
                 requests: 0,
                 cost_usd: 0.0,
                 pace,
@@ -543,6 +547,78 @@ fn doctor() -> ExitCode {
             ExitCode::from(2)
         }
     }
+}
+
+fn report() -> ExitCode {
+    let Ok(config) = load_config() else {
+        return ExitCode::from(2);
+    };
+    let Some(port) = config.report_port() else {
+        eprintln!(
+            "gigawatts: the report page is off, because `report_port = 0` in ~/.config/gigawatts/config.toml. Remove that line or set a port to turn it on."
+        );
+        return ExitCode::from(2);
+    };
+    if let Err(error) = engine::ensure_running(&paths(), &executable()) {
+        eprintln!("gigawatts: {error}");
+        return ExitCode::from(2);
+    }
+    if !answering(port) {
+        eprintln!(
+            "gigawatts: the report page isn't answering on port {port}. The engine reads `report_port` only when it starts, so after changing it run `gigawatts stop` and `gigawatts report`. Otherwise `gigawatts doctor` lists why."
+        );
+        return ExitCode::from(2);
+    }
+    let url = format!("http://127.0.0.1:{port}");
+    let opener = if cfg!(target_os = "macos") {
+        "open"
+    } else {
+        "xdg-open"
+    };
+    match std::process::Command::new(opener).arg(&url).status() {
+        Ok(status) if status.success() => {
+            println!("Opened {url} in your browser.");
+            ExitCode::SUCCESS
+        }
+        _ => {
+            println!("Couldn't open a browser. The report is at {url}");
+            ExitCode::from(2)
+        }
+    }
+}
+
+fn answering(port: u16) -> bool {
+    let address = std::net::SocketAddr::from(([127, 0, 0, 1], port));
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+    loop {
+        if serves_the_report(&address) {
+            return true;
+        }
+        if std::time::Instant::now() > deadline {
+            return false;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+}
+
+fn serves_the_report(address: &std::net::SocketAddr) -> bool {
+    use std::io::{Read as _, Write as _};
+    let wait = std::time::Duration::from_millis(500);
+    let Ok(mut stream) = std::net::TcpStream::connect_timeout(address, wait) else {
+        return false;
+    };
+    let _ = stream.set_read_timeout(Some(wait));
+    let request = format!(
+        "GET /api/now HTTP/1.1\r\nHost: localhost:{}\r\n\r\n",
+        address.port()
+    );
+    if stream.write_all(request.as_bytes()).is_err() {
+        return false;
+    }
+    let mut reply = Vec::new();
+    let _ = stream.read_to_end(&mut reply);
+    let reply = String::from_utf8_lossy(&reply);
+    reply.starts_with("HTTP/1.1 200 ") && reply.contains("\"schema_version\"")
 }
 
 fn list_accounts() -> ExitCode {

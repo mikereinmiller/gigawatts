@@ -2,7 +2,7 @@ use rusqlite::{OptionalExtension, Transaction, params};
 use serde_json::Value;
 
 use super::{Result, Store};
-use crate::contract::{Limit, LimitSource};
+use crate::contract::{AccountAdvice, Limit, LimitSource};
 use crate::sources::claude_json::Account;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -209,6 +209,26 @@ impl Store {
             fetched_at_ms,
             behaviors: serde_json::from_str(&behaviors).unwrap_or(Value::Null),
         }))
+    }
+
+    pub fn usage_advice_on(&self, day: &str) -> Result<Vec<AccountAdvice>> {
+        let mut statement = self.connection.prepare_cached(
+            "SELECT accounts.account_uuid || '/' || accounts.organization_uuid,
+                    usage_advice.fetched_at_ms, usage_advice.behaviors
+             FROM usage_advice
+             JOIN accounts ON accounts.id = usage_advice.account_id
+             WHERE usage_advice.day = ?1
+             ORDER BY accounts.account_uuid, accounts.organization_uuid",
+        )?;
+        let rows = statement.query_map([day], |row| {
+            let behaviors: String = row.get(2)?;
+            Ok(AccountAdvice {
+                account: row.get(0)?,
+                fetched_at_ms: row.get(1)?,
+                behaviors: serde_json::from_str(&behaviors).unwrap_or(Value::Null),
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
     }
 
     pub fn record_usage_advice(

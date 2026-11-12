@@ -36,6 +36,7 @@ pub fn build(
                 .label
                 .or(stored.email)
                 .unwrap_or_else(|| stored.account.to_string()),
+            configured_label: config.account(&stored.account).label,
             requests: 0,
             cost_usd: 0.0,
             pace: no_pace(),
@@ -61,6 +62,11 @@ pub fn build(
                 accounts.push(AccountToday {
                     account: row.account.clone(),
                     account_label: row.account_label.clone(),
+                    configured_label: row
+                        .account
+                        .as_deref()
+                        .and_then(|id| id.parse().ok())
+                        .and_then(|account| config.account(&account).label),
                     requests: 0,
                     cost_usd: 0.0,
                     pace: no_pace(),

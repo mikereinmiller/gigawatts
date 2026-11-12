@@ -1,0 +1,2415 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gigawatts report</title>
+<style>
+:root {
+  color-scheme: light;
+  --page: #f6f6f4;
+  --surface: #fcfcfb;
+  --raised: #f0efec;
+  --hover: #f3f2ef;
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --muted: #6b6963;
+  --grid: #e8e7e1;
+  --axis: #c3c2b7;
+  --ring: rgba(11, 11, 11, 0.09);
+  --accent: #2a78d6;
+  --warning: #fab219;
+  --critical: #d03b3b;
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100;
+  --s5: #e87ba4; --s6: #008300; --s7: #6250d6; --s8: #e34948;
+  --other: #c3c2b7;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.04);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --surface: #1a1a19;
+    --raised: #2a2a28;
+    --hover: #222221;
+    --ink: #f0efec;
+    --ink-2: #c3c2b7;
+    --muted: #8f8d86;
+    --grid: #2c2c2a;
+    --axis: #3d3d3a;
+    --ring: rgba(255, 255, 255, 0.09);
+    --accent: #3987e5;
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+    --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767;
+    --other: #5a5a56;
+    --shadow: none;
+  }
+}
+:root {
+  --text-xs: 12px; --text-sm: 13px; --text-md: 14px; --text-lg: 16px; --text-xl: 20px; --text-2xl: 28px; --text-3xl: 36px;
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 20px; --space-6: 24px; --space-8: 32px; --space-12: 48px;
+  --pad: var(--space-6);
+  --control: 32px;
+}
+* { box-sizing: border-box; }
+body { margin: 0; font: var(--text-md)/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--ink); background: var(--page); -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+main { max-width: 1160px; margin: 0 auto; padding: var(--space-8) var(--space-6) var(--space-12); }
+button, input { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+h1 { font-size: var(--text-lg); line-height: 1.25; margin: 0; font-weight: 600; letter-spacing: -0.01em; }
+h2 { font-size: var(--text-lg); line-height: 1.25; margin: 0; font-weight: 600; letter-spacing: -0.005em; }
+h3 { font-size: var(--text-xs); line-height: 1.33; margin: 0 0 var(--space-3); font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+
+.topbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3) var(--space-5); margin-bottom: var(--space-4); }
+.toolbar { gap: var(--space-3); margin-bottom: var(--space-3); }
+.toolbar h1 { margin-right: var(--space-2); }
+.controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); flex: 1; min-width: 0; }
+.source { color: var(--muted); font-size: var(--text-sm); margin: 0 0 var(--space-6); }
+.error { color: var(--critical); }
+
+.tabs { display: flex; flex-wrap: wrap; gap: 2px; padding: 2px; background: var(--raised); border-radius: 10px; }
+.tabs button { display: inline-flex; align-items: center; height: calc(var(--control) - 4px); border: 0; background: none; padding: 0 var(--space-3); border-radius: 8px; color: var(--ink-2); font-weight: 500; }
+.tabs button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 2px rgb(0 0 0 / 0.12); }
+.tabs button:not([aria-pressed="true"]):hover { color: var(--ink); }
+.tabs.small button { height: 24px; padding: 0 10px; font-size: var(--text-sm); border-radius: 6px; }
+.tabs.small { border-radius: 8px; }
+
+.button { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); height: var(--control); border: 1px solid var(--ring); border-radius: 8px; background: var(--surface); padding: 0 var(--space-3); font-weight: 500; box-shadow: var(--shadow); }
+.button:hover { background: var(--hover); }
+
+.menu { position: relative; min-width: 0; }
+.trigger { display: inline-flex; align-items: center; gap: var(--space-2); max-width: 100%; height: 36px; padding: 0 10px 0 var(--space-2); border: 1px solid var(--ring); border-radius: 10px; background: var(--surface); box-shadow: var(--shadow); font-weight: 500; white-space: nowrap; transition: background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease; }
+.trigger:hover { background: var(--hover); }
+.trigger[aria-expanded="true"] { border-color: color-mix(in srgb, var(--accent) 60%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent); }
+.trigger .value { overflow: hidden; text-overflow: ellipsis; }
+.trigger .meta { color: var(--muted); font-weight: 400; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; }
+.trigger .meta::before { content: ""; display: inline-block; width: 1px; height: 14px; margin: 0 var(--space-2) 0 0; vertical-align: -2px; background: var(--grid); }
+.icon { flex: none; width: 16px; height: 16px; color: var(--muted); }
+.trigger .caret { width: 14px; height: 14px; margin-left: 2px; transition: transform 150ms ease; }
+.trigger[aria-expanded="true"] .caret { transform: rotate(180deg); }
+#export { padding: 0 var(--space-3) 0 10px; }
+.avatar { flex: none; display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 6px; background: var(--swatch); color: #fff; font-size: 11px; font-weight: 600; line-height: 1; }
+.avatar.all { background: var(--raised); color: var(--ink-2); }
+.avatar.all .icon { width: 14px; height: 14px; color: currentColor; }
+
+.popover { position: absolute; left: 0; top: calc(100% + 6px); z-index: 5; min-width: 248px; padding: 6px; background: var(--surface); border: 1px solid var(--ring); border-radius: 12px; box-shadow: 0 1px 2px rgb(0 0 0 / 0.06), 0 16px 40px -8px rgb(0 0 0 / 0.22); opacity: 0; visibility: hidden; transform: translateY(-4px) scale(0.98); transform-origin: top left; transition: opacity 120ms ease, transform 120ms ease, visibility 0s linear 120ms; }
+.popover.open { opacity: 1; visibility: visible; transform: none; transition: opacity 120ms ease, transform 120ms ease; }
+.popover.end { left: auto; right: 0; transform-origin: top right; min-width: 300px; }
+.range-popover { width: 320px; }
+#account-menu { min-width: 300px; }
+.item { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: center; gap: var(--space-2); width: 100%; min-height: 36px; padding: 6px 10px 6px var(--space-2); border: 0; border-radius: 8px; background: none; text-align: left; }
+.item .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.item small { color: var(--muted); font-size: var(--text-xs); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.item .check { width: 16px; height: 16px; color: var(--accent); visibility: hidden; }
+.item[aria-checked="true"] .check { visibility: visible; }
+.item[aria-checked="true"] .label { font-weight: 600; }
+.item.with-avatar { grid-template-columns: 20px minmax(0, 1fr) auto 16px; }
+.item:hover, .item:focus-visible, .rich:hover, .rich:focus-visible { background: var(--hover); outline: none; }
+.rich { display: grid; gap: 2px; width: 100%; text-align: left; border: 0; background: none; padding: var(--space-2) 10px; border-radius: 8px; }
+.rich span { font-weight: 500; }
+.rich small { color: var(--muted); font-size: var(--text-xs); }
+.popover hr { border: 0; border-top: 1px solid var(--grid); margin: 6px -6px; }
+.popover-label { grid-column: 1 / -1; margin: 0; font-size: var(--text-xs); font-weight: 600; color: var(--muted); }
+.custom-range { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-2); padding: 6px var(--space-2) var(--space-2); }
+.custom-range label { display: grid; min-width: 0; gap: var(--space-1); font-size: var(--text-xs); color: var(--muted); }
+.custom-range input { width: 100%; height: var(--control); padding: 0 var(--space-2); border: 1px solid var(--ring); border-radius: 8px; background: var(--page); color: var(--ink); font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
+.custom-range input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent); }
+.custom-range .button { grid-column: 1 / -1; margin-top: var(--space-1); }
+.menu-note { margin: var(--space-1) 10px var(--space-2); color: var(--muted); font-size: var(--text-xs); max-width: 36ch; }
+@media (prefers-reduced-motion: reduce) {
+  .popover, .popover.open, .trigger, .trigger .caret { transition: none; }
+}
+
+.stack { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-5); }
+.card { background: var(--surface); border: 1px solid var(--ring); border-radius: 14px; padding: var(--pad); box-shadow: var(--shadow); }
+.card-head { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); align-items: center; justify-content: space-between; margin-bottom: var(--space-4); min-height: 28px; }
+.card-head .hint { color: var(--muted); font-size: var(--text-sm); }
+.note { color: var(--muted); font-size: var(--text-sm); margin: var(--space-4) 0 0; max-width: 90ch; }
+
+.summary { margin: 0 0 var(--space-6); padding-bottom: var(--space-6); border-bottom: 1px solid var(--grid); font-size: var(--text-lg); line-height: 1.5; }
+.summary span { display: block; max-width: 72ch; }
+.tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; }
+.tile { display: flex; flex-direction: column; gap: 2px; padding: 0 var(--space-6); border-left: 1px solid var(--grid); min-width: 0; }
+.tile:first-child { padding-left: 0; border-left: 0; }
+.tile .label { color: var(--muted); font-size: var(--text-sm); font-weight: 500; line-height: 1.4; }
+.tile .value-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); min-height: 44px; margin: var(--space-1) 0; }
+.tile .value { font-size: var(--text-2xl); font-weight: 600; letter-spacing: -0.02em; line-height: 1.15; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.tile.hero .value { font-size: var(--text-3xl); letter-spacing: -0.025em; }
+.tile .meter { margin: var(--space-1) 0 var(--space-2); }
+.tile .sub { color: var(--ink-2); font-size: var(--text-sm); line-height: 1.45; }
+.tile .sub.faint { color: var(--muted); font-size: var(--text-xs); line-height: 1.5; }
+.tile .sub:not(.faint) + .sub.faint { margin-top: var(--space-1); }
+.tile.link { text-align: left; border-top: 0; border-right: 0; border-bottom: 0; background: none; color: inherit; font: inherit; cursor: pointer; border-radius: 0; }
+.tile.link:hover .label { color: var(--accent); }
+.delta.up::before { content: "▲ "; font-size: 9px; vertical-align: 1px; }
+.delta.down::before { content: "▼ "; font-size: 9px; vertical-align: 1px; }
+.status-line { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
+.status-line::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--dot); flex: none; }
+.status-line.warning { --dot: var(--warning); }
+.status-line.critical { --dot: var(--critical); }
+.meter { --fill: var(--accent); position: relative; height: 8px; border-radius: 4px; background: color-mix(in srgb, var(--fill) 20%, var(--surface)); overflow: hidden; }
+.meter > span { display: block; height: 100%; min-width: 8px; border-radius: 4px; background: var(--fill); }
+.meter > i { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--ink); opacity: 0.75; }
+.meter.warning { --fill: var(--warning); }
+.meter.critical { --fill: var(--critical); }
+.spark { flex: none; }
+
+.chart svg { display: block; width: 100%; height: auto; }
+.chart text { fill: var(--muted); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
+.legend { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-5); margin-top: var(--space-4); font-size: var(--text-sm); color: var(--ink-2); }
+.key { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.key::before { content: ""; width: 10px; height: 10px; border-radius: 3px; background: var(--swatch); flex: none; }
+.key b { font-weight: 500; color: var(--ink); font-variant-numeric: tabular-nums; }
+
+#tip { position: fixed; pointer-events: none; display: none; z-index: 6; min-width: 200px; max-width: 320px; background: var(--surface); border: 1px solid var(--ring); border-radius: 10px; padding: var(--space-3); font-size: var(--text-sm); box-shadow: 0 8px 28px rgb(0 0 0 / 0.2); }
+#tip .head { display: flex; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-2); padding-bottom: var(--space-2); border-bottom: 1px solid var(--grid); color: var(--ink-2); }
+#tip .line { display: grid; grid-template-columns: 10px 1fr auto; gap: var(--space-2); align-items: center; padding: 2px 0; }
+#tip .line i { width: 10px; height: 10px; background: var(--swatch); border-radius: 3px; }
+#tip .line span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-2); }
+#tip b { font-variant-numeric: tabular-nums; font-weight: 600; }
+
+.table { overflow-x: auto; margin: 0 calc(-1 * var(--pad)); }
+.mix-legend + .table { margin-top: var(--space-3); }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; table-layout: fixed; }
+th, td { padding: 0 var(--space-3); height: 44px; border-bottom: 1px solid var(--grid); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+th:first-child, td:first-child { padding-left: var(--pad); text-align: left; }
+th:last-child, td:last-child { padding-right: var(--pad); }
+th { height: 36px; font-weight: 500; color: var(--muted); font-size: var(--text-xs); }
+tfoot td { height: 48px; font-weight: 600; border-bottom: 0; }
+td.name { font-weight: 500; }
+.name-wrap { display: flex; align-items: center; gap: var(--space-1); min-width: 0; }
+.name-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.name-meta { display: block; margin-top: 2px; color: var(--muted); font-size: var(--text-xs); font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+tr.session td { height: 60px; }
+.chevron { flex: none; display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 5px; color: var(--muted); transition: transform 120ms ease; }
+.chevron svg { width: 12px; height: 12px; }
+tr[aria-expanded="true"] .chevron { transform: rotate(90deg); }
+.chevron.none { visibility: hidden; }
+tbody tr.clickable { cursor: pointer; }
+tbody tr.clickable:hover { background: var(--hover); }
+tbody tr.clickable:hover .chevron { color: var(--ink); }
+tbody tr.child td { color: var(--ink-2); font-size: var(--text-sm); }
+tbody tr.child td.name { font-weight: 400; }
+tbody tr.more td { color: var(--accent); font-size: var(--text-sm); height: 36px; }
+tbody tr.loading td { color: var(--muted); font-size: var(--text-sm); height: 36px; }
+
+.share { display: flex; align-items: center; gap: var(--space-3); }
+.share .track { flex: 1; height: 6px; border-radius: 3px; background: var(--raised); overflow: hidden; }
+.share .track span { display: block; height: 100%; min-width: 6px; border-radius: 3px; background: var(--swatch, var(--accent)); }
+.share em { font-style: normal; color: var(--ink-2); font-size: var(--text-sm); width: 36px; text-align: right; flex: none; }
+.mix { display: flex; height: 8px; gap: 2px; }
+.mix span { height: 100%; min-width: 6px; border-radius: 2px; }
+.mix span:first-child { border-top-left-radius: 4px; border-bottom-left-radius: 4px; }
+.mix span:last-child { border-top-right-radius: 4px; border-bottom-right-radius: 4px; }
+.mix-legend { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); font-size: var(--text-sm); color: var(--ink-2); }
+.dim { color: var(--muted); }
+
+.panel-backdrop { position: fixed; inset: 0; background: rgb(0 0 0 / 0.25); z-index: 7; display: none; }
+.panel-backdrop.open { display: block; }
+.panel { position: fixed; top: 0; right: 0; bottom: 0; width: min(440px, 100vw); z-index: 8; background: var(--surface); border-left: 1px solid var(--ring); box-shadow: -12px 0 40px rgb(0 0 0 / 0.18); padding: var(--space-6); overflow-y: auto; transform: translateX(100%); transition: transform 160ms ease; }
+.panel.open { transform: none; }
+.panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-1); }
+.panel-head h2 { font-size: var(--text-xl); line-height: 1.3; letter-spacing: -0.01em; }
+.panel .close { border: 0; background: var(--raised); border-radius: 8px; width: var(--control); height: var(--control); flex: none; }
+.facts { display: grid; grid-template-columns: auto 1fr; gap: var(--space-2) var(--space-4); margin: var(--space-6) 0 var(--space-8); }
+.facts dt { color: var(--muted); }
+.facts dd { margin: 0; font-variant-numeric: tabular-nums; }
+.shares { display: grid; gap: var(--space-2); margin-bottom: var(--space-8); }
+.shares .row { display: grid; grid-template-columns: minmax(0, 1fr) 96px 72px; gap: var(--space-3); align-items: center; }
+.shares .row span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shares .row b { font-weight: 500; text-align: right; font-variant-numeric: tabular-nums; }
+
+.panel-sub { margin: 0; color: var(--muted); overflow-wrap: anywhere; }
+.panel .actions { display: flex; gap: var(--space-2); margin: var(--space-4) 0 0; }
+.button.primary { background: var(--accent); border-color: transparent; color: #fff; }
+.button.primary:hover { background: color-mix(in srgb, var(--accent) 88%, var(--ink)); }
+.panel-chart { margin-bottom: var(--space-8); }
+.panel-chart text { font-size: 10px; }
+.panel-sessions { display: grid; gap: 2px; margin: 0 calc(-1 * var(--space-2)) var(--space-8); }
+.panel-sessions button { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px var(--space-3); text-align: left; border: 0; background: none; padding: var(--space-2); border-radius: 8px; }
+.panel-sessions button:hover { background: var(--hover); }
+.panel-sessions .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.panel-sessions b { font-weight: 500; font-variant-numeric: tabular-nums; }
+.panel-sessions small { grid-column: 1 / -1; color: var(--muted); font-size: var(--text-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chart rect.day { cursor: pointer; }
+.chart rect.day:hover, .chart rect.day:focus-visible { fill: color-mix(in srgb, var(--ink) 5%, transparent); outline: none; }
+
+.panel-paid { margin: calc(-1 * var(--space-5)) 0 var(--space-8); }
+.panel-text { margin: var(--space-3) 0 0; color: var(--ink-2); line-height: 1.55; }
+.advice { display: grid; }
+.advice-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-4); align-items: baseline; padding: var(--space-3) 0; border-bottom: 1px solid var(--grid); }
+.advice-row:first-child { padding-top: 0; }
+.advice-row span { font-weight: 500; }
+.advice-row small { display: block; color: var(--muted); font-size: var(--text-sm); margin-top: 2px; overflow-wrap: anywhere; }
+.advice-row b { font-weight: 500; color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.advice + h3 { margin-top: var(--space-6); }
+
+.scope { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 2px 0 var(--space-3); border-radius: 999px; background: color-mix(in srgb, var(--accent) 12%, var(--surface)); border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); font-size: var(--text-sm); }
+.chip b { font-weight: 600; max-width: 32ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip button { border: 0; background: none; width: 22px; height: 22px; border-radius: 50%; color: var(--ink-2); font-size: 11px; }
+.chip button:hover { background: var(--raised); color: var(--ink); }
+.link-button { border: 0; background: none; color: var(--accent); font-size: var(--text-sm); padding: var(--space-1) var(--space-2); }
+.account-line { margin: 0; color: var(--ink-2); font-size: var(--text-sm); }
+
+.exported .topbar { margin-bottom: var(--space-1); }
+#print { display: none; }
+.footnote { color: var(--muted); font-size: var(--text-xs); margin-top: var(--space-6); max-width: 80ch; }
+
+@media (max-width: 860px) {
+  :root { --pad: var(--space-4); }
+  .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-6) 0; }
+  .tile { padding: 0 var(--space-4); }
+  .tile:nth-child(odd) { padding-left: 0; border-left: 0; }
+  .tile.hero .value { font-size: var(--text-2xl); }
+  .tile .spark { display: none; }
+  .table table { min-width: 640px; }
+  .toolbar h1 { flex: 1; }
+  .controls { order: 3; flex-basis: 100%; position: relative; }
+  .controls > .menu { position: static; }
+  .range-popover { width: min(320px, 100%); }
+  .trigger { gap: 6px; padding: 0 var(--space-2); }
+  .trigger .meta::before { margin-right: 6px; }
+  main { padding: var(--space-5) var(--space-4) var(--space-12); }
+}
+@media print {
+  :root {
+    color-scheme: light;
+    --page: #ffffff; --surface: #ffffff; --raised: #f0efec; --hover: #f3f2ef;
+    --ink: #0b0b0b; --ink-2: #52514e; --muted: #7d7b75; --grid: #e8e7e1; --axis: #c3c2b7;
+    --ring: rgba(11, 11, 11, 0.12); --accent: #2a78d6;
+    --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100;
+    --s5: #e87ba4; --s6: #008300; --s7: #6250d6; --s8: #e34948;
+    --other: #c3c2b7; --shadow: none;
+  }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { background: #fff; }
+  body.printing > main, body.printing .panel, body.printing .panel-backdrop, body.printing #tip { display: none !important; }
+  body.printing #print { display: block; }
+  @page { size: letter; margin: 0.45in; }
+  body { font-size: 10.5px; }
+  #print main { max-width: none; padding: 0; }
+  #print h1 { font-size: 15px; }
+  #print h2 { font-size: 12.5px; }
+  #print .source { margin-bottom: 10px; font-size: 10px; }
+  #print .stack { gap: 10px; }
+  #print .card { padding: 12px 14px; border-radius: 8px; box-shadow: none; break-inside: auto; }
+  #print .card-head { margin-bottom: 8px; min-height: 0; }
+  #print .card-head .hint, #print .note, #print .mix-legend, #print .legend { font-size: 9.5px; }
+  #print .summary { font-size: 11.5px; margin-bottom: 10px; padding-bottom: 10px; }
+  #print .tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; }
+  #print .tile { padding: 0 12px; border-left: 1px solid var(--grid); }
+  #print .tile:first-child { padding-left: 0; border-left: 0; }
+  #print .tile .value-row { min-height: 0; }
+  #print .tile .value { font-size: 20px; }
+  #print .tile.hero .value { font-size: 24px; }
+  #print .tile .sub { font-size: 10px; }
+  #print .tile .sub.faint { font-size: 9.5px; }
+  #print .spark { width: 56px; height: 20px; }
+  #print .table { overflow: visible; margin: 0 -14px; }
+  #print table { table-layout: auto; }
+  #print col { width: auto !important; }
+  #print th, #print td { height: 22px; padding: 0 6px; font-size: 10px; overflow: visible; text-overflow: clip; }
+  #print th { height: 20px; font-size: 9.5px; }
+  #print th:first-child, #print td:first-child { padding-left: 14px; }
+  #print th:last-child, #print td:last-child { padding-right: 14px; }
+  #print tr { break-inside: avoid; }
+  #print tfoot { display: table-row-group; }
+  #print .share { gap: 6px; }
+  #print .share .track { width: 48px; flex: none; }
+  #print .share em { width: auto; font-size: 10px; }
+  #print .mix { width: 90px; height: 6px; margin-left: auto; }
+  #print .chart svg { max-height: 190px; }
+  #print .footnote { font-size: 9px; margin-top: 12px; }
+}
+</style>
+</head>
+<body>
+<main>
+<header class="topbar toolbar">
+  <h1>Gigawatts</h1>
+  <div class="controls">
+    <div class="menu" id="account-picker">
+      <button class="trigger" id="account-button" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="Account"><span class="value">Loading…</span></button>
+      <div class="popover" id="account-menu" role="menu" aria-label="Account"></div>
+    </div>
+    <div class="menu">
+      <button class="trigger" id="range-button" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="Range"><span class="value">Loading…</span></button>
+      <div class="popover range-popover" id="range-menu" role="menu" aria-label="Range">
+        <div id="range-items"></div>
+        <hr>
+        <form class="custom-range" id="custom-range">
+          <p class="popover-label">Custom range</p>
+          <label>From<input type="date" id="since" required></label>
+          <label>To<input type="date" id="until" required></label>
+          <button class="button primary" type="submit">Show range</button>
+        </form>
+      </div>
+    </div>
+    <div class="scope" id="scope" aria-label="Focused on"></div>
+  </div>
+  <div class="menu">
+    <button class="trigger" id="export" type="button" aria-haspopup="menu" aria-expanded="false"></button>
+    <div class="popover end" id="export-menu" role="menu">
+      <p class="menu-note">A summary of this view: totals, models, skills, and subagents, without repo, branch, or session names.</p>
+      <button class="rich" type="button" role="menuitem" data-export="markdown"><span>Markdown</span><small>Text and tables, for Slack, GitHub, Linear, or an agent</small></button>
+      <button class="rich" type="button" role="menuitem" data-export="pdf"><span>PDF</span><small>With charts. Opens the print dialog; choose Save as PDF</small></button>
+    </div>
+  </div>
+</header>
+<p class="source" id="source">Loading from the history database…</p>
+<div class="stack" id="content"></div>
+<p class="source" id="problems"></p>
+</main>
+<div class="panel-backdrop" id="backdrop"></div>
+<aside class="panel" id="panel" aria-label="Details" aria-hidden="true"></aside>
+<div id="print"></div>
+<div id="tip" role="tooltip"></div>
+<script>
+const RANGES = [['week', 'This week'], ['month', 'This month'], ['lastmonth', 'Last month'], ['all', 'All time'], ['custom', 'Custom']];
+const GROUP_NAMES = {repo: 'Repo', branch: 'Branch', skill: 'Skill', agent: 'Subagent', model: 'Model'};
+const GROUP_PLURALS = {repo: 'repos', branch: 'branches', skill: 'skills', agent: 'subagents', model: 'models'};
+const NEXT = {
+  none: ['repo', 'skill', 'agent', 'model'],
+  repo: ['branch', 'skill', 'model', 'agent'],
+  branch: ['skill', 'model', 'agent'],
+  skill: ['repo', 'model', 'agent'],
+  model: ['repo', 'skill', 'agent'],
+  agent: ['model', 'repo', 'skill'],
+};
+const SCOPE_OF_LEVEL = {repo: 'repo', repo_branch: 'branch', skill: 'skill', agent: 'agent', model: 'model'};
+const CHART_BY = [['repo', 'Repo'], ['model', 'Model']];
+const LEVEL_NAMES = {repo: 'Repo', branch: 'Branch', repo_branch: 'Branch', skill: 'Skill', agent: 'Subagent', model: 'Model', session: 'Session'};
+const SLOTS = ['--s1', '--s2', '--s3', '--s4', '--s5', '--s6', '--s7', '--s8'];
+const MIX_PARTS = [['input_usd', 'Input', '--s1'], ['output_usd', 'Output', '--s2'], ['cache_write_usd', 'Cache writes', '--s7'], ['cache_read_usd', 'Cache reads', '--s3']];
+const ALL = 'all';
+const SVG_NS = 'http://www.w3.org/2000/svg';
+const DAY_MS = 86400000;
+const FOLD_SHARE = 0.01;
+const PANEL_ROWS = 6;
+const PANEL_SESSIONS = 5;
+const MIN_CHART_WIDTH = 280;
+const DAY_LABEL_GAP = 48;
+const MONTH_LABEL_GAP = 64;
+const BRANCH_SEPARATOR = '\u001f';
+const NOT_IN_TRANSCRIPTS = 'Not in transcripts';
+const tip = document.getElementById('tip');
+
+let state = readState();
+let latest = null;
+let loadedHash = null;
+let showTail = false;
+let panelToken = 0;
+
+function readState() {
+  const params = new URLSearchParams(location.hash.slice(1));
+  const pick = (name, options, fallback) => options.some(([value]) => value === params.get(name)) ? params.get(name) : fallback;
+  const scope = params.getAll('scope').map(entry => {
+    const split = entry.indexOf(':');
+    const kind = entry.slice(0, split);
+    const key = entry.slice(split + 1);
+    return {kind, key, label: scopeLabel(kind, key)};
+  }).filter(item => Object.hasOwn(GROUP_NAMES, item.kind) && item.key);
+  return {
+    account: params.get('account') || '',
+    range: pick('range', RANGES, 'month'),
+    since: params.get('since') || '',
+    until: params.get('until') || '',
+    by: Object.hasOwn(GROUP_NAMES, params.get('by') ?? '') ? params.get('by') : 'repo',
+    chart: pick('chart', CHART_BY, 'repo'),
+    scope,
+  };
+}
+
+function scopeLabel(kind, key) {
+  if (kind === 'repo') return key.split('/').filter(Boolean).at(-1) ?? key;
+  if (kind === 'branch') return key.split(BRANCH_SEPARATOR).slice(1).join(BRANCH_SEPARATOR) || key;
+  if (kind === 'skill') return skillName(key);
+  if (kind === 'agent') return key === 'main conversation' ? 'You (no subagent)' : key;
+  if (kind === 'model') return prettyModel(key);
+  return key;
+}
+
+function accountParam() {
+  const accounts = latest?.now.accounts ?? [];
+  if (!state.account || state.account === accounts[0]?.account) return null;
+  if (state.account === ALL) return ALL;
+  const found = accounts.find(account => account.account === state.account);
+  if (!found) return state.account;
+  const name = slug(found.account_label ?? '');
+  const unique = accounts.filter(account => slug(account.account_label ?? '') === name).length === 1;
+  return name && unique ? name : found.account;
+}
+
+function addressValue(value) {
+  return encodeURIComponent(value).replace(/%2F/g, '/').replace(/%3A/g, ':');
+}
+
+function stateHash() {
+  const parts = [];
+  const add = (name, value) => parts.push(`${name}=${addressValue(value)}`);
+  const account = accountParam();
+  if (account) add('account', account);
+  if (state.range !== 'month') add('range', state.range);
+  if (state.range === 'custom') {
+    if (state.since) add('since', state.since);
+    if (state.until) add('until', state.until);
+  }
+  if (state.by !== 'repo') add('by', state.by);
+  if (state.chart !== 'repo') add('chart', state.chart);
+  for (const item of state.scope) add('scope', `${item.kind}:${item.key}`);
+  return parts.length ? '#' + parts.join('&') : '';
+}
+
+function writeState() {
+  history.replaceState(null, '', stateHash() || location.pathname);
+}
+
+function navigate() {
+  closePanel();
+  showTail = false;
+  history.pushState(null, '', stateHash() || location.pathname);
+  load();
+}
+
+function scopedKinds() {
+  const kinds = new Set(state.scope.map(item => item.kind));
+  if (kinds.has('branch')) kinds.add('repo');
+  return kinds;
+}
+
+function primaryScope() {
+  return state.scope.at(-1)?.kind ?? 'none';
+}
+
+function groupings() {
+  const taken = scopedKinds();
+  return NEXT[primaryScope()].filter(kind => !taken.has(kind));
+}
+
+function breakdownGrouping() {
+  const options = groupings();
+  return options.includes(state.by) ? state.by : options[0] ?? 'model';
+}
+
+function chartGrouping() {
+  return state.scope.length ? groupings()[0] ?? 'model' : state.chart;
+}
+
+function scopeParams(params, extra = []) {
+  for (const item of [...state.scope, ...extra]) params.append(item.kind, item.key);
+  return params;
+}
+
+function scopeTitle() {
+  return state.scope.map(item => item.label).join(' · ');
+}
+
+function focusOn(item) {
+  state.scope = [...state.scope.filter(existing => existing.kind !== item.kind), item];
+  navigate();
+}
+
+function unfocus(kind) {
+  state.scope = state.scope.filter(item => item.kind !== kind && !(kind === 'repo' && item.kind === 'branch'));
+  navigate();
+}
+
+function localDay(date = new Date()) {
+  const pad = number => String(number).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+function lastMonthBounds(today) {
+  const year = Number(today.slice(0, 4));
+  const month = Number(today.slice(5, 7));
+  const previousYear = month === 1 ? year - 1 : year;
+  const previousMonth = month === 1 ? 12 : month - 1;
+  const days = new Date(Date.UTC(previousYear, previousMonth, 0)).getUTCDate();
+  const pad = number => String(number).padStart(2, '0');
+  return {
+    since: `${previousYear}-${pad(previousMonth)}-01`,
+    until: `${previousYear}-${pad(previousMonth)}-${pad(days)}`,
+    sameDay: `${previousYear}-${pad(previousMonth)}-${pad(Math.min(Number(today.slice(8, 10)), days))}`,
+    name: new Date(Date.UTC(previousYear, previousMonth - 1, 1)).toLocaleDateString(undefined, {month: 'long', timeZone: 'UTC'}),
+  };
+}
+
+function rangeParams() {
+  const params = new URLSearchParams();
+  if (state.range === 'lastmonth') {
+    const last = lastMonthBounds(localDay());
+    params.set('since', last.since);
+    params.set('until', last.until);
+  } else if (state.range !== 'custom') {
+    params.set('range', state.range);
+  } else if (state.since || state.until) {
+    if (state.since) params.set('since', state.since);
+    if (state.until) params.set('until', state.until);
+  } else {
+    params.set('range', 'all');
+  }
+  return params;
+}
+
+function element(tag, text, className) {
+  const node = document.createElement(tag);
+  if (text !== undefined && text !== null) node.textContent = text;
+  if (className) node.className = className;
+  return node;
+}
+
+function svg(tag, attributes) {
+  const node = document.createElementNS(SVG_NS, tag);
+  for (const [name, value] of Object.entries(attributes)) node.setAttribute(name, value);
+  return node;
+}
+
+function chevron(open, canOpen) {
+  const box = element('span', undefined, 'chevron' + (canOpen ? '' : ' none'));
+  const icon = svg('svg', {viewBox: '0 0 12 12', 'aria-hidden': 'true'});
+  icon.append(svg('path', {d: 'M4.5 2.5 8 6l-3.5 3.5', fill: 'none', stroke: 'currentColor', 'stroke-width': 1.6, 'stroke-linecap': 'round', 'stroke-linejoin': 'round'}));
+  box.append(icon);
+  return box;
+}
+
+function dollars(value, digits = 2) {
+  return '$' + value.toLocaleString(undefined, {minimumFractionDigits: digits, maximumFractionDigits: digits});
+}
+
+function money(value) {
+  return Math.abs(value) >= 100 ? dollars(value, 0) : dollars(value);
+}
+
+function compact(value) {
+  return value.toLocaleString(undefined, {notation: 'compact', maximumFractionDigits: 1});
+}
+
+function percent(value) {
+  return Math.round(value) + '%';
+}
+
+function shareText(fraction) {
+  return fraction > 0 && fraction < 0.005 ? '<1%' : percent(fraction * 100);
+}
+
+function addDays(day, count) {
+  const date = new Date(day + 'T00:00:00Z');
+  date.setUTCDate(date.getUTCDate() + count);
+  return date.toISOString().slice(0, 10);
+}
+
+function dayCount(first, last) {
+  return Math.round((Date.parse(last + 'T00:00:00Z') - Date.parse(first + 'T00:00:00Z')) / DAY_MS) + 1;
+}
+
+function daysBetween(first, last) {
+  const days = [];
+  for (let day = first; day <= last && days.length < 3700; day = addDays(day, 1)) days.push(day);
+  return days;
+}
+
+function isWeekday(day) {
+  const weekday = new Date(day + 'T00:00:00Z').getUTCDay();
+  return weekday >= 1 && weekday <= 5;
+}
+
+function shortDate(day) {
+  return new Date(day + 'T00:00:00Z').toLocaleDateString(undefined, {month: 'short', day: 'numeric', timeZone: 'UTC'});
+}
+
+function longDate(ms) {
+  return new Date(ms).toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'});
+}
+
+function localTime(ms) {
+  return new Date(ms).toLocaleString(undefined, {weekday: 'short', hour: 'numeric', minute: '2-digit'});
+}
+
+function minutes(value) {
+  return value >= 90 ? `${(value / 60).toFixed(1)} h` : `${value} min`;
+}
+
+function tabs(options, current, onPick, label, className = 'tabs') {
+  const group = element('div', undefined, className);
+  group.setAttribute('role', 'group');
+  group.setAttribute('aria-label', label);
+  group.dataset.control = 'true';
+  for (const [value, text] of options) {
+    const button = element('button', text);
+    button.type = 'button';
+    button.setAttribute('aria-pressed', String(value === current));
+    button.addEventListener('click', () => onPick(value));
+    group.append(button);
+  }
+  return group;
+}
+
+function resetTree() {
+  showTail = false;
+}
+
+const ICONS = {
+  caret: 'M4 6l4 4 4-4',
+  check: 'M3.5 8.5l3 3 6-7',
+  calendar: 'M3.5 4.5h9a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1zM2.5 7.5h11M5.5 2.5v3M10.5 2.5v3',
+  stack: 'M8 2.5l5.5 3L8 8.5l-5.5-3zM2.5 8.5L8 11.5l5.5-3M2.5 11L8 14l5.5-3',
+  download: 'M8 2.5v8M4.5 7.5L8 11l3.5-3.5M3 13.5h10',
+};
+
+function icon(name, className = '') {
+  const root = svg('svg', {viewBox: '0 0 16 16', class: `icon ${className}`.trim(), 'aria-hidden': 'true'});
+  root.append(svg('path', {d: ICONS[name], fill: 'none', stroke: 'currentColor', 'stroke-width': 1.6, 'stroke-linecap': 'round', 'stroke-linejoin': 'round'}));
+  return root;
+}
+
+function avatar(label, index) {
+  if (index === null) {
+    const box = element('span', undefined, 'avatar all');
+    box.append(icon('stack'));
+    return box;
+  }
+  const box = element('span', (label || '?').trim().charAt(0).toUpperCase(), 'avatar');
+  box.style.setProperty('--swatch', `var(${SLOTS[index % SLOTS.length]})`);
+  return box;
+}
+
+function menuItem({label, meta, checked, lead, onPick}) {
+  const item = element('button', undefined, 'item' + (lead ? ' with-avatar' : ''));
+  item.type = 'button';
+  item.setAttribute('role', 'menuitemradio');
+  item.setAttribute('aria-checked', String(checked));
+  item.append(lead ?? icon('check', 'check'), element('span', label, 'label'));
+  if (meta || lead) item.append(element('small', meta ?? ''));
+  if (lead) item.append(icon('check', 'check'));
+  item.addEventListener('click', () => { closeMenu(); onPick(); });
+  return item;
+}
+
+function shortPeriod(first, last) {
+  const date = (day, options) => new Date(day + 'T00:00:00Z').toLocaleDateString(undefined, {timeZone: 'UTC', ...options});
+  if (first === last) return date(first, {month: 'short', day: 'numeric'});
+  if (first.slice(0, 7) === last.slice(0, 7)) return `${date(first, {month: 'short', day: 'numeric'})}–${Number(last.slice(8, 10))}`;
+  if (first.slice(0, 4) === last.slice(0, 4)) return `${date(first, {month: 'short', day: 'numeric'})} – ${date(last, {month: 'short', day: 'numeric'})}`;
+  return `${date(first, {month: 'short', day: 'numeric', year: 'numeric'})} – ${date(last, {month: 'short', day: 'numeric', year: 'numeric'})}`;
+}
+
+function drawControls(accounts, view) {
+  const options = accounts.map((account, index) => ({id: account.account, label: account.account_label ?? 'Account', today: account.cost_usd, index}));
+  if (options.length > 1) options.push({id: ALL, label: 'All accounts', today: accounts.reduce((sum, account) => sum + account.cost_usd, 0), index: null});
+  const current = options.find(option => option.id === state.account) ?? options[0];
+  document.getElementById('account-picker').hidden = options.length < 2;
+  document.getElementById('account-button').replaceChildren(avatar(current?.label, current?.index ?? null), element('span', current?.label ?? '', 'value'), icon('caret', 'caret'));
+  document.getElementById('account-menu').replaceChildren(...options.map(option => menuItem({
+    label: option.label,
+    meta: `${money(option.today)} today`,
+    checked: option.id === current?.id,
+    lead: avatar(option.label, option.index),
+    onPick: () => { state.account = option.id; resetTree(); render(); },
+  })));
+
+  const today = localDay();
+  const presetMeta = {
+    month: new Date(today + 'T00:00:00').toLocaleDateString(undefined, {month: 'long'}),
+    lastmonth: lastMonthBounds(today).name,
+  };
+  const rangeName = RANGES.find(([value]) => value === state.range)?.[1] ?? 'Range';
+  document.getElementById('range-button').replaceChildren(icon('calendar'), element('span', rangeName, 'value'), element('span', shortPeriod(view.first, view.last), 'meta'), icon('caret', 'caret'));
+  document.getElementById('range-items').replaceChildren(...RANGES.filter(([value]) => value !== 'custom').map(([value, label]) => menuItem({
+    label,
+    meta: presetMeta[value],
+    checked: value === state.range,
+    onPick: () => { state.range = value; resetTree(); load(); },
+  })));
+  document.getElementById('since').value = state.range === 'custom' && state.since ? state.since : view.first;
+  document.getElementById('until').value = state.range === 'custom' && state.until ? state.until : view.last;
+  drawScope();
+}
+
+function drawScope() {
+  const holder = document.getElementById('scope');
+  holder.replaceChildren();
+  for (const item of state.scope) {
+    const chip = element('span', undefined, 'chip');
+    chip.append(element('span', GROUP_NAMES[item.kind], 'dim'), element('b', item.label));
+    const remove = element('button', '✕');
+    remove.type = 'button';
+    remove.setAttribute('aria-label', `Stop focusing on ${item.label}`);
+    remove.addEventListener('click', () => unfocus(item.kind));
+    chip.append(remove);
+    holder.append(chip);
+  }
+  if (state.scope.length > 1) {
+    const clear = element('button', 'Clear', 'link-button');
+    clear.type = 'button';
+    clear.addEventListener('click', () => { state.scope = []; navigate(); });
+    holder.append(clear);
+  }
+}
+
+document.getElementById('custom-range').addEventListener('submit', event => {
+  event.preventDefault();
+  const since = document.getElementById('since').value;
+  const until = document.getElementById('until').value;
+  [state.since, state.until] = since <= until ? [since, until] : [until, since];
+  state.range = 'custom';
+  closeMenu();
+  resetTree();
+  load();
+});
+
+const popovers = [];
+
+function setupPopover(trigger, panel) {
+  popovers.push({trigger, panel});
+  trigger.parentElement.addEventListener('focusout', event => {
+    if (event.relatedTarget && !trigger.parentElement.contains(event.relatedTarget)) closePopover(trigger, panel);
+  });
+  trigger.addEventListener('click', () => {
+    const opening = !panel.classList.contains('open');
+    closeMenu();
+    if (!opening) return;
+    panel.classList.add('open');
+    trigger.setAttribute('aria-expanded', 'true');
+    (panel.querySelector('[aria-checked="true"]') ?? menuItems(panel)[0])?.focus();
+  });
+  panel.addEventListener('keydown', event => {
+    if (event.key === 'Escape') {
+      event.stopPropagation();
+      closeMenu();
+      trigger.focus();
+      return;
+    }
+    const items = menuItems(panel);
+    const at = items.indexOf(document.activeElement);
+    const next = {ArrowDown: at + 1, ArrowUp: at - 1, Home: 0, End: items.length - 1}[event.key];
+    if (next === undefined || at === -1 && !['Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    items[(next + items.length) % items.length]?.focus();
+  });
+}
+
+function menuItems(panel) {
+  return [...panel.querySelectorAll('[role^="menuitem"]')];
+}
+
+function closePopover(trigger, panel) {
+  panel.classList.remove('open');
+  trigger.setAttribute('aria-expanded', 'false');
+}
+
+function closeMenu() {
+  for (const {trigger, panel} of popovers) closePopover(trigger, panel);
+}
+
+document.addEventListener('click', event => { if (!event.target.closest('.menu')) closeMenu(); });
+setupPopover(document.getElementById('account-button'), document.getElementById('account-menu'));
+setupPopover(document.getElementById('range-button'), document.getElementById('range-menu'));
+
+function forAccount(items) {
+  return state.account === ALL ? items : items.filter(item => item.account === state.account);
+}
+
+function rowId(row) {
+  return (row.not_in_transcript ? 'u:' : '') + (row.key ?? '');
+}
+
+function mergeRows(rows) {
+  const merged = new Map();
+  for (const row of rows) {
+    const id = rowId(row);
+    const into = merged.get(id);
+    if (!into) { merged.set(id, {...row}); continue; }
+    for (const field of ['requests', 'input_tokens', 'output_tokens', 'cache_read_tokens', 'cache_write_tokens']) into[field] += row[field];
+    into.cost_usd = (into.cost_usd ?? 0) + (row.cost_usd ?? 0);
+  }
+  return [...merged.values()].sort((a, b) => (b.cost_usd ?? 0) - (a.cost_usd ?? 0));
+}
+
+function mergeMix(rows) {
+  const merged = new Map();
+  for (const row of rows) {
+    const id = rowId(row);
+    const into = merged.get(id) ?? {sessions: 0, session_cost_usd: null, input_usd: 0, output_usd: 0, cache_write_usd: 0, cache_read_usd: 0};
+    for (const field of ['sessions', 'input_usd', 'output_usd', 'cache_write_usd', 'cache_read_usd']) into[field] += row[field];
+    if (row.session_cost_usd != null) into.session_cost_usd = (into.session_cost_usd ?? 0) + row.session_cost_usd;
+    merged.set(id, into);
+  }
+  return merged;
+}
+
+function foldMix(rows, mix) {
+  return mergeMix(rows.map(row => mix.get(rowId(row))).filter(Boolean).map(entry => ({...entry, key: 'folded tail', not_in_transcript: false}))).get('folded tail')
+    ?? {sessions: 0, session_cost_usd: null, input_usd: 0, output_usd: 0, cache_write_usd: 0, cache_read_usd: 0};
+}
+
+function perSession(row, mix) {
+  const count = mix?.sessions ?? 0;
+  return count ? money((mix.session_cost_usd ?? row.cost_usd ?? 0) / count) : '';
+}
+
+function cost(rows) {
+  return rows.reduce((sum, row) => sum + (row.cost_usd ?? 0), 0);
+}
+
+function prettyModel(label) {
+  const match = /^claude-([a-z]+)-(\d+)(?:-(\d))?(?:-\d{8})?(.*)$/.exec(label);
+  if (!match) return label;
+  const [, family, major, minor, rest] = match;
+  return `${family[0].toUpperCase()}${family.slice(1)} ${major}${minor ? '.' + minor : ''}${rest}`;
+}
+
+function rowName(row, level) {
+  if (level === 'repo_branch' && row.key) return row.key.split(BRANCH_SEPARATOR).slice(1).join(BRANCH_SEPARATOR);
+  if (level === 'skill' && row.key === 'no skill') return 'Plain conversation';
+  if (level === 'agent' && row.key === 'main conversation') return 'You (no subagent)';
+  if (row.not_in_transcript && !row.key) return NOT_IN_TRANSCRIPTS;
+  const label = level === 'model' ? prettyModel(row.label) : row.label;
+  if (row.not_in_transcript && (level === 'model' || level === 'session')) return label + ', not in transcripts';
+  return label;
+}
+
+function agentName(label) {
+  return label === 'you (no subagent)' ? 'You (no subagent)' : label;
+}
+
+function skillName(label) {
+  return label === 'no skill' ? 'Plain conversation' : label;
+}
+
+function seriesId(entry) {
+  if (entry.other) return 'other';
+  return (entry.not_in_transcript ? 'u:' : '') + (entry.key ?? '');
+}
+
+function seriesLabel(entry) {
+  if (entry.other) return 'Other';
+  if (entry.not_in_transcript && !entry.key) return NOT_IN_TRANSCRIPTS;
+  if (entry.key?.includes(BRANCH_SEPARATOR)) return entry.key.split(BRANCH_SEPARATOR).slice(1).join(BRANCH_SEPARATOR);
+  const label = prettyModel(entry.label);
+  return entry.not_in_transcript ? label + ', not in transcripts' : label;
+}
+
+function seriesColors(entries) {
+  const totals = new Map();
+  const labels = new Map();
+  for (const entry of entries) {
+    const id = seriesId(entry);
+    totals.set(id, (totals.get(id) || 0) + entry.cost_usd);
+    labels.set(id, seriesLabel(entry));
+  }
+  const ranked = [...totals.keys()].filter(id => id !== 'other').sort((a, b) => totals.get(b) - totals.get(a));
+  const order = ranked.slice(0, SLOTS.length);
+  const folded = ranked.slice(SLOTS.length);
+  if (folded.length || totals.has('other')) {
+    totals.set('other', (totals.get('other') || 0) + folded.reduce((sum, id) => sum + totals.get(id), 0));
+    labels.set('other', 'Other');
+    order.push('other');
+  }
+  const colors = new Map(order.map((id, index) => [id, id === 'other' ? 'var(--other)' : `var(${SLOTS[index]})`]));
+  return {order, colors, totals, labels};
+}
+
+function niceStep(max) {
+  const rough = max / 4;
+  const power = Math.pow(10, Math.floor(Math.log10(rough)));
+  return [1, 2, 2.5, 5, 10].map(step => step * power).find(step => step >= rough);
+}
+
+function multiple(ratio) {
+  return ratio >= 2 ? `${ratio.toFixed(ratio >= 10 ? 0 : 1)}×` : `${ratio >= 1 ? '+' : '−'}${percent(Math.abs(ratio - 1) * 100)}`;
+}
+
+// Headline
+
+function tile(label, value, subs, options = {}) {
+  const box = element(options.onClick ? 'button' : 'div', undefined, 'tile' + (options.hero ? ' hero' : '') + (options.onClick ? ' link' : ''));
+  if (options.onClick) { box.type = 'button'; box.addEventListener('click', options.onClick); }
+  box.append(element('span', label, 'label'));
+  const valueRow = element('div', undefined, 'value-row');
+  valueRow.append(element('span', value, 'value'));
+  if (options.spark) valueRow.append(options.spark);
+  box.append(valueRow);
+  if (options.meter !== undefined) box.append(meter(options.meter, options.expected));
+  for (const sub of subs.filter(Boolean)) {
+    const [text, className] = Array.isArray(sub) ? sub : [sub, ''];
+    box.append(element('span', text, 'sub ' + className));
+  }
+  return box;
+}
+
+function meter(fraction, expected) {
+  const level = fraction >= 0.9 ? 'critical' : fraction >= 0.75 ? 'warning' : '';
+  const bar = element('div', undefined, 'meter ' + level);
+  bar.setAttribute('role', 'meter');
+  bar.setAttribute('aria-valuenow', String(Math.round(fraction * 100)));
+  const fill = element('span');
+  fill.style.width = Math.min(100, fraction * 100) + '%';
+  bar.append(fill);
+  if (expected !== undefined) {
+    const mark = element('i');
+    mark.style.left = `calc(${Math.min(100, expected * 100)}% - 1px)`;
+    bar.append(mark);
+  }
+  return bar;
+}
+
+function sparkline(values) {
+  if (values.length < 2 || values.length > 120) return null;
+  const width = 88, height = 30, max = Math.max(...values, 0.01);
+  const x = index => index / (values.length - 1) * (width - 6) + 3;
+  const y = value => height - 4 - value / max * (height - 8);
+  const root = svg('svg', {viewBox: `0 0 ${width} ${height}`, width, height, class: 'spark', 'aria-hidden': 'true'});
+  root.append(svg('polyline', {points: values.map((value, index) => `${x(index)},${y(value)}`).join(' '), fill: 'none', stroke: 'var(--muted)', 'stroke-width': 1.5, 'stroke-linejoin': 'round', 'stroke-linecap': 'round'}));
+  root.append(svg('circle', {cx: x(values.length - 1), cy: y(values[values.length - 1]), r: 3, fill: 'var(--accent)'}));
+  return root;
+}
+
+function monthNumbers(view) {
+  const monthSpend = view.month.filter(day => day.day <= view.today).reduce((sum, day) => sum + day.cost_usd, 0);
+  const dayOfMonth = Number(view.today.slice(8, 10));
+  const daysInMonth = new Date(Date.UTC(Number(view.today.slice(0, 4)), Number(view.today.slice(5, 7)), 0)).getUTCDate();
+  return {monthSpend, pace: monthSpend / dayOfMonth * daysInMonth};
+}
+
+function creditsOf(view) {
+  const limits = view.now?.limits;
+  const credits = limits?.limits.find(limit => limit.kind === 'credits' && limit.credits?.limit);
+  if (!credits) return null;
+  const {used, limit: cap} = credits.credits;
+  const left = Math.max(0, cap - used);
+  let runOutMs = credits.forecast?.full_at_ms ?? null;
+  if (!runOutMs && credits.pace) {
+    const elapsedDays = Math.max(1, (limits.fetched_at_ms - credits.pace.window_start_ms) / DAY_MS);
+    const perDay = used / elapsedDays;
+    if (perDay > 0) runOutMs = limits.fetched_at_ms + left / perDay * DAY_MS;
+  }
+  const resetMs = credits.pace?.window_end_ms ?? null;
+  return {limit: credits, limits, used, cap, left, runOutMs, resetMs, runsOutFirst: runOutMs !== null && resetMs !== null && runOutMs < resetMs};
+}
+
+function closestLimit(view) {
+  const limits = view.now?.limits;
+  const limit = limits?.limits.filter(entry => entry.kind !== 'credits').sort((a, b) => b.percent - a.percent)[0];
+  return limit ? {limit, limits} : null;
+}
+
+function limitName(limit) {
+  return {session: 'Session limit', weekly_all: 'Weekly limit', weekly_scoped: 'Weekly limit, ' + (limit.scope ?? '')}[limit.kind] ?? limit.kind;
+}
+
+function headedFor(limit, fetchedAtMs) {
+  const pace = limit.pace;
+  if (!pace) return null;
+  const elapsed = (fetchedAtMs - pace.window_start_ms) / (pace.window_end_ms - pace.window_start_ms);
+  if (elapsed < 0.1 || limit.percent <= 0) return null;
+  return limit.percent / elapsed;
+}
+
+function limitAge(limits) {
+  const elapsed = Math.round((Date.now() - limits.fetched_at_ms) / 60000);
+  const age = elapsed < 1 ? 'just now' : elapsed < 60 ? `${elapsed} min ago` : `${Math.round(elapsed / 60)} h ago`;
+  const source = limits.source === 'get_usage' ? 'get_usage' : 'cachedUsageUtilization';
+  return `${source}, ${age}`;
+}
+
+function summary(view) {
+  const sentences = [];
+  const {monthSpend, pace} = monthNumbers(view);
+  let month = `On pace for about ${money(pace)} this month`;
+  if (view.lastMonth && view.lastMonth.spend > 0) {
+    const ratio = monthSpend / view.lastMonth.spend;
+    const then = `${view.lastMonth.name} by this point (${money(view.lastMonth.spend)})`;
+    month += ratio >= 2
+      ? `, ${ratio.toFixed(ratio >= 10 ? 0 : 1)}× ${then}`
+      : `, ${percent(Math.abs(ratio - 1) * 100)} ${ratio >= 1 ? 'more' : 'less'} than ${then}`;
+  }
+  sentences.push(month + '.');
+  const credits = creditsOf(view);
+  if (credits?.runOutMs) {
+    sentences.push(credits.runsOutFirst
+      ? `At this rate credits run out about ${longDate(credits.runOutMs)}, before the reset on ${longDate(credits.resetMs)}.`
+      : `At this rate credits last past the reset on ${longDate(credits.resetMs ?? credits.runOutMs)}.`);
+  }
+  const closest = closestLimit(view);
+  if (closest?.limit.forecast) {
+    sentences.push(`${limitName(closest.limit)} reaches 100% by ${localTime(closest.limit.forecast.full_at_ms)}, before it resets.`);
+  } else if (closest) {
+    const headed = headedFor(closest.limit, closest.limits.fetched_at_ms);
+    if (headed !== null) sentences.push(`${limitName(closest.limit)} is headed for about ${percent(Math.min(headed, 999))} at its reset.`);
+  }
+  return sentences.join(' ');
+}
+
+function pastHeadline(view) {
+  const card = element('section', undefined, 'card');
+  card.setAttribute('aria-label', 'Headline numbers');
+  const byDay = new Map();
+  for (const entry of view.series) byDay.set(entry.day, (byDay.get(entry.day) || 0) + entry.cost_usd);
+  const days = daysBetween(view.first, view.last);
+  const spend = cost(view.rows);
+  const active = days.filter(day => (byDay.get(day) || 0) > 0);
+  const busiest = days.reduce((best, day) => (byDay.get(day) || 0) > (byDay.get(best) || 0) ? day : best, days[0]);
+  const sentence = element('p', undefined, 'summary');
+  sentence.append(element('span', `${view.period}: ${money(spend)} over ${days.length} days, ${money(spend / days.length)} a day on average${active.length < days.length ? `, or ${money(active.length ? spend / active.length : 0)} on each of the ${active.length} days with any spend` : ''}.`));
+  card.append(sentence);
+  const tiles = element('div', undefined, 'tiles');
+  tiles.append(spendTile(view));
+  tiles.append(tile('Average active day', money(active.length ? spend / active.length : 0), [`${active.length} of ${days.length} days had spend`]));
+  if (busiest && byDay.get(busiest)) tiles.append(tile('Busiest day', money(byDay.get(busiest)), [new Date(busiest + 'T00:00:00Z').toLocaleDateString(undefined, {weekday: 'long', month: 'short', day: 'numeric', timeZone: 'UTC'}), [`${percent(byDay.get(busiest) / spend * 100)} of the range`, 'faint']]));
+  const driver = driverTile(view, true);
+  if (driver) tiles.append(driver);
+  card.append(tiles);
+  return card;
+}
+
+function cacheReuse(rows) {
+  const read = rows.reduce((sum, row) => sum + row.cache_read_tokens, 0);
+  const all = rows.reduce((sum, row) => sum + row.input_tokens + row.cache_read_tokens + row.cache_write_tokens, 0);
+  return all > 0 ? read / all : null;
+}
+
+function sessionTile(view, spend) {
+  const count = view.sessionCount;
+  if (!count) return null;
+  const partial = view.keptFrom && view.keptFrom > view.first;
+  const sessionSpend = partial ? view.series.filter(entry => entry.day >= view.keptFrom).reduce((sum, entry) => sum + entry.cost_usd, 0) : spend;
+  return tile('Sessions', count.toLocaleString(), [`${money(sessionSpend / count)} per session`, partial ? [`Counted from ${shortDate(view.keptFrom)}, when session detail starts`, 'faint'] : null]);
+}
+
+function summaryHeadline(view) {
+  const card = element('section', undefined, 'card');
+  card.setAttribute('aria-label', 'Headline numbers');
+  const spend = cost(view.rows);
+  const byDay = new Map();
+  for (const entry of view.series) byDay.set(entry.day, (byDay.get(entry.day) || 0) + entry.cost_usd);
+  const days = daysBetween(view.first, view.last);
+  const active = days.filter(day => (byDay.get(day) || 0) > 0);
+  const perActive = active.length ? spend / active.length : 0;
+  const busiest = active.reduce((best, day) => best === null || byDay.get(day) > byDay.get(best) ? day : best, null);
+  const accountSpend = view.accountRows ? cost(view.accountRows) : 0;
+  const reuse = cacheReuse(view.rows);
+  const sentences = [`${state.scope.length ? scopeTitle() + ': ' : ''}${money(spend)} over ${days.length} ${days.length === 1 ? 'day' : 'days'}, with spend on ${active.length} of them (${money(perActive)} per active day).`];
+  if (state.scope.length && accountSpend > 0) sentences.push(`That is ${shareText(spend / accountSpend)} of the account's spend in the same days.`);
+  if (reuse !== null) sentences.push(`${percent(reuse * 100)} of the input Claude read came from the prompt cache, which costs far less than fresh input.`);
+  const sentence = element('p', undefined, 'summary');
+  sentence.append(element('span', sentences.join(' ')));
+  card.append(sentence);
+  const tiles = element('div', undefined, 'tiles');
+  tiles.append(spendTile(view));
+  tiles.append(tile('Active days', `${active.length} of ${days.length}`, [`${money(perActive)} per active day`, busiest ? [`Busiest: ${shortDate(busiest)}, ${money(byDay.get(busiest))}`, 'faint'] : null]));
+  const sessions = sessionTile(view, spend);
+  if (sessions) tiles.append(sessions);
+  const credits = view.last >= view.today ? creditsOf(view) : null;
+  if (credits) tiles.append(creditsTile(credits));
+  else if (reuse !== null) tiles.append(tile('Cache reuse', percent(reuse * 100), ['Share of input read from the cache', ['Higher means cheaper input', 'faint']]));
+  card.append(tiles);
+  return card;
+}
+
+function scopedHeadline(view) {
+  const card = element('section', undefined, 'card');
+  card.setAttribute('aria-label', 'Headline numbers');
+  const spend = cost(view.rows);
+  const accountSpend = view.accountRows ? cost(view.accountRows) : 0;
+  const days = dayCount(view.first, view.last);
+  const share = accountSpend > 0 ? spend / accountSpend : null;
+  const sentence = element('p', undefined, 'summary');
+  sentence.append(element('span', `${scopeTitle()}: ${money(spend)} over ${days} ${days === 1 ? 'day' : 'days'}${share !== null ? `, ${shareText(share)} of the account's spend in this range` : ''}.`));
+  card.append(sentence);
+  const tiles = element('div', undefined, 'tiles');
+  tiles.append(spendTile(view));
+  if (share !== null) tiles.append(tile('Share of account', shareText(share), [`${money(accountSpend)} for the account in this range`]));
+  const sessions = sessionTile(view, spend);
+  if (sessions) tiles.append(sessions);
+  const reuse = cacheReuse(view.rows);
+  if (reuse !== null) tiles.append(tile('Cache reuse', percent(reuse * 100), ['Share of input read from the cache', ['Higher means cheaper input', 'faint']]));
+  card.append(tiles);
+  return card;
+}
+
+function accountLine(view) {
+  if (view.last < view.today) return null;
+  const {monthSpend, pace} = monthNumbers(view);
+  const parts = [`${view.accountLabel ?? 'All accounts'}: ${money(monthSpend)} this month, on pace for about ${money(pace)}`];
+  const credits = creditsOf(view);
+  const closest = closestLimit(view);
+  if (credits) parts.push(`credits ${percent(credits.used / credits.cap * 100)} used, ${dollars(credits.left, 0)} left`);
+  else if (closest) parts.push(`${limitName(closest.limit).toLowerCase()} at ${percent(closest.limit.percent)}`);
+  return element('p', parts.join(' · ') + '.', 'account-line');
+}
+
+function headline(view, shareable) {
+  if (view.last < view.today) return pastHeadline(view);
+  const card = element('section', undefined, 'card');
+  card.setAttribute('aria-label', 'Headline numbers');
+  const sentence = element('p', undefined, 'summary');
+  sentence.append(element('span', summary(view)));
+  card.append(sentence);
+  const tiles = element('div', undefined, 'tiles');
+  tiles.append(spendTile(view));
+  const credits = creditsOf(view);
+  const closest = closestLimit(view);
+  if (credits) {
+    tiles.append(creditsTile(credits), weekdayTile(credits, view));
+  } else if (closest) {
+    tiles.append(limitTile(closest), todayTile(view.now, shareable));
+  } else {
+    const {monthSpend, pace} = monthNumbers(view);
+    tiles.append(tile('This month', money(monthSpend), [`On pace for about ${money(pace)}`, ['Straight line from the days so far', 'faint']]));
+  }
+  const driver = driverTile(view, shareable);
+  if (driver) tiles.append(driver);
+  card.append(tiles);
+  return card;
+}
+
+function spendTile(view) {
+  const spend = cost(view.rows);
+  const subs = [];
+  if (view.previousLabel) {
+    const previous = cost(view.previousRows);
+    if (previous > 0) {
+      const ratio = spend / previous;
+      subs.push([`${multiple(ratio)} vs ${view.previousLabel}`, 'delta ' + (ratio >= 1 ? 'up' : 'down')]);
+      subs.push([`${money(previous)} then`, 'faint']);
+    } else {
+      subs.push([`Nothing in ${view.previousLabel}`, 'faint']);
+    }
+  } else if (view.historyStart) {
+    subs.push([`No comparison: history starts ${shortDate(view.historyStart)}`, 'faint']);
+  }
+  const byDay = new Map();
+  for (const entry of view.series) byDay.set(entry.day, (byDay.get(entry.day) || 0) + entry.cost_usd);
+  const values = daysBetween(view.first, view.last).map(day => byDay.get(day) || 0);
+  return tile('Spend', money(spend), subs, {hero: true, spark: sparkline(values)});
+}
+
+function creditsTile(credits) {
+  const {limit, limits, used, cap, left, runOutMs, resetMs, runsOutFirst} = credits;
+  const subs = [`${dollars(left, 0)} left of ${dollars(cap, 0)}`];
+  if (runOutMs) subs.push(runsOutFirst ? [`Runs out about ${longDate(runOutMs)}`, 'status-line warning'] : `Lasts past the reset, ${longDate(resetMs ?? runOutMs)}`);
+  if (limit.pace) subs.push([`Mark shows even pace (${percent(limit.pace.expected_percent)})`, 'faint']);
+  subs.push([`From ${limitAge(limits)}${limit.pace?.provisional ? ' · reset day provisional' : ''}`, 'faint']);
+  return tile('Credits used', dollars(used, 0), subs, {meter: used / cap, expected: limit.pace ? limit.pace.expected_percent / 100 : undefined});
+}
+
+function weekdayTile(credits, view) {
+  const end = credits.resetMs ? localDay(new Date(credits.resetMs - 1)) : view.today;
+  const remaining = daysBetween(view.today, end).filter(isWeekday);
+  const past = view.month.filter(day => day.day < view.today && isWeekday(day.day));
+  const average = past.length ? past.reduce((sum, day) => sum + day.cost_usd, 0) / past.length : null;
+  if (!remaining.length) return tile('Per weekday left', dollars(credits.left, 0), ['No weekdays left before the reset']);
+  const perDay = credits.left / remaining.length;
+  const subs = [`Over the ${remaining.length} weekdays to the reset`];
+  if (average !== null) {
+    subs.push(perDay >= average
+      ? `Room to spare: you average ${dollars(average, 0)}`
+      : [`Over budget: you average ${dollars(average, 0)}`, 'status-line warning']);
+  }
+  subs.push(['Weekdays are Monday to Friday', 'faint']);
+  return tile('Per weekday left', dollars(perDay, 0), subs);
+}
+
+function limitTile({limit, limits}) {
+  const subs = [];
+  const headed = headedFor(limit, limits.fetched_at_ms);
+  if (limit.forecast) subs.push([`100% by ${localTime(limit.forecast.full_at_ms)}`, 'status-line critical']);
+  else if (headed !== null) subs.push(headed >= 100 ? [`Headed past 100% before the reset`, 'status-line warning'] : `Headed for about ${percent(headed)} at the reset`);
+  if (limit.resets_at) subs.push('Resets ' + localTime(Date.parse(limit.resets_at)));
+  if (limit.pace) subs.push([`Mark shows even pace (${percent(limit.pace.expected_percent)}) · from ${limitAge(limits)}`, 'faint']);
+  return tile(limitName(limit), percent(limit.percent), subs, {meter: limit.percent / 100, expected: limit.pace ? limit.pace.expected_percent / 100 : undefined});
+}
+
+function todayTile(account, shareable) {
+  const pace = account.pace;
+  const subs = [];
+  if (pace.usual_usd !== null && pace.usual_usd > 0) {
+    const times = account.cost_usd / pace.usual_usd;
+    subs.push(times >= 1.5 ? [`${times.toFixed(1)}× your usual ${dollars(pace.usual_usd)} by ${pace.clock}`, 'status-line warning'] : `Usual by ${pace.clock}: ${dollars(pace.usual_usd)}`);
+  } else {
+    subs.push(['No usual yet', 'faint']);
+  }
+  if (account.fastest_session && !shareable) subs.push(['Busiest now: ' + account.fastest_session.label, 'faint']);
+  return tile('Today', dollars(account.cost_usd), subs);
+}
+
+function driverTile(view, shareable) {
+  const merged = new Map();
+  for (const row of view.agents) {
+    const id = row.agent + ' · ' + row.model;
+    merged.set(id, {agent: row.agent, model: row.model, cost: (merged.get(id)?.cost || 0) + row.cost_usd});
+  }
+  const total = [...merged.values()].reduce((sum, row) => sum + row.cost, 0);
+  const top = [...merged.values()].sort((a, b) => b.cost - a.cost)[0];
+  if (!top || total <= 0) return null;
+  const who = top.agent === 'you (no subagent)' ? 'Your own conversation' : top.agent;
+  return tile('Biggest driver', percent(top.cost / total * 100), [
+    `${who} on ${prettyModel(top.model)}`,
+    [`${money(top.cost)} of ${money(total)}`, 'faint'],
+  ], shareable ? {} : {onClick: () => document.getElementById('who')?.scrollIntoView({behavior: 'smooth', block: 'start'})});
+}
+
+// Chart
+
+function spendChart(view, chartBy, entries, interactive) {
+  const card = element('section', undefined, 'card');
+  const head = element('div', undefined, 'card-head');
+  head.append(element('h2', 'Spend per day'));
+  if (interactive && !state.scope.length) head.append(tabs(CHART_BY, chartBy, chart => { state.chart = chart; load(); }, 'Color by', 'tabs small'));
+  else head.append(element('span', 'By ' + GROUP_NAMES[chartBy].toLowerCase(), 'hint'));
+  card.append(head);
+  const {order, colors, totals, labels} = seriesColors(entries);
+  const days = daysBetween(view.first, view.last);
+  const index = new Map(days.map((day, position) => [day, position]));
+  const perDay = days.map(() => new Map());
+  for (const entry of entries) {
+    const position = index.get(entry.day);
+    if (position === undefined) continue;
+    const id = order.includes(seriesId(entry)) ? seriesId(entry) : 'other';
+    perDay[position].set(id, (perDay[position].get(id) || 0) + entry.cost_usd);
+  }
+  const dayTotals = perDay.map(values => [...values.values()].reduce((sum, value) => sum + value, 0));
+  const step = niceStep(Math.max(...dayTotals, 1));
+  const top = step * Math.ceil(Math.max(...dayTotals, step) / step);
+  const width = interactive ? chartWidth() : 1000, height = 250, left = 48, right = 0, upper = 8, lower = 26;
+  const slot = (width - left - right) / days.length;
+  const dayEvery = days.length > 62 ? null : [1, 7, 14].find(every => slot * every >= DAY_LABEL_GAP) ?? 14;
+  const monthEvery = Math.ceil(MONTH_LABEL_GAP / (slot * 30.4));
+  const barWidth = Math.min(24, Math.max(slot * 0.72, 1));
+  const y = value => upper + (height - upper - lower) * (1 - value / top);
+  const root = svg('svg', {viewBox: `0 0 ${width} ${height}`, role: 'img', 'aria-label': `Spend per day, ${view.period}`});
+  for (let value = 0; value <= top + step / 2; value += step) {
+    root.append(svg('line', {x1: left, x2: width - right, y1: y(value), y2: y(value), stroke: value === 0 ? 'var(--axis)' : 'var(--grid)', 'stroke-width': 1}));
+    const label = svg('text', {x: left - 10, y: y(value) + 4, 'text-anchor': 'end'});
+    label.textContent = '$' + value.toLocaleString(undefined, {maximumFractionDigits: step < 1 ? 2 : 0});
+    root.append(label);
+  }
+  days.forEach((day, position) => {
+    const x = left + position * slot + (slot - barWidth) / 2;
+    let base = 0;
+    const stack = order.filter(id => perDay[position].get(id));
+    stack.forEach((id, layer) => {
+      const value = perDay[position].get(id);
+      const yTop = y(base + value);
+      const gap = layer > 0 && barWidth > 3 ? 2 : 0;
+      const heightPx = Math.max(0, y(base) - yTop - gap);
+      const radius = layer === stack.length - 1 && barWidth > 6 ? 3 : 0;
+      root.append(radius ? svg('path', {d: roundedTop(x, yTop, barWidth, heightPx, radius), fill: colors.get(id)})
+        : svg('rect', {x, y: yTop, width: barWidth, height: heightPx, fill: colors.get(id)}));
+      base += value;
+    });
+    const labelled = dayEvery ? position % dayEvery === 0 : day.endsWith('-01') && (Number(day.slice(5, 7)) - 1) % monthEvery === 0;
+    if (labelled) {
+      const label = svg('text', {x: left + position * slot + slot / 2, y: height - 7, 'text-anchor': 'middle'});
+      label.textContent = dayEvery ? shortDate(day) : new Date(day + 'T00:00:00Z').toLocaleDateString(undefined, {month: 'short', year: day.slice(5, 7) === '01' ? 'numeric' : undefined, timeZone: 'UTC'});
+      root.append(label);
+    }
+    const parts = stack.slice().reverse().map(id => [labels.get(id) ?? 'Other', perDay[position].get(id), colors.get(id)]);
+    const hit = svg('rect', {x: left + position * slot, width: slot, y: upper, height: height - upper - lower, fill: 'transparent'});
+    if (!interactive) {
+      const title = svg('title', {});
+      title.textContent = `${shortDate(day)}: ${dollars(dayTotals[position])}` + parts.map(([label, value]) => `\n${label}: ${dollars(value)}`).join('');
+      hit.append(title);
+    } else {
+      const show = event => showTip(event, day, dayTotals[position], parts);
+      hit.addEventListener('pointermove', show);
+      hit.addEventListener('pointerleave', hideTip);
+      const open = () => { hideTip(); openDayPanel(day, dayTotals[position], parts); };
+      hit.setAttribute('class', 'day');
+      hit.addEventListener('click', open);
+      if (days.length <= 62) {
+        hit.setAttribute('tabindex', '0');
+        hit.setAttribute('role', 'button');
+        hit.setAttribute('aria-label', `${shortDate(day)}: ${dollars(dayTotals[position])}, open details`);
+        hit.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open(); } });
+      }
+    }
+    root.append(hit);
+  });
+  const chart = element('div', undefined, 'chart');
+  chart.append(root);
+  const legend = element('div', undefined, 'legend');
+  for (const id of order) {
+    const item = element('span', labels.get(id) ?? 'Other', 'key');
+    item.append(document.createTextNode(' '), element('b', money(totals.get(id) ?? 0)));
+    item.style.setProperty('--swatch', colors.get(id));
+    legend.append(item);
+  }
+  chart.append(legend);
+  card.append(chart);
+  if (!entries.length) card.append(element('p', 'No spend in this range.', 'note'));
+  else if (interactive) card.append(element('p', 'Click a day for its details.', 'note'));
+  return {card, colors};
+}
+
+function chartWidth() {
+  const content = document.getElementById('content');
+  const pad = parseFloat(getComputedStyle(content).getPropertyValue('--pad')) || 24;
+  return Math.max(MIN_CHART_WIDTH, Math.round(content.clientWidth - 2 * pad - 2));
+}
+
+function roundedTop(x, y, width, height, radius) {
+  const r = Math.min(radius, height, width / 2);
+  return `M${x},${y + height} V${y + r} Q${x},${y} ${x + r},${y} H${x + width - r} Q${x + width},${y} ${x + width},${y + r} V${y + height} Z`;
+}
+
+function showTip(event, day, total, parts) {
+  tip.replaceChildren();
+  const head = element('div', undefined, 'head');
+  head.append(element('span', new Date(day + 'T00:00:00Z').toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC'})), element('b', dollars(total)));
+  tip.append(head);
+  for (const [label, value, color] of parts) {
+    const line = element('div', undefined, 'line');
+    const key = element('i');
+    key.style.setProperty('--swatch', color);
+    line.append(key, element('span', label), element('b', dollars(value)));
+    tip.append(line);
+  }
+  tip.style.display = 'block';
+  tip.style.left = Math.min(event.clientX + 16, window.innerWidth - tip.offsetWidth - 8) + 'px';
+  tip.style.top = Math.min(event.clientY + 16, window.innerHeight - tip.offsetHeight - 8) + 'px';
+}
+
+function hideTip() {
+  tip.style.display = 'none';
+}
+
+// Tables
+
+function shareCell(fraction, color) {
+  const cell = element('td');
+  const wrap = element('div', undefined, 'share');
+  const track = element('span', undefined, 'track');
+  const fill = element('span');
+  fill.style.width = fraction * 100 + '%';
+  if (color) fill.style.setProperty('--swatch', color);
+  if (fraction > 0) track.append(fill);
+  wrap.append(track, element('em', shareText(fraction)));
+  cell.append(wrap);
+  return cell;
+}
+
+function mixCell(mix) {
+  const cell = element('td');
+  if (!mix) return cell;
+  const total = MIX_PARTS.reduce((sum, [field]) => sum + mix[field], 0);
+  if (total <= 0) return cell;
+  const bar = element('div', undefined, 'mix');
+  const words = [];
+  for (const [field, label, slot] of MIX_PARTS) {
+    if (mix[field] <= 0) continue;
+    const part = element('span');
+    part.style.flexGrow = String(mix[field]);
+    part.style.background = `var(${slot})`;
+    bar.append(part);
+    words.push(`${label} ${shareText(mix[field] / total)}`);
+  }
+  bar.title = words.join(' · ') + ' (at list price)';
+  bar.setAttribute('aria-label', bar.title);
+  cell.append(bar);
+  return cell;
+}
+
+function mixLegend() {
+  const legend = element('div', undefined, 'mix-legend');
+  legend.append(element('span', 'Paid for:', 'dim'));
+  for (const [, label, slot] of MIX_PARTS) {
+    const key = element('span', label, 'key');
+    key.style.setProperty('--swatch', `var(${slot})`);
+    legend.append(key);
+  }
+  return legend;
+}
+
+function columns(table, first) {
+  const group = element('colgroup');
+  for (const width of ['36%', '19%', '11%', '9%', '11%', '14%']) {
+    const column = element('col');
+    column.style.width = width;
+    group.append(column);
+  }
+  table.append(group);
+  const header = table.createTHead().insertRow();
+  for (const name of [first, 'Share', 'Cost', 'Sessions', 'Per session', 'Paid for']) header.append(element('th', name));
+}
+
+function nameCell(text, depth, open, canOpen, meta, tree = true) {
+  const cell = element('td', undefined, 'name');
+  const wrap = element('div', undefined, 'name-wrap');
+  wrap.style.paddingLeft = depth * 20 + 'px';
+  if (tree) wrap.append(chevron(open, canOpen));
+  const textBox = element('span', undefined, 'name-text');
+  textBox.append(document.createTextNode(text));
+  if (meta) textBox.append(element('span', meta, 'name-meta'));
+  textBox.title = meta ? `${text}\n${meta}` : text;
+  wrap.append(textBox);
+  cell.append(wrap);
+  return cell;
+}
+
+function sessionMeta(session) {
+  const parts = [];
+  if (session.first_ms) parts.push(longDate(session.first_ms));
+  const skill = session.skills[0];
+  if (skill) parts.push(`${skillName(skill.label)} ${shareText(skill.share)}`);
+  if (session.active_minutes) parts.push(minutes(session.active_minutes) + ' active');
+  if (session.peak_context) parts.push(`peak ${compact(session.peak_context)} context`);
+  return parts.join(' · ');
+}
+
+function ago(ms) {
+  const elapsed = Math.round((Date.now() - ms) / 60000);
+  return elapsed < 1 ? 'just now' : elapsed < 60 ? `${elapsed} min ago` : `${Math.round(elapsed / 60)} h ago`;
+}
+
+function adviceCard(view) {
+  if (state.scope.length || view.last < view.today) return null;
+  const entries = forAccount(latest.advice.accounts);
+  const card = element('section', undefined, 'card');
+  const head = element('div', undefined, 'card-head');
+  head.append(element('h2', 'Ways to spend less'), element('span', entries.length ? `Anthropic's advice from Claude Code's /usage, read ${ago(Math.max(...entries.map(entry => entry.fetched_at_ms)))}` : 'Anthropic\'s advice from Claude Code\'s /usage', 'hint'));
+  card.append(head);
+  if (!entries.length) {
+    card.append(element('p', 'No advice saved today. The engine saves it hourly while Claude Code is active.', 'note'));
+    return card;
+  }
+  for (const entry of entries) {
+    const period = entry.behaviors?.week ? ['this week', entry.behaviors.week] : entry.behaviors?.day ? ['today', entry.behaviors.day] : null;
+    if (state.account === ALL) card.append(element('h3', latest.now.accounts.find(account => account.account === entry.account)?.account_label ?? entry.account));
+    const recommendations = period?.[1].recommendations ?? [];
+    if (!recommendations.length) {
+      card.append(element('p', 'Nothing flagged.', 'note'));
+      continue;
+    }
+    const list = element('div', undefined, 'advice');
+    for (const recommendation of recommendations) {
+      const row = element('div', undefined, 'advice-row');
+      const what = element('div');
+      what.append(element('span', recommendation.title ?? String(recommendation.key ?? '').replace(/_/g, ' ')));
+      if (recommendation.detail) what.append(element('small', recommendation.detail));
+      row.append(what, element('b', `${percent(recommendation.pct ?? 0)} of usage`));
+      list.append(row);
+    }
+    card.append(list);
+    card.append(element('p', `Each percentage is the share of your usage ${period[0]} that matched the pattern, so they overlap.`, 'note'));
+  }
+  return card;
+}
+
+function clickable(line, action) {
+  line.classList.add('clickable');
+  line.tabIndex = 0;
+  line.addEventListener('click', action);
+  line.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); action(); } });
+}
+
+function breakdown(view, colors) {
+  const by = breakdownGrouping();
+  const card = element('section', undefined, 'card');
+  const head = element('div', undefined, 'card-head');
+  head.append(element('h2', 'Where it went'), tabs(groupings().map(kind => [kind, GROUP_NAMES[kind]]), by, picked => { state.by = picked; showTail = false; load(); }, 'Break down by', 'tabs small'));
+  card.append(head);
+  if (!view.rows.length) {
+    card.append(element('p', 'No spend in this range.', 'note'));
+    return card;
+  }
+  card.append(mixLegend());
+  const total = cost(view.rows);
+  const sameColors = by === chartGrouping();
+  const opensPanel = Boolean(SCOPE_OF_LEVEL[view.level]);
+  const wrapper = element('div', undefined, 'table');
+  const table = element('table');
+  columns(table, LEVEL_NAMES[view.level]);
+  const body = table.createTBody();
+  const foot = table.createTFoot().insertRow();
+  const sessions = [...view.mix.values()].reduce((sum, mix) => sum + mix.sessions, 0);
+  foot.append(element('td', 'Total'), element('td', ''), element('td', dollars(total)), element('td', ''), element('td', ''), element('td', ''));
+
+  const valueCells = (line, row, mix) => {
+    line.append(shareCell(total > 0 ? (row.cost_usd ?? 0) / total : 0, row.color));
+    line.append(element('td', row.cost_usd == null ? 'no price' : dollars(row.cost_usd)));
+    const count = mix?.sessions ?? 0;
+    line.append(element('td', count ? count.toLocaleString() : '', count ? '' : 'dim'));
+    line.append(element('td', perSession(row, mix)));
+    line.append(mixCell(mix));
+  };
+
+  const addRow = (row, color, depth) => {
+    const line = body.insertRow();
+    if (depth) line.classList.add('child');
+    line.append(nameCell(rowName(row, view.level), depth, false, false, null, false));
+    valueCells(line, {...row, color}, view.mix.get(rowId(row)));
+    if (row.not_in_transcript) clickable(line, openNotInTranscriptsPanel);
+    else if (opensPanel && row.key != null) clickable(line, () => openRowPanel(row, view.level));
+  };
+
+  const fill = () => {
+    body.replaceChildren();
+    const major = view.rows.length > 8 ? view.rows.filter(row => (row.cost_usd ?? 0) >= total * FOLD_SHARE) : view.rows;
+    const tail = view.rows.filter(row => !major.includes(row));
+    const shown = tail.length >= 2 ? major : view.rows;
+    for (const row of shown) addRow(row, sameColors ? colors.get(rowId(row)) ?? 'var(--other)' : null, 0);
+    if (tail.length < 2) return;
+    const line = body.insertRow();
+    line.setAttribute('aria-expanded', String(showTail));
+    line.append(nameCell(`Other ${GROUP_PLURALS[by]} (${tail.length}), each under 1%`, 0, showTail, true));
+    valueCells(line, {cost_usd: cost(tail), color: 'var(--other)'}, foldMix(tail, view.mix));
+    clickable(line, () => { showTail = !showTail; fill(); });
+    if (showTail) for (const row of tail) addRow(row, 'var(--other)', 1);
+  };
+
+  fill();
+  wrapper.append(table);
+  card.append(wrapper);
+  const distinct = view.sessionCount ?? sessions;
+  const partial = view.keptFrom && view.keptFrom > view.first;
+  const hint = distinct ? `${distinct.toLocaleString()} sessions in this range${partial ? `, counted from ${shortDate(view.keptFrom)}, when session detail starts` : ''}. ` : '';
+  card.append(element('p', `${hint}"Paid for" splits each row's cost by token type at list price; hover a bar for the shares. Click a row for its details, and focus the page on it from there.`, 'note'));
+  return card;
+}
+
+function changeText(now, before) {
+  if (before > 0) return multiple(now / before);
+  return now > 0 ? 'new' : '';
+}
+
+function staticBreakdown(title, rows, level, mix, previous) {
+  const card = element('section', undefined, 'card');
+  const head = element('div', undefined, 'card-head');
+  head.append(element('h2', title));
+  if (previous) head.append(element('span', `Change compares with ${previous.label}${previous.label.startsWith('the ') ? ` (${previous.dates})` : ''}`, 'hint'));
+  card.append(head, mixLegend());
+  const total = cost(rows);
+  const wrapper = element('div', undefined, 'table');
+  const table = element('table');
+  const widths = previous ? ['30%', '16%', '11%', '9%', '9%', '10%', '15%'] : ['36%', '19%', '11%', '9%', '11%', '14%'];
+  const group = element('colgroup');
+  for (const width of widths) {
+    const column = element('col');
+    column.style.width = width;
+    group.append(column);
+  }
+  table.append(group);
+  const header = table.createTHead().insertRow();
+  for (const name of [LEVEL_NAMES[level], 'Share', 'Cost', ...(previous ? ['Change'] : []), 'Sessions', 'Per session', 'Paid for']) header.append(element('th', name));
+  const body = table.createTBody();
+  const major = rows.length > 8 ? rows.filter(row => (row.cost_usd ?? 0) >= total * FOLD_SHARE) : rows;
+  const tail = rows.filter(row => !major.includes(row));
+  const shownRows = tail.length >= 2 ? [...major] : rows;
+  if (tail.length >= 2) {
+    const tailMix = foldMix(tail, mix);
+    shownRows.push({label: `Other (${tail.length}), each under 1%`, key: 'folded tail', cost_usd: cost(tail), folded: true, before: tail.reduce((sum, row) => sum + (previous?.costs.get(rowId(row)) ?? 0), 0)});
+    mix.set('folded tail', tailMix);
+  }
+  for (const row of shownRows) {
+    const line = body.insertRow();
+    line.append(nameCell(row.folded ? row.label : rowName(row, level), 0, false, false, null, false));
+    const rowMix = mix.get(rowId(row));
+    line.append(shareCell(total > 0 ? (row.cost_usd ?? 0) / total : 0));
+    line.append(element('td', row.cost_usd == null ? 'no price' : dollars(row.cost_usd)));
+    if (previous) line.append(element('td', changeText(row.cost_usd ?? 0, row.folded ? row.before : previous.costs.get(rowId(row)) ?? 0)));
+    const count = rowMix?.sessions ?? 0;
+    line.append(element('td', count ? count.toLocaleString() : ''), element('td', perSession(row, rowMix)), mixCell(rowMix));
+  }
+  const foot = table.createTFoot().insertRow();
+  foot.append(element('td', 'Total'), element('td', ''), element('td', dollars(total)));
+  if (previous) foot.append(element('td', changeText(total, [...previous.costs.values()].reduce((sum, value) => sum + value, 0))));
+  foot.append(element('td', ''), element('td', ''), element('td', ''));
+  wrapper.append(table);
+  card.append(wrapper);
+  return card;
+}
+
+function whoDidTheWork(rows, interactive) {
+  const card = element('section', undefined, 'card');
+  card.id = 'who';
+  const head = element('div', undefined, 'card-head');
+  head.append(element('h2', 'Who did the work'), element('span', 'Your own conversation and each subagent, by the model it ran on', 'hint'));
+  card.append(head);
+  if (!rows.length) {
+    card.append(element('p', 'No spend in this range.', 'note'));
+    return card;
+  }
+  const modelTotals = new Map();
+  const agents = new Map();
+  for (const row of rows) {
+    modelTotals.set(row.model, (modelTotals.get(row.model) || 0) + row.cost_usd);
+    const id = (row.not_in_transcript ? 'u:' : '') + (row.agent_key ?? row.agent);
+    if (!agents.has(id)) agents.set(id, {label: row.not_in_transcript && !row.agent_key ? NOT_IN_TRANSCRIPTS : agentName(row.agent), key: row.agent_key ?? null, raw: row.agent, models: new Map(), total: 0});
+    const agent = agents.get(id);
+    agent.models.set(row.model, (agent.models.get(row.model) || 0) + row.cost_usd);
+    agent.total += row.cost_usd;
+  }
+  const models = [...modelTotals.keys()].sort((a, b) => modelTotals.get(b) - modelTotals.get(a));
+  const shown = models.slice(0, 3);
+  const rest = models.slice(3);
+  const total = [...agents.values()].reduce((sum, agent) => sum + agent.total, 0);
+  const wrapper = element('div', undefined, 'table');
+  const table = element('table');
+  const group = element('colgroup');
+  const modelColumns = shown.length + (rest.length ? 1 : 0);
+  for (const width of ['30%', '22%', ...Array(modelColumns).fill(`${36 / modelColumns}%`), '12%']) {
+    const column = element('col');
+    column.style.width = width;
+    group.append(column);
+  }
+  table.append(group);
+  const header = table.createTHead().insertRow();
+  header.append(element('th', 'Who'), element('th', 'Share'));
+  for (const model of shown) header.append(element('th', prettyModel(model)));
+  if (rest.length) header.append(element('th', 'Other models'));
+  header.append(element('th', 'Total'));
+  const body = table.createTBody();
+  for (const agent of [...agents.values()].sort((a, b) => b.total - a.total)) {
+    const line = body.insertRow();
+    line.append(nameCell(agent.label, 0, false, false, null, false), shareCell(total > 0 ? agent.total / total : 0));
+    if (interactive && agent.key === null) clickable(line, openNotInTranscriptsPanel);
+    else if (interactive && !scopedKinds().has('agent')) clickable(line, () => openRowPanel({key: agent.key, label: agent.raw}, 'agent'));
+    const cell = value => element('td', value >= 0.005 ? dollars(value) : '—', value >= 0.005 ? '' : 'dim');
+    for (const model of shown) line.append(cell(agent.models.get(model) || 0));
+    if (rest.length) line.append(cell(rest.reduce((sum, model) => sum + (agent.models.get(model) || 0), 0)));
+    line.append(element('td', dollars(agent.total)));
+  }
+  const foot = table.createTFoot().insertRow();
+  foot.append(element('td', 'Total'), element('td', ''));
+  for (const model of shown) foot.append(element('td', dollars(modelTotals.get(model))));
+  if (rest.length) foot.append(element('td', dollars(rest.reduce((sum, model) => sum + modelTotals.get(model), 0))));
+  foot.append(element('td', dollars(total)));
+  wrapper.append(table);
+  card.append(wrapper);
+  return card;
+}
+
+function biggestSessions(view) {
+  const card = element('section', undefined, 'card');
+  const head = element('div', undefined, 'card-head');
+  head.append(element('h2', 'Biggest sessions'), element('span', view.keptFrom ? `Session detail is kept from ${shortDate(view.keptFrom)}` : 'Click one for its details', 'hint'));
+  card.append(head);
+  if (!view.sessions.length) {
+    card.append(element('p', 'No sessions with request detail in this range.', 'note'));
+    return card;
+  }
+  const total = cost(view.rows);
+  const wrapper = element('div', undefined, 'table');
+  const table = element('table');
+  const group = element('colgroup');
+  for (const width of ['52%', '19%', '13%', '16%']) {
+    const column = element('col');
+    column.style.width = width;
+    group.append(column);
+  }
+  table.append(group);
+  const header = table.createTHead().insertRow();
+  for (const name of ['Session', 'Share of range', 'Cost', 'Where']) header.append(element('th', name));
+  const body = table.createTBody();
+  for (const session of view.sessions) {
+    const line = body.insertRow();
+    line.className = 'session clickable';
+    line.tabIndex = 0;
+    line.append(nameCell(session.title ?? 'Untitled session', 0, false, false, sessionMeta(session), false));
+    line.append(shareCell(total > 0 ? session.cost_usd / total : 0));
+    line.append(element('td', dollars(session.cost_usd)));
+    line.append(element('td', session.branch ? `${session.repo} · ${session.branch}` : session.repo, 'dim'));
+    const open = () => openPanel(session);
+    line.addEventListener('click', open);
+    line.addEventListener('keydown', event => { if (event.key === 'Enter') open(); });
+  }
+  wrapper.append(table);
+  card.append(wrapper);
+  return card;
+}
+
+// Side panel
+
+const panel = document.getElementById('panel');
+const backdrop = document.getElementById('backdrop');
+let panelOpener = null;
+
+function panelShell(title, subtitle) {
+  if (!panel.classList.contains('open')) panelOpener = document.activeElement;
+  panelToken += 1;
+  panel.replaceChildren();
+  const head = element('div', undefined, 'panel-head');
+  head.append(element('h2', title));
+  const close = element('button', '✕', 'close');
+  close.type = 'button';
+  close.setAttribute('aria-label', 'Close');
+  close.addEventListener('click', closePanel);
+  head.append(close);
+  panel.append(head);
+  if (subtitle) panel.append(element('p', subtitle, 'note panel-sub'));
+  panel.setAttribute('aria-label', title);
+  panel.classList.add('open');
+  panel.setAttribute('aria-hidden', 'false');
+  backdrop.classList.add('open');
+  close.focus();
+  return panelToken;
+}
+
+function closePanel() {
+  if (!panel.classList.contains('open')) return;
+  panelToken += 1;
+  panel.classList.remove('open');
+  panel.setAttribute('aria-hidden', 'true');
+  backdrop.classList.remove('open');
+  panelOpener?.focus?.();
+}
+
+function panelAction(text, action) {
+  const actions = element('div', undefined, 'actions');
+  const button = element('button', text, 'button primary');
+  button.type = 'button';
+  button.addEventListener('click', action);
+  actions.append(button);
+  panel.append(actions);
+}
+
+function factList() {
+  const facts = element('dl', undefined, 'facts');
+  const fact = (name, value) => { if (value) facts.append(element('dt', name), element('dd', value)); };
+  return {facts, fact};
+}
+
+function shareList(title, items, total) {
+  const shown = items.filter(item => item.cost > 0).slice(0, PANEL_ROWS);
+  if (!shown.length) return;
+  panel.append(element('h3', title));
+  const list = element('div', undefined, 'shares');
+  for (const item of shown) {
+    const row = element('div', undefined, 'row');
+    const bar = element('span', undefined, 'share');
+    const track = element('span', undefined, 'track');
+    const fill = element('span');
+    fill.style.width = Math.max(total > 0 ? item.cost / total * 100 : 0, 1) + '%';
+    if (item.color) fill.style.setProperty('--swatch', item.color);
+    track.append(fill);
+    bar.append(track);
+    const name = element('span', item.label);
+    name.title = item.label;
+    row.append(name, bar, element('b', dollars(item.cost)));
+    list.append(row);
+  }
+  panel.append(list);
+}
+
+function sessionList(sessions) {
+  if (!sessions.length) return;
+  panel.append(element('h3', 'Biggest sessions'));
+  const list = element('div', undefined, 'panel-sessions');
+  for (const session of sessions) {
+    const button = element('button');
+    button.type = 'button';
+    button.append(element('span', session.title ?? 'Untitled session', 'title'), element('b', dollars(session.cost_usd)), element('small', sessionMeta(session)));
+    button.addEventListener('click', () => openPanel(session));
+    list.append(button);
+  }
+  panel.append(list);
+}
+
+function dayBars(days, first, last) {
+  const byDay = new Map();
+  for (const entry of days) byDay.set(entry.day, (byDay.get(entry.day) || 0) + entry.cost_usd);
+  const all = daysBetween(first, last);
+  const values = all.map(day => byDay.get(day) || 0);
+  const max = Math.max(...values, 0.01);
+  const width = 392, height = 72, lower = 16;
+  const slot = width / all.length;
+  const barWidth = Math.min(10, Math.max(slot * 0.7, 1));
+  const root = svg('svg', {viewBox: `0 0 ${width} ${height}`, role: 'img', 'aria-label': `Spend per day from ${shortDate(first)} to ${shortDate(last)}`, class: 'day-bars'});
+  root.append(svg('line', {x1: 0, x2: width, y1: height - lower, y2: height - lower, stroke: 'var(--axis)', 'stroke-width': 1}));
+  values.forEach((value, index) => {
+    if (value <= 0) return;
+    const barHeight = Math.max(1, value / max * (height - lower - 4));
+    const bar = svg('rect', {x: index * slot + (slot - barWidth) / 2, y: height - lower - barHeight, width: barWidth, height: barHeight, fill: 'var(--accent)', rx: barWidth > 4 ? 1.5 : 0});
+    const title = svg('title', {});
+    title.textContent = `${shortDate(all[index])}: ${dollars(value)}`;
+    bar.append(title);
+    root.append(bar);
+  });
+  for (const [day, anchor, x] of [[first, 'start', 0], [last, 'end', width]]) {
+    const label = svg('text', {x, y: height - 3, 'text-anchor': anchor});
+    label.textContent = shortDate(day);
+    root.append(label);
+  }
+  const box = element('div', undefined, 'chart panel-chart');
+  box.append(root);
+  return box;
+}
+
+const PAID_FOR_MEANS = {
+  input_usd: 'Most of this is fresh input that was not cached.',
+  output_usd: 'Most of this is output: what the model wrote, including thinking. A cheaper model or lower effort for this work cuts it.',
+  cache_write_usd: 'Most of this is cache writes: context built from scratch when a session or subagent starts, or after the cache expires during a pause. Fewer subagent launches and cold restarts cut it.',
+  cache_read_usd: 'Most of this is cache reads: a long context read again on every turn. Starting fresh with /clear when you switch tasks cuts it.',
+};
+
+function paidFor(rows) {
+  const totals = {input_usd: 0, output_usd: 0, cache_write_usd: 0, cache_read_usd: 0};
+  for (const row of rows) for (const field of Object.keys(totals)) totals[field] += row[field] ?? 0;
+  const total = Object.values(totals).reduce((sum, value) => sum + value, 0);
+  if (total <= 0) return;
+  shareList('Paid for', MIX_PARTS.map(([field, label, slot]) => ({label, cost: totals[field], color: `var(${slot})`})), total);
+  const largest = Object.keys(totals).reduce((best, field) => totals[field] > totals[best] ? field : best);
+  panel.append(element('p', `${PAID_FOR_MEANS[largest]} Split at list price, so read it as proportions.`, 'note panel-paid'));
+}
+
+function loadingNote() {
+  const note = element('p', 'Loading…', 'note');
+  panel.append(note);
+  return note;
+}
+
+function failed(note, error) {
+  note.className = 'note error';
+  note.textContent = `Can't load: ${error.message}`;
+}
+
+function splitQuery(params, by) {
+  const query = new URLSearchParams(params);
+  query.set('by', by);
+  return '/api/data?' + query;
+}
+
+async function addressKey(item, label) {
+  if (item.kind !== 'repo' || !label || label === item.key) return item.key;
+  try {
+    const repos = await fetchJson('/api/data?range=all&by=repo');
+    const keys = new Set(repos.rows.filter(row => row.label === label).map(row => row.key));
+    return keys.size === 1 && keys.has(item.key) ? label : item.key;
+  } catch {
+    return item.key;
+  }
+}
+
+async function openRowPanel(row, level) {
+  const kind = SCOPE_OF_LEVEL[level];
+  const name = rowName(row, level);
+  const item = {kind, key: row.key, label: kind === 'repo' ? row.label : scopeLabel(kind, row.key)};
+  const token = panelShell(name, state.scope.length ? `${GROUP_NAMES[kind]} in ${scopeTitle()}` : GROUP_NAMES[kind]);
+  panelAction(`Focus the page on ${name}`, async () => focusOn({...item, key: await addressKey(item, row.label)}));
+  const note = loadingNote();
+  const view = buildView();
+  const withRow = params => scopeParams(params, [item]);
+  const splits = NEXT[kind].filter(other => !scopedKinds().has(other) && other !== kind).slice(0, 3);
+  const seriesQuery = withRow(rangeParams());
+  seriesQuery.set('by', 'model');
+  seriesQuery.set('top', '1');
+  const sessionsQuery = withRow(rangeParams());
+  sessionsQuery.set('limit', String(PANEL_SESSIONS));
+  const previousQuery = view.previousLabel ? withRow(new URLSearchParams(latest.previous.params)) : null;
+  try {
+    const mixQuery = withRow(rangeParams());
+    mixQuery.set('by', 'model');
+    const [series, sessions, previous, mix, ...answers] = await Promise.all([
+      fetchJson('/api/series?' + seriesQuery),
+      fetchJson('/api/sessions?' + sessionsQuery),
+      previousQuery ? fetchJson('/api/data?' + previousQuery) : null,
+      fetchJson('/api/mix?' + mixQuery),
+      ...splits.map(split => fetchJson(splitQuery(withRow(rangeParams()), split))),
+    ]);
+    if (token !== panelToken) return;
+    note.remove();
+    const days = forAccount(series.days);
+    const spend = days.reduce((sum, day) => sum + day.cost_usd, 0);
+    const viewTotal = cost(view.rows);
+    const {facts, fact} = factList();
+    fact('Cost', `${dollars(spend)} · ${view.period}`);
+    if (viewTotal > 0) fact('Share', `${shareText(spend / viewTotal)} of ${state.scope.length ? scopeTitle() : 'all spend'} in this range`);
+    if (previous) {
+      const before = cost(forAccount(previous.rows));
+      fact('Before', before > 0 ? `${multiple(spend / before)} vs ${view.previousLabel} (${money(before)})` : `Nothing in ${view.previousLabel}`);
+    }
+    const count = sessionCount(sessions);
+    if (count) fact('Sessions', count.toLocaleString());
+    panel.append(facts, element('h3', 'Per day'), dayBars(days, view.first, view.last));
+    paidFor(forAccount(mix.rows));
+    splits.forEach((split, index) => {
+      const answer = answers[index];
+      const rows = mergeRows(forAccount(answer.rows));
+      shareList('By ' + GROUP_NAMES[split].toLowerCase(), rows.map(entry => ({label: rowName(entry, answer.level), cost: entry.cost_usd ?? 0})), spend);
+    });
+    sessionList(forAccount(sessions.sessions).slice(0, PANEL_SESSIONS));
+  } catch (error) {
+    if (token === panelToken) failed(note, error);
+  }
+}
+
+async function openNotInTranscriptsPanel() {
+  const view = buildView();
+  const token = panelShell(NOT_IN_TRANSCRIPTS, state.scope.length ? scopeTitle() : view.accountLabel ?? 'All accounts');
+  panel.append(element('p', 'Spend Claude Code billed for requests it never wrote to its session transcripts. Gigawatts compares the cost Claude Code records for each session and model with what the transcripts hold, and keeps the difference here so totals match what Claude Code reports.', 'panel-text'));
+  panel.append(element('p', 'Which requests these were is unknown; they come from Claude Code itself, and a Haiku share suggests background calls. Each one\'s session, model, repo, and branch are known, so the repo, branch, and model breakdowns count it there. Its skill and subagent are not, so those breakdowns show it as its own row rather than guess.', 'panel-text'));
+  const note = loadingNote();
+  const byModel = params => { params.set('by', 'model'); return '/api/data?' + params; };
+  const seriesQuery = scopeParams(rangeParams());
+  seriesQuery.set('by', 'model');
+  seriesQuery.set('top', '20');
+  try {
+    const [models, series, previous, mix] = await Promise.all([
+      fetchJson(byModel(scopeParams(rangeParams()))),
+      fetchJson('/api/series?' + seriesQuery),
+      view.previousLabel ? fetchJson(byModel(scopeParams(new URLSearchParams(latest.previous.params)))) : null,
+      fetchJson('/api/mix?' + (() => { const params = scopeParams(rangeParams()); params.set('by', 'model'); return params; })()),
+    ]);
+    if (token !== panelToken) return;
+    note.remove();
+    const rows = mergeRows(forAccount(models.rows));
+    const missing = rows.filter(row => row.not_in_transcript);
+    const spend = cost(missing);
+    const total = cost(rows);
+    const {facts, fact} = factList();
+    fact('Cost', `${dollars(spend)} · ${view.period}`);
+    if (total > 0) fact('Share', `${shareText(spend / total)} of ${state.scope.length ? scopeTitle() : 'all spend'} in this range`);
+    if (previous) {
+      const before = cost(forAccount(previous.rows).filter(row => row.not_in_transcript));
+      fact('Before', before > 0 ? `${multiple(spend / before)} vs ${view.previousLabel} (${money(before)})` : `Nothing in ${view.previousLabel}`);
+    }
+    panel.append(facts);
+    panel.append(element('h3', 'Per day'), dayBars(forAccount(series.days).filter(entry => entry.not_in_transcript), view.first, view.last));
+    paidFor(forAccount(mix.rows).filter(row => row.not_in_transcript));
+    shareList('By model', missing.map(row => ({label: prettyModel(row.label), cost: row.cost_usd ?? 0})), spend);
+  } catch (error) {
+    if (token === panelToken) failed(note, error);
+  }
+}
+
+async function openDayPanel(day, total, parts) {
+  const view = buildView();
+  const title = new Date(day + 'T00:00:00Z').toLocaleDateString(undefined, {weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC'});
+  const token = panelShell(title, state.scope.length ? scopeTitle() : view.accountLabel ?? 'All accounts');
+  panelAction('Show just this day', () => {
+    state.range = 'custom';
+    state.since = day;
+    state.until = day;
+    navigate();
+  });
+  const byDay = new Map();
+  for (const entry of view.series) byDay.set(entry.day, (byDay.get(entry.day) || 0) + entry.cost_usd);
+  const active = [...byDay.values()].filter(value => value > 0);
+  const average = active.length ? active.reduce((sum, value) => sum + value, 0) / active.length : 0;
+  const {facts, fact} = factList();
+  fact('Spend', dollars(total));
+  if (average > 0 && active.length > 1) fact('Usual', `${multiple(total / average)} vs the average active day in this range (${money(average)})`);
+  panel.append(facts);
+  const chartBy = chartGrouping();
+  shareList('By ' + GROUP_NAMES[chartBy].toLowerCase(), parts.map(([label, value, color]) => ({label, cost: value, color})), total);
+  const note = loadingNote();
+  const dayParams = () => {
+    const params = scopeParams(new URLSearchParams());
+    params.set('since', day);
+    params.set('until', day);
+    return params;
+  };
+  const splits = groupings().filter(kind => kind !== chartBy).slice(0, 2);
+  const sessionsQuery = dayParams();
+  sessionsQuery.set('limit', String(PANEL_SESSIONS));
+  const mixQuery = dayParams();
+  mixQuery.set('by', 'model');
+  try {
+    const [sessions, mix, ...answers] = await Promise.all([
+      fetchJson('/api/sessions?' + sessionsQuery),
+      fetchJson('/api/mix?' + mixQuery),
+      ...splits.map(split => fetchJson(splitQuery(dayParams(), split))),
+    ]);
+    if (token !== panelToken) return;
+    note.remove();
+    paidFor(forAccount(mix.rows));
+    splits.forEach((split, index) => {
+      const answer = answers[index];
+      shareList('By ' + GROUP_NAMES[split].toLowerCase(), mergeRows(forAccount(answer.rows)).map(entry => ({label: rowName(entry, answer.level), cost: entry.cost_usd ?? 0})), total);
+    });
+    sessionList(forAccount(sessions.sessions).slice(0, PANEL_SESSIONS));
+  } catch (error) {
+    if (token === panelToken) failed(note, error);
+  }
+}
+
+function openPanel(session) {
+  panelShell(session.title ?? 'Untitled session', session.session);
+  const {facts, fact} = factList();
+  fact('Cost', `${dollars(session.cost_usd)} · ${session.cost_status === 'exact' ? 'matches Claude Code' : session.cost_status === 'adjusted' ? 'adjusted to Claude Code' : 'estimated'}`);
+  fact('Where', session.branch ? `${session.repo} · ${session.branch}` : session.repo);
+  if (session.first_ms) fact('When', `${new Date(session.first_ms).toLocaleString(undefined, {weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'})} to ${new Date(session.last_ms).toLocaleString(undefined, {hour: 'numeric', minute: '2-digit'})}${localDay(new Date(session.first_ms)) !== localDay(new Date(session.last_ms)) ? ' ' + longDate(session.last_ms) : ''}`);
+  fact('Active', session.active_minutes ? `${minutes(session.active_minutes)} (gaps over 10 min left out)` : null);
+  fact('Requests', session.requests.toLocaleString());
+  fact('Peak context', session.peak_context ? `${compact(session.peak_context)} tokens in your own conversation` : null);
+  panel.append(facts);
+  const shares = (title, list, name) => shareList(title, list.map(share => ({label: name(share.label), cost: share.share * session.cost_usd})), session.cost_usd);
+  shares('Skills', session.skills, skillName);
+  shares('Models', session.models, prettyModel);
+  shares('Subagents', session.agents, agentName);
+  panel.append(element('p', 'Numbers cover the selected range. Costs per skill, model, and subagent are the session cost split by each one\'s share.', 'note'));
+}
+
+backdrop.addEventListener('click', closePanel);
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape') { closePanel(); closeMenu(); }
+});
+
+// Export
+
+const exportButton = document.getElementById('export');
+const exportMenu = document.getElementById('export-menu');
+const FOOTNOTE = 'Costs come from Claude Code\'s local transcripts, priced at list price unless Claude Code recorded the session\'s own cost. Credits and limits come from Claude Code\'s usage readings. This summary leaves out repo, branch, and session names, except a scope you focused on. Skill, subagent, and model names are shown as they are named. "Not in transcripts" is spend Claude Code billed for requests it did not write to its transcripts, so it has a model but no skill or subagent.';
+
+function exportLabel(text) {
+  exportButton.replaceChildren(icon('download'), element('span', text, 'value'));
+}
+
+exportLabel('Export');
+setupPopover(exportButton, exportMenu);
+
+const EXPORTS = {
+  markdown: summary => download(fileName(summary, 'md'), markdown(summary), 'text/markdown'),
+  pdf: summary => printSummary(summary),
+};
+
+for (const item of exportMenu.querySelectorAll('[data-export]')) {
+  item.addEventListener('click', async () => {
+    closeMenu();
+    try {
+      await EXPORTS[item.dataset.export](await summaryData());
+    } catch (error) {
+      exportLabel('Export failed');
+      exportButton.title = error.message;
+    }
+    setTimeout(() => { exportLabel('Export'); exportButton.removeAttribute('title'); }, 2000);
+  });
+}
+
+function slug(text) {
+  return text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+}
+
+function fileName(summary, extension) {
+  const {view} = summary;
+  const pieces = ['gigawatts', slug(view.shareableLabel || 'all accounts'), state.scope.length ? slug(scopeTitle()) : null, view.first, 'to', view.last];
+  return pieces.filter(Boolean).join('-') + '.' + extension;
+}
+
+function download(name, text, type) {
+  const link = element('a');
+  link.href = URL.createObjectURL(new Blob([text], {type: type + ';charset=utf-8'}));
+  link.download = name;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+}
+
+async function summaryData() {
+  const view = buildView();
+  const taken = scopedKinds();
+  const chartBy = taken.has('model') ? 'skill' : 'model';
+  const tables = ['model', 'skill'].filter(kind => !taken.has(kind));
+  const query = scopeParams(rangeParams());
+  const by = (kind, top) => {
+    const params = new URLSearchParams(query);
+    params.set('by', kind);
+    if (top) params.set('top', String(top));
+    return params;
+  };
+  const before = kind => {
+    const params = scopeParams(new URLSearchParams(latest.previous.params));
+    params.set('by', kind);
+    return fetchJson('/api/data?' + params);
+  };
+  const compare = Boolean(view.previousLabel);
+  const [series, ...answers] = await Promise.all([
+    fetchJson('/api/series?' + by(chartBy, 20)),
+    ...tables.flatMap(kind => [fetchJson('/api/data?' + by(kind)), fetchJson('/api/mix?' + by(kind)), compare ? before(kind) : null]),
+  ]);
+  const breakdowns = tables.map((kind, index) => {
+    const [data, mix, previous] = answers.slice(index * 3, index * 3 + 3);
+    return {
+      kind,
+      level: data.level,
+      rows: mergeRows(forAccount(data.rows)),
+      mix: mergeMix(forAccount(mix.rows)),
+      previous: previous ? {label: view.previousLabel, dates: latest.previous.dates, costs: new Map(mergeRows(forAccount(previous.rows)).map(row => [rowId(row), row.cost_usd ?? 0]))} : null,
+    };
+  });
+  const title = ['Gigawatts', view.shareableLabel || 'All accounts', state.scope.length ? scopeTitle() : null].filter(Boolean).join(' · ');
+  return {view, chartBy, series: forAccount(series.days), breakdowns, title, exportedAt: new Date()};
+}
+
+function exportedLine(summary) {
+  return `${summary.view.period} · exported ${summary.exportedAt.toLocaleString(undefined, {month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit'})}`;
+}
+
+function summaryCards(summary) {
+  const {view} = summary;
+  const cards = [summaryHeadline(view)];
+  cards.push(spendChart(view, summary.chartBy, summary.series, false).card);
+  for (const table of summary.breakdowns) cards.push(staticBreakdown('By ' + GROUP_NAMES[table.kind].toLowerCase(), table.rows, table.level, new Map(table.mix), table.previous));
+  cards.push(whoDidTheWork(view.agents, false));
+  return cards;
+}
+
+function cellText(cell) {
+  const text = cell.textContent.replace(/\s+/g, ' ').trim();
+  return text || cell.querySelector('[title]')?.title || '';
+}
+
+function markdownCell(text) {
+  return text.replace(/\|/g, '\\|').replace(/\s+/g, ' ').trim();
+}
+
+function markdownTable(header, rows) {
+  const line = cells => '| ' + cells.map(markdownCell).join(' | ') + ' |';
+  return [line(header), line(header.map(() => '---')), ...rows.map(line)].join('\n');
+}
+
+function domTable(table) {
+  const header = [...table.querySelectorAll('thead th')].map(cellText);
+  const rows = [...table.querySelectorAll('tbody tr, tfoot tr')].map(row => [...row.cells].map(cellText));
+  return markdownTable(header, rows);
+}
+
+function dailyColumns(summary) {
+  const {order, labels} = seriesColors(summary.series);
+  const days = daysBetween(summary.view.first, summary.view.last);
+  const bucket = days.length > 92 ? day => day.slice(0, 7) : day => day;
+  const buckets = new Map();
+  for (const day of days) if (!buckets.has(bucket(day))) buckets.set(bucket(day), new Map());
+  for (const entry of summary.series) {
+    const values = buckets.get(bucket(entry.day));
+    if (!values) continue;
+    const id = order.includes(seriesId(entry)) ? seriesId(entry) : 'other';
+    values.set(id, (values.get(id) || 0) + entry.cost_usd);
+  }
+  return {order, labels, buckets, unit: days.length > 92 ? 'Month' : 'Day'};
+}
+
+function markdown(summary) {
+  const parts = [`# ${summary.title}`, exportedLine(summary)];
+  for (const card of summaryCards(summary)) {
+    if (card.classList.contains('account-line')) { parts.push(card.textContent); continue; }
+    const heading = card.querySelector('h2')?.textContent;
+    const sentence = card.querySelector('.summary')?.textContent;
+    const tiles = [...card.querySelectorAll('.tile')];
+    if (tiles.length) {
+      if (sentence) parts.push(sentence);
+      parts.push(markdownTable(['Number', 'Value', 'Detail'], tiles.map(tile => [
+        tile.querySelector('.label').textContent,
+        tile.querySelector('.value').textContent,
+        [...tile.querySelectorAll('.sub')].map(sub => sub.textContent).join('; '),
+      ])));
+      continue;
+    }
+    if (card.querySelector('.chart')) {
+      const {order, labels, buckets, unit} = dailyColumns(summary);
+      parts.push(`## Spend per ${unit.toLowerCase()}, by ${GROUP_NAMES[summary.chartBy].toLowerCase()}`);
+      const rows = [...buckets].map(([when, values]) => [when, dollars([...values.values()].reduce((sum, value) => sum + value, 0)), ...order.map(id => values.get(id) ? dollars(values.get(id)) : '')]);
+      parts.push(markdownTable([unit, 'Total', ...order.map(id => labels.get(id) ?? 'Other')], rows));
+      continue;
+    }
+    const table = card.querySelector('table');
+    const note = card.querySelector('.card-head .hint')?.textContent;
+    if (heading && table) parts.push(`## ${heading}`, ...(note?.startsWith('Change compares') ? [note + '.'] : []), domTable(table));
+  }
+  parts.push('"Paid for" splits each cost by token type at list price.', FOOTNOTE);
+  return parts.join('\n\n') + '\n';
+}
+
+function printSummary(summary) {
+  const container = element('main', undefined, 'exported');
+  const top = element('div', undefined, 'topbar');
+  top.append(element('h1', summary.title));
+  container.append(top, element('p', exportedLine(summary), 'source'));
+  const stack = element('div', undefined, 'stack');
+  stack.append(...summaryCards(summary));
+  container.append(stack, element('p', FOOTNOTE, 'footnote'));
+  document.getElementById('print').replaceChildren(container);
+  document.body.classList.add('printing');
+  document.title = fileName(summary, 'pdf').replace(/\.pdf$/, '');
+  window.print();
+}
+
+window.addEventListener('afterprint', () => {
+  document.body.classList.remove('printing');
+  document.getElementById('print').replaceChildren();
+  document.title = 'Gigawatts report';
+});
+
+window.gigawattsSummary = async () => markdown(await summaryData());
+
+// Loading
+
+async function fetchJson(path) {
+  const answer = await fetch(path);
+  const body = await answer.json();
+  if (!answer.ok) throw new Error(body.error);
+  return body;
+}
+
+function previousParams(data, first) {
+  if (!first || (!data.since && state.range === 'all')) return null;
+  let since, until, label;
+  if (state.range === 'month' || state.range === 'lastmonth') {
+    const before = lastMonthBounds(state.range === 'month' ? data.today : first);
+    since = before.since;
+    until = state.range === 'month' ? before.sameDay : before.until;
+    label = state.range === 'month' ? `${shortDate(since)} to ${shortDate(until)}` : before.name;
+  } else {
+    const length = dayCount(first, data.until || data.today);
+    since = addDays(first, -length);
+    until = addDays(first, -1);
+    label = `the ${length} days before`;
+  }
+  const params = new URLSearchParams();
+  params.set('since', since);
+  params.set('until', until);
+  params.set('by', 'model');
+  return {params, label, dates: `${shortDate(since)} to ${shortDate(until)}`};
+}
+
+function sessionCount(answer) {
+  if (state.account === ALL) return answer.total;
+  return answer.per_account.find(count => count.account === state.account)?.sessions ?? 0;
+}
+
+async function load() {
+  writeState();
+  loadedHash = location.hash;
+  const content = document.getElementById('content');
+  content.style.opacity = '0.55';
+  const scoped = state.scope.length > 0;
+  const dataQuery = scopeParams(rangeParams());
+  dataQuery.set('by', breakdownGrouping());
+  const seriesQuery = scopeParams(rangeParams());
+  seriesQuery.set('by', chartGrouping());
+  seriesQuery.set('top', '20');
+  const sessionsQuery = scopeParams(rangeParams());
+  sessionsQuery.set('limit', '10');
+  const accountQuery = rangeParams();
+  accountQuery.set('by', 'model');
+  try {
+    const [now, data, mix, series, agents, month, sessions, history, accountData, advice] = await Promise.all([
+      fetchJson('/api/now'),
+      fetchJson('/api/data?' + dataQuery),
+      fetchJson('/api/mix?' + dataQuery),
+      fetchJson('/api/series?' + seriesQuery),
+      fetchJson('/api/agents?' + scopeParams(rangeParams())),
+      fetchJson('/api/series?range=month&by=model&top=1'),
+      fetchJson('/api/sessions?' + sessionsQuery),
+      fetchJson('/api/series?range=all&by=model&top=1'),
+      scoped ? fetchJson('/api/data?' + accountQuery) : null,
+      fetchJson('/api/advice'),
+    ]);
+    const last = data.until || data.today;
+    const first = data.since || series.days.map(day => day.day).sort()[0] || last;
+    const previous = previousParams(data, first);
+    const lastMonth = lastMonthBounds(data.today);
+    const [previousData, lastMonthData] = await Promise.all([
+      previous ? fetchJson('/api/data?' + scopeParams(new URLSearchParams(previous.params))) : null,
+      fetchJson(`/api/data?since=${lastMonth.since}&until=${lastMonth.sameDay}&by=model`),
+    ]);
+    latest = {now, data, mix, series, agents, month, sessions, history, first, last, previous, previousData, lastMonth, lastMonthData, accountData, advice};
+    render();
+  } catch (error) {
+    const source = document.getElementById('source');
+    source.className = 'source error';
+    source.textContent = `Can't load the report: ${error.message}`;
+  } finally {
+    content.style.opacity = '';
+  }
+}
+
+function buildView() {
+  const {now, data, mix, series, agents, month, sessions, history, first, last, previous, previousData, lastMonth, lastMonthData, accountData} = latest;
+  const firstRecord = forAccount(history.days).map(day => day.day).sort()[0];
+  const recordedFrom = firstRecord ? addDays(firstRecord, 1) : data.today;
+  const monthByDay = new Map();
+  for (const entry of forAccount(month.days)) monthByDay.set(entry.day, (monthByDay.get(entry.day) || 0) + entry.cost_usd);
+  const accountNow = state.account === ALL ? null : now.accounts.find(account => account.account === state.account);
+  const sameYear = first.slice(0, 4) === last.slice(0, 4);
+  const period = `${shortDate(first)}${sameYear ? '' : ', ' + first.slice(0, 4)} to ${shortDate(last)}, ${last.slice(0, 4)}`;
+  const covered = previous && recordedFrom <= previous.params.get('since');
+  return {
+    rows: mergeRows(forAccount(data.rows)),
+    mix: mergeMix(forAccount(mix.rows)),
+    previousRows: previousData ? forAccount(previousData.rows) : [],
+    previousLabel: covered ? previous.label : null,
+    historyStart: previous && !covered ? recordedFrom : null,
+    series: forAccount(series.days),
+    month: [...monthByDay].map(([day, cost_usd]) => ({day, cost_usd})),
+    now: accountNow,
+    accountLabel: accountNow?.account_label ?? null,
+    shareableLabel: accountNow ? accountNow.configured_label ?? 'Account' : null,
+    accountRows: accountData ? forAccount(accountData.rows) : null,
+    today: data.today,
+    first, last, period,
+    level: data.level,
+    agents: forAccount(agents.rows),
+    sessions: forAccount(sessions.sessions).slice(0, 10),
+    sessionCount: sessionCount(sessions),
+    keptFrom: sessions.kept_from,
+    lastMonth: recordedFrom <= lastMonth.since ? {name: lastMonth.name, spend: cost(forAccount(lastMonthData.rows))} : null,
+  };
+}
+
+function render() {
+  if (!latest) return;
+  const known = latest.now.accounts.map(account => account.account);
+  if (!known.includes(state.account) && state.account !== ALL) {
+    state.account = latest.now.accounts.find(account => slug(account.account_label ?? '') === state.account)?.account ?? known[0] ?? ALL;
+  }
+  writeState();
+  loadedHash = location.hash;
+  const view = buildView();
+  drawControls(latest.now.accounts, view);
+  const source = document.getElementById('source');
+  source.className = 'source';
+  source.textContent = `From the history database at ${new Date().toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'})} · reload for newer numbers`;
+  drawnWidth = chartWidth();
+  const chart = spendChart(view, chartGrouping(), view.series, true);
+  const sections = [];
+  if (state.scope.length) {
+    const line = accountLine(view);
+    if (line) sections.push(line);
+    sections.push(scopedHeadline(view));
+  } else {
+    sections.push(headline(view, false));
+  }
+  sections.push(chart.card);
+  const where = breakdown(view, chart.colors);
+  const who = whoDidTheWork(view.agents, true);
+  sections.push(...(primaryScope() === 'model' ? [who, where] : [where, who]));
+  const advice = adviceCard(view);
+  if (advice) sections.push(advice);
+  sections.push(biggestSessions(view));
+  document.getElementById('content').replaceChildren(...sections);
+  const count = latest.data.problems.length;
+  document.getElementById('problems').textContent = count === 0 ? '' :
+    `${count} ${count === 1 ? 'problem' : 'problems'} with the data. \`gigawatts doctor\` lists ${count === 1 ? 'it' : 'them'}.`;
+}
+
+function onAddressChange() {
+  if (location.hash === loadedHash) return;
+  state = readState();
+  showTail = false;
+  closePanel();
+  load();
+}
+
+let resizeTimer = null;
+let drawnWidth = null;
+function onResize() {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    if (!latest || chartWidth() === drawnWidth) return;
+    render();
+  }, 150);
+}
+
+window.addEventListener('popstate', onAddressChange);
+window.addEventListener('hashchange', onAddressChange);
+window.addEventListener('resize', onResize);
+load();
+</script>
+
+</body>
+</html>

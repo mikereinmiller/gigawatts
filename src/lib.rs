@@ -10,6 +10,7 @@ pub mod limits;
 pub mod pace;
 pub mod pricing;
 pub mod problems;
+pub mod report;
 pub mod scrub;
 pub mod service;
 pub mod sources;

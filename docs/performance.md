@@ -18,5 +18,27 @@ Measured 2026-11-11 on the Mac (Apple Silicon), across six runs: four debug, two
 | Yearly report by branch | 250 ms | 84–138 ms |
 | Daily series by repo | 250 ms | 76–112 ms |
 | Drill to sessions | 250 ms | 58–78 ms |
+| 10 biggest sessions (measured 2026-11-12, one debug and one release run) | 250 ms | 102–115 ms |
+| Cost mix and session counts by repo (2026-11-12) | 250 ms | 141–173 ms |
+| Subagents by model (2026-11-12) | 250 ms | 65–72 ms |
 
 Release builds measured the same as debug builds, because nearly all the time is spent inside SQLite.
+
+## Engine resources
+
+`tests/engine_resources.rs` checks the engine's memory after it reads a generated history and its CPU time while idle. That history is far smaller than a real one, so this catches leaks and an engine that keeps working while idle. It doesn't prove the 50 MB target on real data, and it can't count wakeups. Both of those stay manual measurements before release, with `sudo powermetrics` on the Mac and `perf` on Linux.
+
+Measured 2026-11-11 on the Mac, across four runs, reading 10,000 requests in 20 sessions:
+
+| What | Limit | Measured |
+|---|---|---|
+| Memory after the first full read | 50 MB | 19.6–20.3 MB |
+| CPU time while idle for 10 seconds | 50 ms | 0 ms |
+| CPU time to read the history | none | 400 ms |
+
+Measured 2026-11-12 on the Mac with the report server on a free port, one run each:
+
+| What | Server off | Server on |
+|---|---|---|
+| Memory after the first full read | 19.6 MB | 20.1 MB |
+| CPU time while idle for 10 seconds | 0 ms | 0 ms |

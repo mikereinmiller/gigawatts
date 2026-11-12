@@ -213,6 +213,8 @@ pub fn run(paths: &Paths) -> Result<Outcome, Error> {
     control::listen(&paths.socket(), version(), move |request| {
         let _ = control_sender.send(Message::Control(request));
     })?;
+    let report_problem = start_report(paths, &config, &store);
+    let serving_port = config.report_port().filter(|_| report_problem.is_none());
     let started = Instant::now();
     let mut engine = Engine {
         paths,
@@ -233,6 +235,9 @@ pub fn run(paths: &Paths) -> Result<Outcome, Error> {
         read_problem: None,
         requests_expired: None,
         cleanup_problem: None,
+        report_problem,
+        serving_port,
+        report_port_problem: None,
     };
     engine.full_scan(&mut store, started.elapsed());
     loop {
@@ -302,6 +307,9 @@ struct Engine<'a> {
     read_problem: Option<Problem>,
     requests_expired: Option<(String, u32)>,
     cleanup_problem: Option<Problem>,
+    report_problem: Option<Problem>,
+    serving_port: Option<u16>,
+    report_port_problem: Option<Problem>,
 }
 
 impl Engine<'_> {
@@ -617,7 +625,14 @@ impl Engine<'_> {
 
     fn reload_config(&mut self) {
         match Config::load(&self.paths.config(), &self.paths.home) {
-            Ok(config) => self.config = config,
+            Ok(config) => {
+                let changed =
+                    self.report_problem.is_none() && config.report_port() != self.serving_port;
+                self.report_port_problem = changed.then(|| {
+                    crate::problems::report_port_changed(self.serving_port, config.report_port())
+                });
+                self.config = config;
+            }
             Err(error) => eprintln!(
                 "gigawatts engine: can't read {}, keeping the settings read before: {error}",
                 self.paths.config().display()
@@ -633,6 +648,8 @@ impl Engine<'_> {
             .chain(self.usage_problems.values())
             .chain(&self.read_problem)
             .chain(&self.cleanup_problem)
+            .chain(&self.report_problem)
+            .chain(&self.report_port_problem)
             .cloned()
             .chain(self.refresh_problems(store))
             .collect();
@@ -694,6 +711,15 @@ impl Engine<'_> {
             })
             .collect()
     }
+}
+
+fn start_report(paths: &Paths, config: &Config, store: &Store) -> Option<Problem> {
+    let port = config.report_port()?;
+    let started = crate::report::bind(port)
+        .and_then(|listener| crate::report::serve(listener, Paths::new(&paths.home)));
+    started
+        .err()
+        .map(|error| crate::problems::report_unavailable(port, &error, since(store, None)))
 }
 
 fn watch_failing(
@@ -976,6 +1002,7 @@ pub fn running_problems(paths: &Paths) -> Vec<Problem> {
                     | ProblemKind::ReadFailing
                     | ProblemKind::CleanupFailing
                     | ProblemKind::RefreshFailing
+                    | ProblemKind::ReportUnavailable
             )
         })
         .collect()

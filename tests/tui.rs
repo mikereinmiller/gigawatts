@@ -85,6 +85,7 @@ fn personal() -> AccountToday {
     AccountToday {
         account: Some(PERSONAL.to_string()),
         account_label: "personal".to_string(),
+        configured_label: None,
         requests: 40,
         cost_usd: 14.2,
         pace: DollarPace {
@@ -137,6 +138,7 @@ fn work() -> AccountToday {
     AccountToday {
         account: Some(WORK.to_string()),
         account_label: "work".to_string(),
+        configured_label: None,
         requests: 2,
         cost_usd: 0.4,
         pace: DollarPace {

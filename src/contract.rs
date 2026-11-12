@@ -126,6 +126,7 @@ pub enum ProblemKind {
     ReadFailing,
     CleanupFailing,
     RefreshFailing,
+    ReportUnavailable,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -153,6 +154,8 @@ pub struct Snapshot {
 pub struct AccountToday {
     pub account: Option<String>,
     pub account_label: String,
+    #[serde(default)]
+    pub configured_label: Option<String>,
     pub requests: u64,
     pub cost_usd: f64,
     pub pace: DollarPace,
@@ -169,6 +172,127 @@ pub struct AccountLimits {
     pub source: LimitSource,
     pub fetched_at_ms: i64,
     pub limits: Vec<PacedLimit>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct SeriesResponse {
+    pub schema_version: u32,
+    pub range: Range,
+    pub today: String,
+    pub since: Option<String>,
+    pub until: Option<String>,
+    pub level: Level,
+    pub days: Vec<DayCost>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct SessionsResponse {
+    pub schema_version: u32,
+    pub range: Range,
+    pub today: String,
+    pub since: Option<String>,
+    pub until: Option<String>,
+    pub drill: Vec<DrillStep>,
+    pub kept_from: Option<String>,
+    pub total: u64,
+    #[serde(default)]
+    pub per_account: Vec<AccountSessions>,
+    pub sessions: Vec<SessionSummary>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct AccountSessions {
+    pub account: Option<String>,
+    pub sessions: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct SessionSummary {
+    pub account: Option<String>,
+    pub session: String,
+    pub title: Option<String>,
+    pub repo: String,
+    pub branch: Option<String>,
+    pub first_ms: Option<i64>,
+    pub last_ms: Option<i64>,
+    pub active_minutes: u64,
+    pub requests: u64,
+    pub cost_usd: f64,
+    pub cost_status: CostStatus,
+    pub peak_context: u64,
+    pub skills: Vec<Share>,
+    pub models: Vec<Share>,
+    pub agents: Vec<Share>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct MixResponse {
+    pub schema_version: u32,
+    pub range: Range,
+    pub today: String,
+    pub since: Option<String>,
+    pub until: Option<String>,
+    pub level: Level,
+    pub rows: Vec<CostMix>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct CostMix {
+    pub account: Option<String>,
+    pub key: Option<String>,
+    pub not_in_transcript: bool,
+    pub sessions: u64,
+    #[serde(default)]
+    pub session_cost_usd: Option<f64>,
+    pub input_usd: f64,
+    pub output_usd: f64,
+    pub cache_write_usd: f64,
+    pub cache_read_usd: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct AdviceResponse {
+    pub schema_version: u32,
+    pub today: String,
+    pub accounts: Vec<AccountAdvice>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct AccountAdvice {
+    pub account: String,
+    pub fetched_at_ms: i64,
+    pub behaviors: serde_json::Value,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct AgentModelsResponse {
+    pub schema_version: u32,
+    pub range: Range,
+    pub today: String,
+    pub since: Option<String>,
+    pub until: Option<String>,
+    pub rows: Vec<AgentModel>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct AgentModel {
+    pub account: Option<String>,
+    pub agent_key: Option<String>,
+    pub agent: String,
+    pub model: String,
+    pub not_in_transcript: bool,
+    pub cost_usd: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct DayCost {
+    pub account: Option<String>,
+    pub day: String,
+    pub key: Option<String>,
+    pub label: String,
+    pub not_in_transcript: bool,
+    pub other: bool,
+    pub cost_usd: f64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]

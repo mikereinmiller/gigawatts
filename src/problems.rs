@@ -4,6 +4,40 @@ use crate::store::{self, ModelSighting, PriceGap, Store, UnrecognizedKind};
 
 const CONFIG_PATH: &str = "~/.config/gigawatts/config.toml";
 
+pub fn report_unavailable(port: u16, error: &std::io::Error, since: Option<String>) -> Problem {
+    Problem {
+        kind: ProblemKind::ReportUnavailable,
+        affects: format!("the report page: http://localhost:{port} doesn't open"),
+        since,
+        cause: format!("Gigawatts can't serve the report page on port {port}: {error}"),
+        fix: format!(
+            "Another program may be using port {port}. Set `report_port` in {CONFIG_PATH} to a free port, or to 0 to turn the page off. Then run `gigawatts stop` and `gigawatts engine` to start it again"
+        ),
+        account: None,
+    }
+}
+
+pub fn report_port_changed(serving: Option<u16>, configured: Option<u16>) -> Problem {
+    let now_set = match configured {
+        Some(port) => format!("port {port}"),
+        None => "0, which turns the page off".to_string(),
+    };
+    let affects = match serving {
+        Some(port) => format!("the engine is still serving the report page on port {port}"),
+        None => "the engine started with the report page off".to_string(),
+    };
+    Problem {
+        kind: ProblemKind::ReportUnavailable,
+        affects: format!("the report page: {affects}"),
+        since: None,
+        cause: format!(
+            "`report_port` in {CONFIG_PATH} is now {now_set}, and the engine reads it only when it starts"
+        ),
+        fix: "Run `gigawatts stop` and `gigawatts engine` to apply it".to_string(),
+        account: None,
+    }
+}
+
 pub fn collect(store: &Store, table: &PriceTable) -> store::Result<Vec<Problem>> {
     let mut problems: Vec<Problem> = store
         .unrecognized_kinds()?

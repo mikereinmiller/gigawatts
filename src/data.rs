@@ -2,7 +2,9 @@ use std::fmt::{self, Write};
 
 use crate::config::Config;
 use crate::contract::{
-    CostStatus, DataResponse, DataRow, DrillStep, GroupBy, Level, Problem, Range, SCHEMA_VERSION,
+    AdviceResponse, AgentModelsResponse, CostMix, CostStatus, DataResponse, DataRow, DayCost,
+    DrillStep, GroupBy, Level, MixResponse, Problem, Range, SCHEMA_VERSION, SeriesResponse,
+    SessionsResponse,
 };
 use crate::sources::claude_json::Account;
 use crate::store::{self, Filter, Store};
@@ -37,7 +39,7 @@ impl fmt::Display for Error {
             }
             Error::Ambiguous { level, name, keys } => write!(
                 f,
-                "more than one {} is named {name:?}. Drill by one of these instead: {}",
+                "more than one {} is named {name:?}. Use one of these instead: {}",
                 level.name(),
                 keys.join(", ")
             ),
@@ -148,6 +150,40 @@ pub fn answer(
     Ok(response)
 }
 
+pub fn series(
+    store: &Store,
+    days: &Days,
+    scope: &[Filter],
+    level: Level,
+    top_n: usize,
+) -> Result<SeriesResponse, Error> {
+    let today = store.local_today()?;
+    let scope = &resolve_scope(store, scope)?;
+    let (range, since, until) = bounds(store, days, &today)?;
+    let days = store
+        .daily_costs(level, since.as_deref(), until.as_deref(), scope, top_n)?
+        .into_iter()
+        .map(|day| DayCost {
+            account: day.account,
+            day: day.day,
+            key: day.key,
+            label: day.label,
+            not_in_transcript: day.not_in_transcript,
+            other: day.other,
+            cost_usd: day.cost_usd,
+        })
+        .collect();
+    Ok(SeriesResponse {
+        schema_version: SCHEMA_VERSION,
+        range,
+        today,
+        since,
+        until,
+        level,
+        days,
+    })
+}
+
 fn resolve_drill(
     store: &Store,
     group_by: GroupBy,
@@ -166,6 +202,154 @@ fn resolve_drill(
         steps.push(find_step(level, name, &keys)?);
     }
     Ok((steps, levels[drill.len()]))
+}
+
+pub fn sessions(
+    store: &Store,
+    days: &Days,
+    scope: &[Filter],
+    group_by: GroupBy,
+    drill: &[&str],
+    limit: usize,
+) -> Result<SessionsResponse, Error> {
+    let today = store.local_today()?;
+    let scope = &resolve_scope(store, scope)?;
+    let (range, since, until) = bounds(store, days, &today)?;
+    let (steps, _) = resolve_drill(
+        store,
+        group_by,
+        drill,
+        since.as_deref(),
+        until.as_deref(),
+        scope,
+    )?;
+    let (per_account, sessions) = store.sessions(
+        since.as_deref(),
+        until.as_deref(),
+        &scoped(scope, &steps),
+        limit,
+    )?;
+    Ok(SessionsResponse {
+        schema_version: SCHEMA_VERSION,
+        range,
+        today,
+        since,
+        until,
+        drill: steps,
+        kept_from: store.requests_kept_from()?,
+        total: per_account.iter().map(|count| count.sessions).sum(),
+        per_account,
+        sessions,
+    })
+}
+
+pub fn mix(
+    store: &Store,
+    config: &Config,
+    days: &Days,
+    scope: &[Filter],
+    group_by: GroupBy,
+    drill: &[&str],
+) -> Result<MixResponse, Error> {
+    let today = store.local_today()?;
+    let scope = &resolve_scope(store, scope)?;
+    let (range, since, until) = bounds(store, days, &today)?;
+    let (steps, level) = resolve_drill(
+        store,
+        group_by,
+        drill,
+        since.as_deref(),
+        until.as_deref(),
+        scope,
+    )?;
+    let filters = scoped(scope, &steps);
+    let table = config.price_table();
+    let mut rows: Vec<CostMix> = Vec::new();
+    for mix in store.token_mix(level, since.as_deref(), until.as_deref(), &filters)? {
+        let Some(prices) = table.model(&mix.model).map(|prices| prices.standard) else {
+            continue;
+        };
+        let row = mix_row(&mut rows, &mix.account, &mix.key, mix.not_in_transcript);
+        let tokens = &mix.tokens;
+        row.input_usd += tokens.input as f64 * prices.input / 1_000_000.0;
+        row.output_usd += tokens.output as f64 * prices.output / 1_000_000.0;
+        row.cache_read_usd += tokens.cache_read as f64 * prices.cache_read / 1_000_000.0;
+        row.cache_write_usd += (tokens.cache_write_5m as f64 * prices.cache_write_5m
+            + tokens.cache_write_1h as f64 * prices.cache_write_1h)
+            / 1_000_000.0;
+    }
+    for count in store.session_counts(level, since.as_deref(), until.as_deref(), &filters)? {
+        mix_row(&mut rows, &count.account, &count.key, false).sessions = count.sessions;
+    }
+    let kept_from = store.requests_kept_from()?;
+    if let Some(kept_from) =
+        kept_from.filter(|kept| since.as_deref().is_none_or(|since| since < kept.as_str()))
+    {
+        for kept in store.totals(level, Some(&kept_from), until.as_deref(), &filters)? {
+            let row = mix_row(&mut rows, &kept.account, &kept.key, kept.not_in_transcript);
+            row.session_cost_usd =
+                Some(row.session_cost_usd.unwrap_or(0.0) + kept.cost_usd.unwrap_or(0.0));
+        }
+    }
+
+    Ok(MixResponse {
+        schema_version: SCHEMA_VERSION,
+        range,
+        today,
+        since,
+        until,
+        level,
+        rows,
+    })
+}
+
+fn mix_row<'a>(
+    rows: &'a mut Vec<CostMix>,
+    account: &Option<String>,
+    key: &Option<String>,
+    not_in_transcript: bool,
+) -> &'a mut CostMix {
+    let found = rows.iter().position(|row| {
+        &row.account == account && &row.key == key && row.not_in_transcript == not_in_transcript
+    });
+    let index = found.unwrap_or_else(|| {
+        rows.push(CostMix {
+            account: account.clone(),
+            key: key.clone(),
+            not_in_transcript,
+            ..CostMix::default()
+        });
+        rows.len() - 1
+    });
+    &mut rows[index]
+}
+
+pub fn advice(store: &Store) -> Result<AdviceResponse, Error> {
+    let today = store.local_today()?;
+    Ok(AdviceResponse {
+        schema_version: SCHEMA_VERSION,
+        accounts: store.usage_advice_on(&today)?,
+        today,
+    })
+}
+
+pub fn agent_models(
+    store: &Store,
+    days: &Days,
+    scope: &[Filter],
+) -> Result<AgentModelsResponse, Error> {
+    let today = store.local_today()?;
+    let scope = &resolve_scope(store, scope)?;
+    let (range, since, until) = bounds(store, days, &today)?;
+    let rows = store.agent_models(since.as_deref(), until.as_deref(), scope)?;
+    Ok(AgentModelsResponse {
+        schema_version: SCHEMA_VERSION,
+        range,
+        today,
+        since,
+        until,
+        rows,
+    })
 }
 
 type Bounds = (Range, Option<String>, Option<String>);

@@ -3,7 +3,7 @@ use std::fmt;
 use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
 use std::path::Path;
 
-use rusqlite::{Connection, OptionalExtension, Transaction, params};
+use rusqlite::{Connection, OpenFlags, OptionalExtension, Transaction, params};
 use rusqlite_migration::{M, Migrations};
 
 use crate::accounts::Attribution;
@@ -19,12 +19,13 @@ mod pace;
 mod problems;
 mod reconcile;
 mod retention;
+mod sessions;
 mod totals;
 
 pub use limits::{LimitPoint, LimitsReading, UsageAdvice};
 pub use pace::{ClockSpend, CostFlags};
 pub use problems::{ModelSighting, PriceGap, UnrecognizedKind};
-pub use totals::{DailyCost, Filter, TopItem};
+pub use totals::{DailyCost, Filter, SessionCount, TokenMix, TopItem};
 
 #[derive(Debug)]
 pub enum Error {
@@ -134,6 +135,15 @@ impl Store {
         connection.pragma_update(None, "foreign_keys", "ON")?;
         migrations().to_latest(&mut connection)?;
         read_again_if_reader_changed(&mut connection)?;
+        Ok(Store { connection })
+    }
+
+    pub fn open_read_only(path: &Path) -> Result<Store> {
+        let connection = Connection::open_with_flags(
+            path,
+            OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        )?;
+        connection.busy_timeout(std::time::Duration::from_secs(5))?;
         Ok(Store { connection })
     }
 

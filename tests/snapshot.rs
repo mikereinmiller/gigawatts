@@ -169,6 +169,7 @@ fn the_snapshot_carries_each_tracked_accounts_spend_today_and_the_engines_proble
                 AccountToday {
                     account: Some(ACCOUNT.to_string()),
                     account_label: "personal".to_string(),
+                    configured_label: Some("personal".to_string()),
                     requests: 2,
                     cost_usd: 0.028,
                     pace: DollarPace {
@@ -204,6 +205,7 @@ fn the_snapshot_carries_each_tracked_accounts_spend_today_and_the_engines_proble
                 AccountToday {
                     account: Some(IDLE_ACCOUNT.to_string()),
                     account_label: IDLE_ACCOUNT.to_string(),
+                    configured_label: None,
                     requests: 0,
                     cost_usd: 0.0,
                     pace: DollarPace {

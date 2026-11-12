@@ -493,6 +493,16 @@ fn a_heavy_year_with_90_day_retention_stays_small_and_fast() {
         store.daily_costs(Level::Repo, None, None, &[], 10).unwrap();
     });
     let year_by_branch = year_by(GroupBy::Branch);
+    let biggest_sessions = fastest_of_three(|| {
+        store.sessions(None, None, &[], 10).unwrap();
+    });
+    let year_mix = fastest_of_three(|| {
+        store.token_mix(Level::Repo, None, None, &[]).unwrap();
+        store.session_counts(Level::Repo, None, None, &[]).unwrap();
+    });
+    let year_agents = fastest_of_three(|| {
+        store.agent_models(None, None, &[]).unwrap();
+    });
     let year_drill = fastest_of_three(|| {
         query(
             &store,
@@ -507,7 +517,8 @@ fn a_heavy_year_with_90_day_retention_stays_small_and_fast() {
     println!(
         "{:.1} MB, {} bytes per stored request, today {today:?}, year {year:?}, \
          by repo {year_by_repo:?}, by branch {year_by_branch:?}, drill {year_drill:?}, \
-         daily series by repo {year_series:?}, \
+         daily series by repo {year_series:?}, biggest sessions {biggest_sessions:?}, \
+         cost mix by repo {year_mix:?}, subagents by model {year_agents:?}, \
          problems {problems:?}, pace {pace:?}",
         bytes as f64 / 1024.0 / 1024.0,
         bytes / requests
@@ -542,5 +553,17 @@ fn a_heavy_year_with_90_day_retention_stays_small_and_fast() {
     assert!(
         year_drill <= MAX_YEAR,
         "the drill to sessions took {year_drill:?}"
+    );
+    assert!(
+        biggest_sessions <= MAX_YEAR,
+        "the 10 biggest sessions took {biggest_sessions:?}"
+    );
+    assert!(
+        year_mix <= MAX_YEAR,
+        "the yearly cost mix and session counts by repo took {year_mix:?}"
+    );
+    assert!(
+        year_agents <= MAX_YEAR,
+        "the yearly subagents by model took {year_agents:?}"
     );
 }

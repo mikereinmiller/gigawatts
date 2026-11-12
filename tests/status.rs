@@ -49,6 +49,7 @@ fn account(limits: Option<AccountLimits>, cost_usd: f64, today: DollarPace) -> A
     AccountToday {
         account: None,
         account_label: "personal".to_string(),
+        configured_label: None,
         requests: 3,
         cost_usd,
         pace: today,

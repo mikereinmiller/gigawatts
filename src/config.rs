@@ -68,10 +68,13 @@ pub struct Switch {
     pub earlier: Account,
 }
 
+pub const DEFAULT_REPORT_PORT: u16 = 7878;
+
 #[derive(Debug, Default)]
 pub struct Config {
     pub extra_paths: Vec<PathBuf>,
     pub request_detail_days: Option<u32>,
+    report_port: Option<u16>,
     accounts: HashMap<Account, AccountSettings>,
     switches: HashMap<PathBuf, Switch>,
     prices: HashMap<String, ModelPrices>,
@@ -82,6 +85,7 @@ pub struct Config {
 struct RawConfig {
     extra_paths: Vec<String>,
     request_detail_days: Option<u32>,
+    report_port: Option<u16>,
     accounts: BTreeMap<String, RawAccount>,
     directories: BTreeMap<String, RawDirectory>,
     prices: BTreeMap<String, RawPrices>,
@@ -169,6 +173,7 @@ impl Config {
                 .map(|path| expand_home(path, home))
                 .collect(),
             request_detail_days: raw.request_detail_days,
+            report_port: raw.report_port,
             accounts,
             switches,
             prices: raw
@@ -186,6 +191,14 @@ impl Config {
                 })
                 .collect(),
         })
+    }
+
+    pub fn report_port(&self) -> Option<u16> {
+        match self.report_port {
+            Some(0) => None,
+            Some(port) => Some(port),
+            None => Some(DEFAULT_REPORT_PORT),
+        }
     }
 
     pub fn account(&self, account: &Account) -> AccountSettings {
