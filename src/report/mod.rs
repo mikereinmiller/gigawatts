@@ -181,6 +181,10 @@ fn respond(request: &Request, store: &Store, paths: &Paths) -> Response {
         },
         "/api/mix" => api_mix(query, store, paths),
         "/api/advice" => json_answer(data::advice(store)),
+        "/api/limits" => match parse_query(query) {
+            Ok(asked) => json_answer(data::limit_history(store, &asked.days)),
+            Err(message) => Response::error("400 Bad Request", &message),
+        },
         _ => Response::error("404 Not Found", "no such page"),
     }
 }

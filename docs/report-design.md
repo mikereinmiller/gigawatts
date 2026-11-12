@@ -26,9 +26,10 @@ One page, read top to bottom, one account at a time.
    - *Credits* for an account with a credit limit: used against the limit as a meter, what's left, and how long it lasts at this month's average day. For an account with session and weekly limits: the closest limit as a meter, with its reset and the 100% forecast when there is one.
    - *Per weekday left* for a credit account: what's left divided by the weekdays until the reset, against this month's average weekday. Otherwise, *today* against the usual day.
 3. **Spend per day.** Stacked columns of the top 8 repos or models, plus "other", with a hover readout of every series for that day. A legend is always shown, and the table below carries every value.
-4. **Where it went.** Repo, skill, subagent, or model, as a table: share, cost, sessions, cost per session, and what the cost paid for (input, output, cache writes, cache reads, at list price). Rows under 1% fold into one row once there are more than 8. Nothing expands in place: a click opens the row's side panel, and a branch is a breakdown inside its repo's scope. Raw token counts are left out, because a cache-read token costs a twentieth of an input token and a hundredth of an output token, so counts mislead.
-5. **Who did the work.** Subagents (and your own conversation) by model, as a table. It shows at a glance when a subagent runs on the expensive model.
-6. **Biggest sessions.** The ten most expensive sessions in the range. A session row shows its title with its date, main skill, active time, and peak context, and opens a side panel with its split by skill, model, and subagent.
+4. **Limits over time.** One chart per limit (session, weekly, any scoped weekly limit such as Fable, and credits for a credit account) showing its percent across the range, starting from the reading in effect on the first day. Dashed lines mark resets, and the line drops to 0% at each one until the next reading. Credits readings carry no reset time, so their monthly reset shows only as the drop. Limits belong to the account, so in a scope the chart stays and says it covers the whole account.
+5. **Where it went.** Repo, skill, subagent, or model, as a table: share, cost, sessions, cost per session, and what the cost paid for (input, output, cache writes, cache reads, at list price). Rows under 1% fold into one row once there are more than 8. Nothing expands in place: a click opens the row's side panel, and a branch is a breakdown inside its repo's scope. Raw token counts are left out, because a cache-read token costs a twentieth of an input token and a hundredth of an output token, so counts mislead.
+6. **Who did the work.** Subagents (and your own conversation) by model, as a table. It shows at a glance when a subagent runs on the expensive model.
+7. **Biggest sessions.** The ten most expensive sessions in the range. A session row shows its title with its date, main skill, active time, and peak context, and opens a side panel with its split by skill, model, and subagent.
 
 A past range (last month, or a custom range that ends before today) leads with that period instead of current state: its average active day, busiest day, and biggest driver.
 
@@ -55,7 +56,7 @@ Within a scope the page changes to fit it:
 | Model | Same | Repo | Repo, skill, subagent; "Who did the work" leads, since it shows who chose the model |
 | Subagent | Same | Model | Model, repo, skill |
 
-Credits, limits, and month pace belong to the account, not to a scope, so in a scope they leave the headline and become one line under the filter row ("Account: $412 this month, 62% of credits"). A scoped "Biggest sessions" lists that scope's sessions.
+Credits, limits, and month pace belong to the account, not to a scope, so in a scope they leave the headline and become one line under the filter row ("Account: $412 this month, 62% of credits"). The limits chart stays and says it covers the whole account. A scoped "Biggest sessions" lists that scope's sessions.
 
 Scope needs the API to filter by any grouping, not only down a grouping's own levels: `repo`, `branch`, `skill`, `model`, and `agent` parameters on `/api/data`, `/api/series`, `/api/mix`, `/api/sessions`, and `/api/agents`.
 

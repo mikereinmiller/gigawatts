@@ -219,6 +219,7 @@ fn weekly_point(fetched_at: &str, percent: f64) -> LimitPoint {
         scope: None,
         fetched_at_ms: utc_ms(fetched_at),
         percent,
+        resets_at: None,
     }
 }
 

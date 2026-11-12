@@ -24,6 +24,7 @@ pub struct LimitPoint {
     pub scope: Option<String>,
     pub fetched_at_ms: i64,
     pub percent: f64,
+    pub resets_at: Option<String>,
 }
 
 impl Store {
@@ -129,7 +130,7 @@ impl Store {
 
     pub fn limit_history(&self, account: &Account) -> Result<Vec<LimitPoint>> {
         let mut statement = self.connection.prepare_cached(
-            "SELECT kind, scope, fetched_at_ms, percent FROM limit_readings
+            "SELECT kind, scope, fetched_at_ms, percent, resets_at FROM limit_readings
              JOIN accounts ON accounts.id = limit_readings.account_id
              WHERE accounts.account_uuid = ?1 AND accounts.organization_uuid = ?2
              ORDER BY fetched_at_ms, kind, scope",
@@ -141,6 +142,7 @@ impl Store {
                     scope: Some(row.get::<_, String>(1)?).filter(|scope| !scope.is_empty()),
                     fetched_at_ms: row.get(2)?,
                     percent: row.get(3)?,
+                    resets_at: row.get(4)?,
                 })
             })?;
         Ok(rows.collect::<rusqlite::Result<_>>()?)
@@ -160,7 +162,7 @@ impl Store {
                  WHERE accounts.account_uuid = ?1 AND accounts.organization_uuid = ?2
                    AND kind = ?3 AND scope = ?4
              )
-             SELECT kind, scope, fetched_at_ms, percent FROM series
+             SELECT kind, scope, fetched_at_ms, percent, resets_at FROM series
              WHERE fetched_at_ms >= coalesce(
                  (SELECT max(fetched_at_ms) FROM series WHERE fetched_at_ms <= ?5), ?5)
              ORDER BY fetched_at_ms",
@@ -179,10 +181,66 @@ impl Store {
                     scope: Some(row.get::<_, String>(1)?).filter(|scope| !scope.is_empty()),
                     fetched_at_ms: row.get(2)?,
                     percent: row.get(3)?,
+                    resets_at: row.get(4)?,
                 })
             },
         )?;
         Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
+    pub fn limit_readings_between(
+        &self,
+        since_ms: Option<i64>,
+        until_ms: Option<i64>,
+    ) -> Result<Vec<(Account, LimitPoint)>> {
+        let mut statement = self.connection.prepare_cached(
+            "SELECT accounts.account_uuid, accounts.organization_uuid,
+                    readings.kind, readings.scope, readings.fetched_at_ms,
+                    readings.percent, readings.resets_at
+             FROM limit_readings AS readings
+             JOIN accounts ON accounts.id = readings.account_id
+             WHERE readings.fetched_at_ms >= coalesce(
+                     (SELECT max(earlier.fetched_at_ms) FROM limit_readings AS earlier
+                      WHERE earlier.account_id = readings.account_id
+                        AND earlier.kind = readings.kind AND earlier.scope = readings.scope
+                        AND earlier.fetched_at_ms <= ?1),
+                     ?1, readings.fetched_at_ms)
+               AND (?2 IS NULL OR readings.fetched_at_ms < ?2)
+             ORDER BY accounts.account_uuid, accounts.organization_uuid,
+                      readings.kind, readings.scope, readings.fetched_at_ms",
+        )?;
+        let rows = statement.query_map(params![since_ms, until_ms], |row| {
+            Ok((
+                Account {
+                    account_uuid: row.get(0)?,
+                    organization_uuid: row.get(1)?,
+                },
+                LimitPoint {
+                    kind: row.get(2)?,
+                    scope: Some(row.get::<_, String>(3)?).filter(|scope| !scope.is_empty()),
+                    fetched_at_ms: row.get(4)?,
+                    percent: row.get(5)?,
+                    resets_at: row.get(6)?,
+                },
+            ))
+        })?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
+    pub fn local_midnight_ms(&self, day: &str) -> Result<i64> {
+        Ok(self.connection.query_row(
+            "SELECT CAST(unixepoch(?1, 'utc') AS INTEGER) * 1000",
+            [day],
+            |row| row.get(0),
+        )?)
+    }
+
+    pub fn local_day_end_ms(&self, day: &str) -> Result<i64> {
+        Ok(self.connection.query_row(
+            "SELECT CAST(unixepoch(?1, '+1 day', 'utc') AS INTEGER) * 1000",
+            [day],
+            |row| row.get(0),
+        )?)
     }
 
     pub fn local_minute(&self, timestamp: &str) -> Result<Option<String>> {

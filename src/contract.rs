@@ -265,6 +265,37 @@ pub struct AccountAdvice {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct LimitHistoryResponse {
+    pub schema_version: u32,
+    pub range: Range,
+    pub today: String,
+    pub since: Option<String>,
+    pub until: Option<String>,
+    pub accounts: Vec<AccountLimitHistory>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct AccountLimitHistory {
+    pub account: String,
+    pub limits: Vec<LimitHistory>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct LimitHistory {
+    pub kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scope: Option<String>,
+    pub points: Vec<LimitHistoryPoint>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct LimitHistoryPoint {
+    pub at_ms: i64,
+    pub percent: f64,
+    pub resets_at: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct AgentModelsResponse {
     pub schema_version: u32,
     pub range: Range,

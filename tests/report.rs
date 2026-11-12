@@ -1192,3 +1192,184 @@ fn a_scope_naming_a_repo_two_paths_share_is_a_bad_request_listing_both() {
     assert!(response.body.contains("/work/alpha"), "{}", response.body);
     assert!(response.body.contains("/other/alpha"), "{}", response.body);
 }
+
+fn local_ms(day_and_time: &str) -> i64 {
+    rusqlite::Connection::open_in_memory()
+        .unwrap()
+        .query_row(
+            "SELECT CAST(unixepoch(?1, 'utc') AS INTEGER) * 1000",
+            [day_and_time],
+            |row| row.get(0),
+        )
+        .unwrap()
+}
+
+#[test]
+fn limits_over_a_range_start_from_the_reading_in_effect_and_carry_reset_times() {
+    let home = home_with_spend_today("report_port = 0\n");
+    let port = serving(&home);
+    let mut store = Store::open(&Paths::new(&home.path).database()).unwrap();
+    let personal: gigawatts::sources::claude_json::Account =
+        "00000000-0000-4000-8000-00000000000a/00000000-0000-4000-8000-0000000000f0"
+            .parse()
+            .unwrap();
+    let work: gigawatts::sources::claude_json::Account =
+        "00000000-0000-4000-8000-00000000000a/00000000-0000-4000-8000-0000000000e0"
+            .parse()
+            .unwrap();
+    for (at, percent, resets_at) in [
+        ("2026-01-04 12:00", 40.0, "2026-01-07T09:00:00+00:00"),
+        ("2026-01-06 12:00", 80.0, "2026-01-07T09:00:00+00:00"),
+        ("2026-01-08 23:00", 15.0, "2026-01-14T09:00:00+00:00"),
+        ("2026-01-09 00:30", 16.0, "2026-01-14T09:00:00+00:00"),
+    ] {
+        store
+            .record_limits(
+                &personal,
+                &limits_reading(
+                    at,
+                    vec![
+                        a_limit("weekly_all", None, percent, resets_at),
+                        a_limit("weekly_scoped", Some("Fable"), 10.0, resets_at),
+                    ],
+                ),
+            )
+            .unwrap();
+    }
+    store
+        .record_limits(
+            &work,
+            &limits_reading(
+                "2026-01-06 12:00",
+                vec![a_limit("session", None, 5.0, "2026-01-06T15:00:00+00:00")],
+            ),
+        )
+        .unwrap();
+
+    let history = json(&get(
+        port,
+        "/api/limits?since=2026-01-05&until=2026-01-08",
+        "",
+    ));
+
+    assert_eq!(history["since"], "2026-01-05");
+    assert_eq!(history["until"], "2026-01-08");
+    assert_eq!(
+        history["accounts"],
+        serde_json::json!([
+            {
+                "account": "00000000-0000-4000-8000-00000000000a/00000000-0000-4000-8000-0000000000e0",
+                "limits": [{
+                    "kind": "session",
+                    "points": [
+                        {"at_ms": local_ms("2026-01-06 12:00"), "percent": 5.0, "resets_at": "2026-01-06T15:00:00+00:00"},
+                    ],
+                }],
+            },
+            {
+                "account": "00000000-0000-4000-8000-00000000000a/00000000-0000-4000-8000-0000000000f0",
+                "limits": [
+                    {
+                        "kind": "weekly_all",
+                        "points": [
+                            {"at_ms": local_ms("2026-01-04 12:00"), "percent": 40.0, "resets_at": "2026-01-07T09:00:00+00:00"},
+                            {"at_ms": local_ms("2026-01-06 12:00"), "percent": 80.0, "resets_at": "2026-01-07T09:00:00+00:00"},
+                            {"at_ms": local_ms("2026-01-08 23:00"), "percent": 15.0, "resets_at": "2026-01-14T09:00:00+00:00"},
+                        ],
+                    },
+                    {
+                        "kind": "weekly_scoped",
+                        "scope": "Fable",
+                        "points": [
+                            {"at_ms": local_ms("2026-01-04 12:00"), "percent": 10.0, "resets_at": "2026-01-07T09:00:00+00:00"},
+                        ],
+                    },
+                ],
+            },
+        ])
+    );
+}
+
+fn limits_reading(
+    at: &str,
+    limits: Vec<gigawatts::contract::Limit>,
+) -> gigawatts::store::LimitsReading {
+    gigawatts::store::LimitsReading {
+        fetched_at_ms: local_ms(at),
+        source: gigawatts::contract::LimitSource::GetUsage,
+        limits,
+    }
+}
+
+fn a_limit(
+    kind: &str,
+    scope: Option<&str>,
+    percent: f64,
+    resets_at: &str,
+) -> gigawatts::contract::Limit {
+    gigawatts::contract::Limit {
+        kind: kind.to_string(),
+        group: Some("weekly".to_string()),
+        scope: scope.map(str::to_string),
+        percent,
+        severity: None,
+        resets_at: Some(resets_at.to_string()),
+        active: true,
+        credits: None,
+    }
+}
+
+#[test]
+fn a_preset_range_starts_on_its_first_day_and_has_no_end() {
+    let home = home_with_spend_today("report_port = 0\n");
+    let port = serving(&home);
+    let mut store = Store::open(&Paths::new(&home.path).database()).unwrap();
+    let personal: gigawatts::sources::claude_json::Account =
+        "00000000-0000-4000-8000-00000000000a/00000000-0000-4000-8000-0000000000f0"
+            .parse()
+            .unwrap();
+    let (monday, today): (String, String) = rusqlite::Connection::open_in_memory()
+        .unwrap()
+        .query_row(
+            "SELECT date('now', 'localtime', '-6 days', 'weekday 1'), date('now', 'localtime')",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap();
+    let last_week = local_ms(&format!("{monday} 00:00")) - 60_000;
+    let this_morning = local_ms(&format!("{today} 00:01"));
+    for at_ms in [last_week, this_morning] {
+        store
+            .record_limits(
+                &personal,
+                &gigawatts::store::LimitsReading {
+                    fetched_at_ms: at_ms,
+                    source: gigawatts::contract::LimitSource::GetUsage,
+                    limits: vec![a_limit(
+                        "weekly_all",
+                        None,
+                        if at_ms == last_week { 90.0 } else { 3.0 },
+                        "2099-01-01T00:00:00+00:00",
+                    )],
+                },
+            )
+            .unwrap();
+    }
+
+    let history = json(&get(port, "/api/limits?range=week", ""));
+
+    assert_eq!(history["since"], monday);
+    assert_eq!(history["until"], serde_json::Value::Null);
+    let points: Vec<(i64, f64)> = history["accounts"][0]["limits"][0]["points"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|point| {
+            (
+                point["at_ms"].as_i64().unwrap(),
+                point["percent"].as_f64().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(points, vec![(last_week, 90.0), (this_morning, 3.0)]);
+}

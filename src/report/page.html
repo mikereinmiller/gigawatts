@@ -154,6 +154,10 @@ h3 { font-size: var(--text-xs); line-height: 1.33; margin: 0 0 var(--space-3); f
 .meter.warning { --fill: var(--warning); }
 .meter.critical { --fill: var(--critical); }
 .spark { flex: none; }
+.limit-chart + .limit-chart { margin-top: var(--space-5); }
+.limit-chart .limit-head { display: flex; justify-content: space-between; gap: var(--space-4); font-size: var(--text-sm); color: var(--ink-2); margin-bottom: var(--space-2); }
+.limit-chart .limit-head b { color: var(--ink); font-weight: 600; }
+.limits-account { font-size: var(--text-md); margin: var(--space-5) 0 var(--space-3); }
 
 .chart svg { display: block; width: 100%; height: auto; }
 .chart text { fill: var(--muted); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
@@ -996,7 +1000,7 @@ function closestLimit(view) {
 }
 
 function limitName(limit) {
-  return {session: 'Session limit', weekly_all: 'Weekly limit', weekly_scoped: 'Weekly limit, ' + (limit.scope ?? '')}[limit.kind] ?? limit.kind;
+  return {session: 'Session limit', weekly_all: 'Weekly limit', weekly_scoped: 'Weekly limit, ' + (limit.scope ?? ''), credits: 'Credits'}[limit.kind] ?? limit.kind;
 }
 
 function headedFor(limit, fetchedAtMs) {
@@ -1342,6 +1346,120 @@ function spendChart(view, chartBy, entries, interactive) {
   if (!entries.length) card.append(element('p', 'No spend in this range.', 'note'));
   else if (interactive) card.append(element('p', 'Click a day for its details.', 'note'));
   return {card, colors};
+}
+
+function localMidnight(day) {
+  return new Date(day + 'T00:00:00').getTime();
+}
+
+function limitsOverTime(view) {
+  const card = element('section', undefined, 'card');
+  const head = element('div', undefined, 'card-head');
+  head.append(element('h2', 'Limits over time'), element('span', state.scope.length ? 'For the whole account, not only this focus · dashed lines mark resets' : 'Dashed lines mark resets', 'hint'));
+  card.append(head);
+  const start = localMidnight(view.first);
+  const end = Math.min(localMidnight(addDays(view.last, 1)), Date.now());
+  const accounts = forAccount(latest.limits.accounts);
+  let drawn = 0;
+  for (const account of accounts) {
+    const charts = account.limits.map(limit => limitChart(limit, start, end)).filter(Boolean);
+    if (charts.length && accounts.length > 1) {
+      card.append(element('h3', latest.now.accounts.find(known => known.account === account.account)?.account_label ?? account.account, 'limits-account'));
+    }
+    card.append(...charts);
+    drawn += charts.length;
+  }
+  if (!drawn) card.append(element('p', 'No limit readings in this range.', 'note'));
+  return card;
+}
+
+function limitSteps(points, start, end) {
+  const steps = [];
+  const resets = [];
+  points.forEach((point, position) => {
+    const until = points[position + 1]?.at_ms ?? end;
+    const reset = point.resets_at ? Date.parse(point.resets_at) : NaN;
+    const resetsFirst = reset > point.at_ms && reset < until;
+    steps.push({from: point.at_ms, to: resetsFirst ? reset : until, percent: point.percent, reset: Number.isNaN(reset) ? null : reset});
+    if (resetsFirst) {
+      resets.push(reset);
+      steps.push({from: reset, to: until, percent: 0, reset: null, assumed: true});
+    }
+  });
+  const clipped = steps
+    .map(step => ({...step, from: Math.max(step.from, start), to: Math.min(step.to, end)}))
+    .filter(step => step.to > step.from);
+  return {steps: clipped, resets: resets.filter(reset => reset > start && reset < end)};
+}
+
+function limitChart(limit, start, end) {
+  const {steps, resets} = limitSteps(limit.points, start, end);
+  if (!steps.length) return null;
+  const wrap = element('div', undefined, 'limit-chart');
+  const peak = Math.max(...steps.map(step => step.percent));
+  const top = element('div', undefined, 'limit-head');
+  const name = element('b', limitName(limit));
+  const peakText = element('span', `Peak ${percent(peak)}${resets.length ? ` · ${resets.length} ${resets.length === 1 ? 'reset' : 'resets'}` : ''}`);
+  top.append(name, peakText);
+  wrap.append(top);
+  const width = chartWidth(), height = 120, left = 48, right = 0, upper = 6, lower = 24;
+  const x = ms => left + (width - left - right) * (ms - start) / Math.max(end - start, 1);
+  const y = value => upper + (height - upper - lower) * (1 - Math.min(value, 100) / 100);
+  const root = svg('svg', {viewBox: `0 0 ${width} ${height}`, role: 'img', 'aria-label': `${limitName(limit)}, peak ${percent(peak)}`});
+  for (const value of [0, 50, 100]) {
+    root.append(svg('line', {x1: left, x2: width - right, y1: y(value), y2: y(value), stroke: value === 0 ? 'var(--axis)' : 'var(--grid)', 'stroke-width': 1}));
+    const label = svg('text', {x: left - 10, y: y(value) + 4, 'text-anchor': 'end'});
+    label.textContent = value + '%';
+    root.append(label);
+  }
+  const days = dayCount(localDay(new Date(start)), localDay(new Date(end - 1)));
+  const every = Math.max(1, Math.ceil(DAY_LABEL_GAP / ((width - left - right) / Math.max(days, 1))));
+  for (let day = localDay(new Date(start)), position = 0; localMidnight(day) < end; day = addDays(day, 1), position++) {
+    if (position % every) continue;
+    const label = svg('text', {x: x(localMidnight(day)), y: height - 6, 'text-anchor': position === 0 ? 'start' : 'middle'});
+    label.textContent = shortDate(day);
+    root.append(label);
+  }
+  for (const reset of resets) {
+    root.append(svg('line', {x1: x(reset), x2: x(reset), y1: upper, y2: height - lower, stroke: 'var(--muted)', 'stroke-width': 1, 'stroke-dasharray': '3 3'}));
+  }
+  let path = '';
+  steps.forEach((step, position) => {
+    const joined = position > 0 && steps[position - 1].to === step.from;
+    path += `${joined ? 'V' : 'M' + x(step.from) + ','}${y(step.percent)} H${x(step.to)} `;
+  });
+  root.append(svg('path', {d: steps.map(step => `M${x(step.from)},${y(0)} V${y(step.percent)} H${x(step.to)} V${y(0)} Z`).join(' '), fill: 'var(--accent)', opacity: 0.14}));
+  root.append(svg('path', {d: path, fill: 'none', stroke: 'var(--accent)', 'stroke-width': 2, 'stroke-linejoin': 'round'}));
+  const hit = svg('rect', {x: left, y: upper, width: width - left - right, height: height - upper - lower, fill: 'transparent'});
+  hit.addEventListener('pointermove', event => {
+    const box = root.getBoundingClientRect();
+    const at = start + (end - start) * ((event.clientX - box.left) * width / box.width - left) / (width - left - right);
+    const step = steps.find(candidate => at >= candidate.from && at < candidate.to);
+    if (step) showLimitTip(event, at, step);
+    else hideTip();
+  });
+  hit.addEventListener('pointerleave', hideTip);
+  root.append(hit);
+  const chart = element('div', undefined, 'chart');
+  chart.append(root);
+  wrap.append(chart);
+  return wrap;
+}
+
+function showLimitTip(event, at, step) {
+  tip.replaceChildren();
+  const head = element('div', undefined, 'head');
+  head.append(element('span', localTime(at)), element('b', percent(step.percent)));
+  tip.append(head);
+  const note = step.assumed ? 'After the reset, before the next reading' : step.reset ? `Resets ${localTime(step.reset)}` : null;
+  if (note) {
+    const line = element('div', undefined, 'line');
+    line.append(element('i'), element('span', note));
+    tip.append(line);
+  }
+  tip.style.display = 'block';
+  tip.style.left = Math.min(event.clientX + 16, window.innerWidth - tip.offsetWidth - 8) + 'px';
+  tip.style.top = Math.min(event.clientY + 16, window.innerHeight - tip.offsetHeight - 8) + 'px';
 }
 
 function chartWidth() {
@@ -2287,7 +2405,7 @@ async function load() {
   const accountQuery = rangeParams();
   accountQuery.set('by', 'model');
   try {
-    const [now, data, mix, series, agents, month, sessions, history, accountData, advice] = await Promise.all([
+    const [now, data, mix, series, agents, month, sessions, history, accountData, advice, limits] = await Promise.all([
       fetchJson('/api/now'),
       fetchJson('/api/data?' + dataQuery),
       fetchJson('/api/mix?' + dataQuery),
@@ -2298,6 +2416,7 @@ async function load() {
       fetchJson('/api/series?range=all&by=model&top=1'),
       scoped ? fetchJson('/api/data?' + accountQuery) : null,
       fetchJson('/api/advice'),
+      fetchJson('/api/limits?' + rangeParams()),
     ]);
     const last = data.until || data.today;
     const first = data.since || series.days.map(day => day.day).sort()[0] || last;
@@ -2307,7 +2426,7 @@ async function load() {
       previous ? fetchJson('/api/data?' + scopeParams(new URLSearchParams(previous.params))) : null,
       fetchJson(`/api/data?since=${lastMonth.since}&until=${lastMonth.sameDay}&by=model`),
     ]);
-    latest = {now, data, mix, series, agents, month, sessions, history, first, last, previous, previousData, lastMonth, lastMonthData, accountData, advice};
+    latest = {now, data, mix, series, agents, month, sessions, history, first, last, previous, previousData, lastMonth, lastMonthData, accountData, advice, limits};
     render();
   } catch (error) {
     const source = document.getElementById('source');
@@ -2375,6 +2494,7 @@ function render() {
     sections.push(headline(view, false));
   }
   sections.push(chart.card);
+  sections.push(limitsOverTime(view));
   const where = breakdown(view, chart.colors);
   const who = whoDidTheWork(view.agents, true);
   sections.push(...(primaryScope() === 'model' ? [who, where] : [where, who]));

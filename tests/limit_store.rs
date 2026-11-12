@@ -2,6 +2,8 @@ use gigawatts::contract::{Limit, LimitSource};
 use gigawatts::sources::claude_json::Account;
 use gigawatts::store::{LimitPoint, LimitsReading, Store, UsageAdvice};
 
+const RESETS_AT: &str = "2026-11-08T02:59:59.945600+00:00";
+
 fn account(organization: &str) -> Account {
     Account {
         account_uuid: "00000000-0000-4000-8000-00000000000a".to_string(),
@@ -16,7 +18,7 @@ fn limit(kind: &str, scope: Option<&str>, percent: f64) -> Limit {
         scope: scope.map(str::to_string),
         percent,
         severity: Some("normal".to_string()),
-        resets_at: Some("2026-11-08T02:59:59.945600+00:00".to_string()),
+        resets_at: Some(RESETS_AT.to_string()),
         active: false,
         credits: None,
     }
@@ -36,6 +38,7 @@ fn point(kind: &str, scope: Option<&str>, fetched_at_ms: i64, percent: f64) -> L
         scope: scope.map(str::to_string),
         fetched_at_ms,
         percent,
+        resets_at: Some(RESETS_AT.to_string()),
     }
 }
 
@@ -211,4 +214,48 @@ fn history_since_a_time_starts_with_the_reading_in_effect_then() {
             .len(),
         4
     );
+}
+
+#[test]
+fn readings_between_include_the_one_in_effect_at_the_start_and_nothing_after_the_end() {
+    let (_dir, mut store) = open();
+    let personal = account("00000000-0000-4000-8000-0000000000f0");
+    let work = account("00000000-0000-4000-8000-0000000000e0");
+    for (fetched_at_ms, percent) in [(1_000, 10.0), (2_000, 20.0), (3_000, 30.0), (6_000, 50.0)] {
+        store
+            .record_limits(
+                &personal,
+                &reading(
+                    fetched_at_ms,
+                    LimitSource::GetUsage,
+                    vec![limit("weekly_all", None, percent)],
+                ),
+            )
+            .unwrap();
+    }
+    for (fetched_at_ms, percent) in [(1_500, 4.0), (4_000, 5.0)] {
+        store
+            .record_limits(
+                &work,
+                &reading(
+                    fetched_at_ms,
+                    LimitSource::GetUsage,
+                    vec![limit("session", None, percent)],
+                ),
+            )
+            .unwrap();
+    }
+
+    assert_eq!(
+        store
+            .limit_readings_between(Some(2_500), Some(5_000))
+            .unwrap(),
+        vec![
+            (work.clone(), point("session", None, 1_500, 4.0)),
+            (work.clone(), point("session", None, 4_000, 5.0)),
+            (personal.clone(), point("weekly_all", None, 2_000, 20.0)),
+            (personal.clone(), point("weekly_all", None, 3_000, 30.0)),
+        ]
+    );
+    assert_eq!(store.limit_readings_between(None, None).unwrap().len(), 6);
 }

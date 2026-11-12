@@ -2,8 +2,9 @@ use std::fmt::{self, Write};
 
 use crate::config::Config;
 use crate::contract::{
-    AdviceResponse, AgentModelsResponse, CostMix, CostStatus, DataResponse, DataRow, DayCost,
-    DrillStep, GroupBy, Level, MixResponse, Problem, Range, SCHEMA_VERSION, SeriesResponse,
+    AccountLimitHistory, AdviceResponse, AgentModelsResponse, CostMix, CostStatus, DataResponse,
+    DataRow, DayCost, DrillStep, GroupBy, Level, LimitHistory, LimitHistoryPoint,
+    LimitHistoryResponse, MixResponse, Problem, Range, SCHEMA_VERSION, SeriesResponse,
     SessionsResponse,
 };
 use crate::sources::claude_json::Account;
@@ -330,6 +331,56 @@ pub fn advice(store: &Store) -> Result<AdviceResponse, Error> {
         schema_version: SCHEMA_VERSION,
         accounts: store.usage_advice_on(&today)?,
         today,
+    })
+}
+
+pub fn limit_history(store: &Store, days: &Days) -> Result<LimitHistoryResponse, Error> {
+    let today = store.local_today()?;
+    let (range, since, until) = bounds(store, days, &today)?;
+    let since_ms = since
+        .as_deref()
+        .map(|day| store.local_midnight_ms(day))
+        .transpose()?;
+    let until_ms = until
+        .as_deref()
+        .map(|day| store.local_day_end_ms(day))
+        .transpose()?;
+    let mut accounts: Vec<AccountLimitHistory> = Vec::new();
+    for (account, point) in store.limit_readings_between(since_ms, until_ms)? {
+        let account = account.to_string();
+        if accounts.last().is_none_or(|last| last.account != account) {
+            accounts.push(AccountLimitHistory {
+                account,
+                limits: Vec::new(),
+            });
+        }
+        let limits = &mut accounts.last_mut().expect("just pushed").limits;
+        let same_limit =
+            |limit: &&mut LimitHistory| limit.kind == point.kind && limit.scope == point.scope;
+        if limits.last_mut().filter(same_limit).is_none() {
+            limits.push(LimitHistory {
+                kind: point.kind.clone(),
+                scope: point.scope.clone(),
+                points: Vec::new(),
+            });
+        }
+        limits
+            .last_mut()
+            .expect("just pushed")
+            .points
+            .push(LimitHistoryPoint {
+                at_ms: point.fetched_at_ms,
+                percent: point.percent,
+                resets_at: point.resets_at,
+            });
+    }
+    Ok(LimitHistoryResponse {
+        schema_version: SCHEMA_VERSION,
+        range,
+        today,
+        since,
+        until,
+        accounts,
     })
 }
 
