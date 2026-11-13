@@ -1,6 +1,8 @@
 use ratatui::style::{Color, Modifier, Style};
 
 pub(crate) const SECONDARY: Color = Color::Indexed(244);
+pub(crate) const BAR: &str = "▇";
+pub(crate) const STALE_TRACK: &str = "▂";
 
 pub(crate) const NORMAL: Style = Style::new();
 pub(crate) const TITLE: Style = Style::new().fg(Color::Reset).add_modifier(Modifier::BOLD);

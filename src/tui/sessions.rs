@@ -9,7 +9,7 @@ use ratatui::widgets::Paragraph;
 use crate::contract::{AccountToday, SessionSpend};
 
 use super::sections::{clip, clip_middle, titled_section};
-use super::style::{KEY, MUTED, OVER, TITLE};
+use super::style::{BAR, KEY, MUTED, OVER, TITLE};
 
 const SESSION_ROWS: u16 = 4;
 const RULE_ROWS: u16 = 1;
@@ -19,7 +19,6 @@ const SUMMARY_ROWS: u16 = 1;
 const DIVIDER: &str = " │ ";
 const TWO_COLUMNS_FROM: u16 = 72;
 const THREE_COLUMNS_FROM: u16 = 146;
-const BAR: &str = "▆";
 const BACKGROUND_REPO: &str = "temporary";
 const UNTITLED_ID_CHARS: usize = 8;
 const MODEL_PREFIX: &str = "claude-";

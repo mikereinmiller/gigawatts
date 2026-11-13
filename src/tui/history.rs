@@ -8,7 +8,7 @@ use ratatui::widgets::{Cell, Paragraph, Row, Table, TableState};
 
 use super::App;
 use super::sections::{clip, section};
-use super::style::{DANGER, KEY, MUTED, NORMAL};
+use super::style::{BAR, DANGER, KEY, MUTED, NORMAL};
 use crate::contract::{DataResponse, DataRow, GroupBy, Level, Range};
 use crate::data;
 use crate::sources::claude_json::Account;
@@ -30,7 +30,6 @@ const NAME_MIN_WIDTH: usize = 16;
 const NAME_MAX_WIDTH: usize = 40;
 const COST_WIDTH: u16 = 10;
 const PERCENT_WIDTH: u16 = 4;
-const BAR: &str = "▆";
 const WIDE: u16 = 90;
 const BRANCHES_PER_REPO: usize = 3;
 

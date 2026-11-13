@@ -15,7 +15,9 @@ use crate::status::{MAY_MISS_OUTSIDE_USE_MS, has_reset, pace_phrase, resets_ms};
 use super::HISTORY_MIN_HEIGHT;
 use super::digits;
 use super::sessions;
-use super::style::{EVEN, KEY, MUTED, NORMAL, OVER, PROBLEM, STALE, TITLE, UNDER, UNPACED};
+use super::style::{
+    BAR, EVEN, KEY, MUTED, NORMAL, OVER, PROBLEM, STALE, STALE_TRACK, TITLE, UNDER, UNPACED,
+};
 
 const USUAL_EVEN_FROM: f64 = 0.9;
 const USUAL_EVEN_TO: f64 = 1.1;
@@ -317,7 +319,7 @@ pub(crate) fn limit_lines(
                         forecast(shown, now_ms, local_minute),
                         &detail(shown, now_ms, local_minute),
                         width,
-                        &SOLID_BAR,
+                        false,
                     ),
                     LimitLayout::Stacked => {
                         let mut rows = named_limit_row(
@@ -328,7 +330,7 @@ pub(crate) fn limit_lines(
                             forecast(shown, now_ms, local_minute),
                             &flags(shown, now_ms),
                             width,
-                            &SPACED_BAR,
+                            true,
                         );
                         let budget = credit_budget(shown, now_ms);
                         rows.extend(
@@ -396,7 +398,7 @@ fn limit_row(
             Span::raw(" ".repeat(gap)),
             Span::styled(reading, Style::new().fg(color).add_modifier(Modifier::BOLD)),
         ]),
-        Line::from(bar(shown, width, color, &SOLID_BAR)),
+        Line::from(bar(shown, width, color, stale)),
     ];
     if let Some(forecast) = forecast(shown, now_ms, local_minute) {
         lines.extend(wrapped(&forecast, width as u16, forecast_style(stale)));
@@ -416,7 +418,7 @@ fn named_limit_row(
     forecast: Option<String>,
     parts: &[String],
     width: u16,
-    glyphs: &BarGlyphs,
+    status_beside: bool,
 ) -> Vec<Line<'static>> {
     let color = if stale || reset {
         STALE
@@ -425,18 +427,18 @@ fn named_limit_row(
     };
     let room = (width as usize).saturating_sub(NAME_WIDTH + PERCENT_WIDTH);
     let status_fits = room >= STACKED_BAR_MIN + STATUS_GAP + STATUS_WIDTH;
-    let bar_width = match (glyphs.capped, status_fits) {
+    let bar_width = match (status_beside, status_fits) {
         (false, _) => room,
         (true, true) => (room - STATUS_GAP - STATUS_WIDTH).min(STACKED_BAR_MAX),
         (true, false) => room.min(STACKED_BAR_MAX),
     };
-    let beside = status.is_some() && glyphs.capped && status_fits;
+    let beside = status.is_some() && status_beside && status_fits;
     let bar_width = bar_width.max(8);
     let mut spans = vec![Span::raw(format!(
         "{:<NAME_WIDTH$}",
         clip(&limit_name(&shown.limit), NAME_WIDTH - 1)
     ))];
-    spans.extend(bar(shown, bar_width, color, glyphs));
+    spans.extend(bar(shown, bar_width, color, stale || reset));
     let reading = if reset {
         format!("{:>PERCENT_WIDTH$}", "reset")
     } else {
@@ -547,28 +549,8 @@ fn pace_color(shown: &PacedLimit) -> Color {
     }
 }
 
-struct BarGlyphs {
-    filled: &'static str,
-    empty: &'static str,
-    expected: &'static str,
-    capped: bool,
-}
-
-const SOLID_BAR: BarGlyphs = BarGlyphs {
-    filled: "█",
-    empty: "░",
-    expected: "▌",
-    capped: false,
-};
-
-const SPACED_BAR: BarGlyphs = BarGlyphs {
-    filled: "▆",
-    empty: "▂",
-    expected: "▆",
-    capped: true,
-};
-
-fn bar(shown: &PacedLimit, width: usize, color: Color, glyphs: &BarGlyphs) -> Vec<Span<'static>> {
+fn bar(shown: &PacedLimit, width: usize, color: Color, stale: bool) -> Vec<Span<'static>> {
+    let track = if stale { STALE_TRACK } else { BAR };
     let filled = cells(shown.limit.percent, width);
     let expected = shown
         .pace
@@ -577,11 +559,11 @@ fn bar(shown: &PacedLimit, width: usize, color: Color, glyphs: &BarGlyphs) -> Ve
     let mut spans = Vec::new();
     for index in 0..width {
         let (symbol, style) = if Some(index) == expected {
-            (glyphs.expected, Style::new().add_modifier(Modifier::BOLD))
+            (BAR, Style::new().add_modifier(Modifier::BOLD))
         } else if index < filled {
-            (glyphs.filled, Style::new().fg(color))
+            (BAR, Style::new().fg(color))
         } else {
-            (glyphs.empty, MUTED)
+            (track, MUTED)
         };
         spans.push(Span::styled(symbol, style));
     }
@@ -926,14 +908,14 @@ pub(crate) fn help(frame: &mut Frame, area: Rect) {
         key("Esc", "close help, advice, or the sessions list"),
         key("q", "quit (Ctrl-C too)"),
         Line::default(),
-        color("███", Style::new().fg(UNDER), "under your pace"),
-        color("███", Style::new().fg(EVEN), "on pace"),
-        color("███", Style::new().fg(OVER), "over your pace"),
-        color("███", Style::new().fg(STALE), "a reading over an hour old"),
+        color("▇▇▇", Style::new().fg(UNDER), "under your pace"),
+        color("▇▇▇", Style::new().fg(EVEN), "on pace"),
+        color("▇▇▇", Style::new().fg(OVER), "over your pace"),
+        color("▇▇▇", Style::new().fg(STALE), "a reading over an hour old"),
         color(
-            "▌",
+            "▇",
             Style::new().add_modifier(Modifier::BOLD),
-            "expected use by now; a bold ▆ in the all view",
+            "expected use by now",
         ),
         color(
             "▲",

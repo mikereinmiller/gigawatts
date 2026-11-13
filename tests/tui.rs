@@ -1268,15 +1268,15 @@ fn each_row_shows_its_cost_share_and_the_skill_that_spent_most_in_it() {
     assert!(shown.contains("Spending · $40.00 this week"), "{shown}");
     assert!(shown.contains("Top skill"), "{shown}");
     assert!(
-        shown.contains("$30.00  ▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆    75%  60% review"),
+        shown.contains("$30.00  ▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇    75%  60% review"),
         "{shown}"
     );
     assert!(
-        shown.contains("$6.00  ▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆    15%  50% no skill"),
+        shown.contains("$6.00  ▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇    15%  50% no skill"),
         "{shown}"
     );
     assert!(
-        shown.contains("$4.00  ▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆    10%  "),
+        shown.contains("$4.00  ▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇    10%  "),
         "{shown}"
     );
 }
@@ -1812,7 +1812,7 @@ fn each_limit_gets_a_name_row_a_full_width_thick_bar_and_its_details_below() {
         .unwrap();
     let bar_cells = lines[name_row + 1]
         .chars()
-        .filter(|cell| matches!(cell, '█' | '░' | '▌'))
+        .filter(|cell| *cell == '▇')
         .count();
 
     assert!(bar_cells >= 60, "{shown}");
@@ -1929,7 +1929,7 @@ fn with_the_terminals_colors_known_every_muted_part_shares_one_soft_shade() {
     gruvbox(&mut app);
     let muted = ratatui::style::Color::Rgb(0x63, 0x5e, 0x51);
 
-    let track = last_cell_of(&app, 150, 40, "▌░");
+    let track = cell_at(&app, 150, 40, "▇ │ │");
     let border = cell_at(&app, 150, 40, "╭ Limits");
     let details = cell_at(&app, 150, 40, "on even pace · 50% expected");
     let label = cell_at(&app, 150, 40, "Spent so far");
@@ -1944,7 +1944,7 @@ fn with_the_terminals_colors_known_every_muted_part_shares_one_soft_shade() {
 fn without_the_terminals_colors_muted_parts_fall_back_to_dark_gray() {
     let app = open(snapshot(vec![personal()]), None);
 
-    let track = last_cell_of(&app, 150, 40, "▌░");
+    let track = cell_at(&app, 150, 40, "▇ │ │");
     let details = cell_at(&app, 150, 40, "on even pace · 50% expected");
 
     assert_eq!(track.fg, ratatui::style::Color::DarkGray);
@@ -2054,9 +2054,9 @@ fn a_spending_bar_fills_with_the_key_color_and_its_track_is_muted_at_the_same_he
     let last_filled = cell_after(&app, 100, 44, "$30.00 ", 8 + 21);
     let first_empty = cell_after(&app, 100, 44, "$30.00 ", 8 + 22);
 
-    assert_eq!(last_filled.symbol(), "▆");
+    assert_eq!(last_filled.symbol(), "▇");
     assert_eq!(last_filled.fg, ratatui::style::Color::Cyan);
-    assert_eq!(first_empty.symbol(), "▆");
+    assert_eq!(first_empty.symbol(), "▇");
     assert_eq!(first_empty.fg, ratatui::style::Color::DarkGray);
 }
 
@@ -2071,7 +2071,7 @@ fn spending_bars_are_a_fixed_30_cells_and_spare_width_stays_after_the_last_colum
         .unwrap();
 
     let spending = &row[row.find("▸ orchard").unwrap()..];
-    assert_eq!(spending.matches('▆').count(), 29, "{shown}");
+    assert_eq!(spending.matches('▇').count(), 29, "{shown}");
     assert!(row.contains("▸ orchard             $30.00  "), "{shown}");
 }
 
@@ -2769,8 +2769,19 @@ fn stacked_limits_show_their_reset_beside_a_bar_of_at_most_40_cells() {
     let session = line_with(&shown, "Session ");
 
     assert!(session.contains("5%  resets 2h 40m"), "{shown}");
-    let cells = session.chars().filter(|c| "▆▂".contains(*c)).count();
+    let cells = session.chars().filter(|c| "▇▂".contains(*c)).count();
     assert_eq!(cells, 40, "{shown}");
+}
+
+#[test]
+fn stacked_bars_draw_a_full_height_track_unless_the_reading_is_stale() {
+    let shown = three_accounts_screen(150, 50);
+    let fresh = line_with(&shown, "Session ");
+    let stale = line_with(&shown, "Credits ");
+
+    assert!(fresh.contains('▇'), "{shown}");
+    assert!(!fresh.contains('▂'), "{shown}");
+    assert!(stale.contains('▂'), "{shown}");
 }
 
 #[test]
@@ -2847,10 +2858,14 @@ fn stacked_limit_bars_leave_a_gap_above_so_bars_on_next_rows_stay_apart() {
         "Credits ",
     ] {
         let row = line_with(&stacked, name);
-        assert!(row.contains('▆'), "{stacked}");
+        assert!(row.contains('▇'), "{stacked}");
         assert!(!row.contains(['█', '░', '▌']), "{stacked}");
     }
-    assert!(line_with(&one, "Session ").contains('█'), "{one}");
+    assert!(line_with(&one, "Session ").contains('▇'), "{one}");
+    assert!(
+        !line_with(&one, "Session ").contains(['█', '░', '▌']),
+        "{one}"
+    );
 }
 
 fn with_a_filling_limit_screen(width: u16, height: u16) -> String {
@@ -2991,7 +3006,7 @@ fn a_stacked_limit_that_reset_lines_up_with_the_limits_around_it() {
         );
         let cells = line_with(&shown, "Session ")
             .chars()
-            .filter(|c| "▆▂".contains(*c))
+            .filter(|c| "▇▂".contains(*c))
             .count();
         assert!(cells <= 40, "{shown}");
     }
@@ -3162,10 +3177,7 @@ fn help_explains_the_every_account_bar_too() {
 
     let shown = screen(&app, 80, 40);
 
-    assert!(
-        shown.contains("▌       expected use by now; a bold ▆ in the all view"),
-        "{shown}"
-    );
+    assert!(shown.contains("▇       expected use by now"), "{shown}");
 }
 
 #[test]
