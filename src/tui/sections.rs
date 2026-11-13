@@ -570,26 +570,26 @@ pub(crate) fn today_lines(
     width: u16,
     stacked: bool,
 ) -> Vec<Line<'static>> {
-    let indent = if stacked { NAME_WIDTH } else { 0 };
-    let mut spans = Vec::new();
+    let mut lines = Vec::new();
     if stacked {
-        spans.push(Span::styled(format!("{:<NAME_WIDTH$}", "Today"), MUTED));
+        let header = match usual_days_so_far(&account.pace) {
+            Some(days) => format!("Today · usual from {days} of {USUAL_DAYS} days"),
+            None => "Today".to_string(),
+        };
+        lines.push(Line::styled(header, MUTED));
     }
-    spans.push(Span::styled(
+    let mut spans = vec![Span::styled(
         format!("${:.2}", account.cost_usd),
         Modifier::BOLD,
-    ));
+    )];
     if account.cost_estimated {
         spans.push(Span::styled("  estimated", Style::new().fg(EVEN)));
     }
     spans.push(Span::styled(" · ", MUTED));
     spans.extend(against_usual(&account.pace));
-    let mut lines = vec![Line::from(spans)];
-    if let Some(provisional) = provisional_usual(&account.pace) {
-        lines.push(Line::styled(
-            format!("{}{provisional}", " ".repeat(indent)),
-            MUTED,
-        ));
+    lines.push(Line::from(spans));
+    if !stacked && let Some(provisional) = provisional_usual(&account.pace) {
+        lines.push(Line::styled(provisional, MUTED));
     }
     for text in spend_markers(account, problems) {
         lines.extend(wrapped(&text, width, PROBLEM));
@@ -633,13 +633,13 @@ pub(crate) fn today_panel(
     lines
 }
 
+fn usual_days_so_far(pace: &DollarPace) -> Option<u32> {
+    (pace.usual_usd.is_some() && pace.usual_days < USUAL_DAYS).then_some(pace.usual_days)
+}
+
 fn provisional_usual(pace: &DollarPace) -> Option<String> {
-    (pace.usual_usd.is_some() && pace.usual_days < USUAL_DAYS).then(|| {
-        format!(
-            "usual is provisional: {} of {USUAL_DAYS} days so far",
-            pace.usual_days
-        )
-    })
+    usual_days_so_far(pace)
+        .map(|days| format!("usual is provisional: {days} of {USUAL_DAYS} days so far"))
 }
 
 fn sparkline(pace: &DollarPace, width: u16, today_style: Style) -> Vec<Line<'static>> {

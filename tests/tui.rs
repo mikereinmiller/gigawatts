@@ -2745,3 +2745,30 @@ fn a_window_wider_than_1170_columns_still_splits_limits_and_today() {
         "{top}"
     );
 }
+
+#[test]
+fn stacked_today_has_its_own_header_and_starts_at_the_left_edge() {
+    let mut young = personal();
+    young.pace.usual_days = 8;
+    let mut app = open(snapshot(vec![young, work()]), None);
+    app.handle(KeyCode::Char('a').into());
+    let shown = screen(&app, 80, 40);
+    let lines: Vec<&str> = shown.lines().collect();
+    let header = lines
+        .iter()
+        .position(|line| line.contains("│ Today · usual from 8 of 20 days "))
+        .unwrap_or_else(|| panic!("{shown}"));
+
+    assert!(lines[header + 1].contains("│ $14.20  estimated"), "{shown}");
+    let work_box = lines
+        .iter()
+        .position(|line| line.contains("╭ work "))
+        .unwrap();
+    assert!(
+        lines[work_box..]
+            .iter()
+            .any(|line| line.contains("│ Today  ")),
+        "{shown}"
+    );
+    assert!(!shown.contains("usual is provisional"), "{shown}");
+}
