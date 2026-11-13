@@ -21,6 +21,9 @@ use super::style::{
 
 const USUAL_EVEN_FROM: f64 = 0.9;
 const USUAL_EVEN_TO: f64 = 1.1;
+const MONTHS: [&str; 12] = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
 const NAME_WIDTH: usize = 20;
 const COLUMNS_FROM: u16 = 100;
 pub(crate) const COLUMN_GAP: u16 = 1;
@@ -33,6 +36,9 @@ const SEPARATOR: &str = " · ";
 const DAY_MS: i64 = 24 * 3_600_000;
 const LIMITS_SHARE: u32 = 56;
 const SPARK_LEVELS: [char; 8] = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
+const SPARK_ROWS: usize = 4;
+const SPARK_DAY_CELLS: usize = 2;
+const SPARK_DAY_GAP: usize = 1;
 
 pub(crate) type LocalMinute<'a> = &'a dyn Fn(i64) -> String;
 
@@ -165,7 +171,7 @@ fn panels(
         limits_inner,
         LimitLayout::Roomy,
     );
-    let mut today = today_panel(account, problems, today_inner, true);
+    let mut today = today_panel(account, problems, now_ms, today_inner, true);
     limits.insert(0, Line::default());
     today.insert(0, Line::default());
     Panels {
@@ -632,12 +638,8 @@ fn credit_budget(shown: &PacedLimit, now_ms: i64) -> Vec<String> {
         ),
         format!("{} left", money(left, currency, false)),
     ];
-    let days_left = resets_ms(shown).map(|resets_ms| (resets_ms - now_ms) as f64 / DAY_MS as f64);
-    if let Some(days_left) = days_left.filter(|days| *days >= 1.0 && left > 0.0) {
-        parts.push(format!(
-            "{} a day to last",
-            money(left / days_left, currency, false)
-        ));
+    if let Some((per_day, _)) = credits_per_day(shown, now_ms) {
+        parts.push(format!("{} a day to last", money(per_day, currency, false)));
     }
     parts
 }
@@ -760,8 +762,9 @@ pub(crate) fn today_lines(
 pub(crate) fn today_panel(
     account: &AccountToday,
     problems: &[Problem],
+    now_ms: i64,
     width: u16,
-    with_sparkline: bool,
+    with_chart: bool,
 ) -> Vec<Line<'static>> {
     let spent = format!("${:.2}", account.cost_usd);
     let emphasis = Style::new()
@@ -787,8 +790,9 @@ pub(crate) fn today_panel(
     for text in spend_markers(account, problems) {
         lines.extend(wrapped(&text, width, PROBLEM));
     }
-    if with_sparkline {
-        lines.extend(sparkline(&account.pace, width, emphasis));
+    if with_chart {
+        let budget = daily_credit_budget(account, now_ms);
+        lines.extend(daily_chart(&account.pace, budget, width, emphasis));
     }
     lines
 }
@@ -802,45 +806,128 @@ fn provisional_usual(pace: &DollarPace) -> Option<String> {
         .map(|days| format!("usual is provisional: {days} of {USUAL_DAYS} days so far"))
 }
 
-fn sparkline(pace: &DollarPace, width: u16, today_style: Style) -> Vec<Line<'static>> {
-    let shown = pace
-        .earlier_days_usd
+fn daily_chart(
+    pace: &DollarPace,
+    budget: Option<f64>,
+    width: u16,
+    today_style: Style,
+) -> Vec<Line<'static>> {
+    let totals = &pace.earlier_day_totals_usd;
+    let day_width = SPARK_DAY_CELLS + SPARK_DAY_GAP;
+    let shown = totals
         .len()
-        .min((width as usize).saturating_sub(1));
+        .min(((width as usize + SPARK_DAY_GAP) / day_width).saturating_sub(1));
     if shown == 0 {
         return Vec::new();
     }
-    let earlier = &pace.earlier_days_usd[pace.earlier_days_usd.len() - shown..];
-    let highest = earlier.iter().copied().fold(pace.today_usd, f64::max);
-    let level = |usd: f64| {
-        let step = if highest > 0.0 {
-            (usd / highest * 7.0).round() as usize
+    let earlier = &totals[totals.len() - shown..];
+    let biggest_day = earlier.iter().copied().fold(pace.today_usd, f64::max);
+    let highest = budget.map_or(biggest_day, |budget| budget.max(biggest_day));
+    let steps = SPARK_ROWS * SPARK_LEVELS.len();
+    let height = |usd: f64| {
+        if highest > 0.0 {
+            ((usd / highest * steps as f64).round() as usize).min(steps)
         } else {
             0
-        };
-        SPARK_LEVELS[step.min(7)]
+        }
     };
-    let mut lines = vec![
-        Line::default(),
-        Line::styled(
-            format!("Last {shown} {} by {}", day_kind(pace), pace.clock),
-            MUTED,
-        ),
-        Line::from(vec![
-            Span::styled(
-                earlier.iter().map(|usd| level(*usd)).collect::<String>(),
-                KEY,
-            ),
-            Span::styled(level(pace.today_usd).to_string(), today_style),
-        ]),
-    ];
-    if shown + 1 >= "today".len() {
+    let chart_width = (shown + 1) * day_width - SPARK_DAY_GAP;
+    let mut title = format!("Last {shown} {}", day_kind(pace));
+    if let Some(usual) = crate::pace::median(earlier.to_vec()) {
+        title.push_str(&format!(" · usual day ${usual:.0}"));
+    }
+    let scale = format!("max ${biggest_day:.0}");
+    let room = chart_width.saturating_sub(title.chars().count());
+    let mut lines = vec![Line::default(), Line::styled(title, MUTED)];
+    if room > scale.len() {
+        let last = lines.last_mut().expect("title line");
+        last.spans
+            .push(Span::styled(format!("{scale:>room$}"), MUTED));
+    }
+    if let Some(budget) = budget {
         lines.push(Line::styled(
-            format!("{:>width$}", "today", width = shown + 1),
+            format!("┄┄ ${budget:.0} a day lasts the credits"),
             MUTED,
         ));
     }
+    let budget_level = budget.map(height);
+    let over_budget = |usd: f64| budget.is_some_and(|budget| usd > budget);
+    for row in (0..SPARK_ROWS).rev() {
+        let level_row =
+            budget_level.is_some_and(|level| level.div_ceil(SPARK_LEVELS.len()).max(1) - 1 == row);
+        let blank = if level_row { "┄" } else { " " };
+        let column = |usd: f64, style: Style| {
+            let cell = spark_cell(height(usd), row);
+            if cell == ' ' {
+                Span::styled(blank.repeat(SPARK_DAY_CELLS), MUTED)
+            } else {
+                Span::styled(cell.to_string().repeat(SPARK_DAY_CELLS), style)
+            }
+        };
+        let mut spans = Vec::new();
+        for usd in earlier {
+            let style = if over_budget(*usd) {
+                Style::new().fg(OVER)
+            } else {
+                KEY
+            };
+            spans.push(column(*usd, style));
+            spans.push(Span::styled(blank.repeat(SPARK_DAY_GAP), MUTED));
+        }
+        spans.push(column(pace.today_usd, today_style));
+        lines.push(Line::from(spans));
+    }
+    let start = pace
+        .earlier_days
+        .len()
+        .checked_sub(shown)
+        .and_then(|first| pace.earlier_days.get(first))
+        .and_then(|day| short_date(day))
+        .filter(|date| date.len() + 1 + "today".len() <= chart_width)
+        .unwrap_or_default();
+    let today_at = chart_width - start.chars().count();
+    lines.push(Line::styled(
+        format!("{start}{:>today_at$}", "today"),
+        MUTED,
+    ));
     lines
+}
+
+fn daily_credit_budget(account: &AccountToday, now_ms: i64) -> Option<f64> {
+    account
+        .limits
+        .as_ref()?
+        .limits
+        .iter()
+        .find_map(|shown| credits_per_day(shown, now_ms).filter(|(_, currency)| currency == "USD"))
+        .map(|(per_day, _)| per_day)
+}
+
+fn credits_per_day(shown: &PacedLimit, now_ms: i64) -> Option<(f64, String)> {
+    if has_reset(shown, now_ms) {
+        return None;
+    }
+    let credits = shown.limit.credits.as_ref()?;
+    let left = (credits.limit? - credits.used).max(0.0);
+    let days_left = (resets_ms(shown)? - now_ms) as f64 / DAY_MS as f64;
+    (days_left >= 1.0 && left > 0.0).then(|| (left / days_left, credits.currency.clone()))
+}
+
+fn short_date(day: &str) -> Option<String> {
+    let (_, month_day) = day.split_once('-')?;
+    let (month, day) = month_day.split_once('-')?;
+    let month = MONTHS.get(month.parse::<usize>().ok()?.checked_sub(1)?)?;
+    Some(format!("{month} {}", day.parse::<u32>().ok()?))
+}
+
+fn spark_cell(height: usize, row: usize) -> char {
+    let levels = SPARK_LEVELS.len();
+    let floor = row * levels;
+    match height.saturating_sub(floor) {
+        0 if row == 0 => SPARK_LEVELS[0],
+        0 => ' ',
+        filled => SPARK_LEVELS[filled.min(levels) - 1],
+    }
 }
 
 fn day_kind(pace: &DollarPace) -> &'static str {

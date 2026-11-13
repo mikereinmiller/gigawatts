@@ -94,11 +94,11 @@ fn personal() -> AccountToday {
             usual_days: 20,
             clock: "09:20".to_string(),
             weekend: false,
-            earlier_days_usd: vec![
+            earlier_days_usd: Vec::new(),
+            earlier_day_totals_usd: vec![
                 5.0, 6.2, 8.4, 4.1, 7.1, 9.3, 6.8, 7.2, 10.5, 3.9, 7.1, 7.1, 8.8, 5.5, 6.0, 9.9,
                 7.6, 4.8, 6.6, 8.1,
             ],
-            earlier_day_totals_usd: Vec::new(),
             earlier_days: Vec::new(),
         },
         fastest_session: active_sessions.first().cloned(),
@@ -1862,34 +1862,150 @@ fn todays_spend_is_drawn_in_large_digits_above_how_it_compares_with_usual() {
 }
 
 #[test]
-fn on_a_weekend_the_sparkline_says_it_compares_weekend_days() {
-    let mut account = personal();
-    account.pace.weekend = true;
-    account.pace.earlier_days_usd.truncate(6);
-    let app = open(snapshot(vec![account]), None);
+fn the_daily_chart_shows_each_earlier_days_total_ending_with_today_so_far() {
+    let app = open(snapshot(vec![personal()]), None);
 
-    let shown = screen(&app, 120, 40);
+    let shown = screen(&app, 160, 40);
+    let rows = [
+        "                                                            ██ ",
+        "      ▃▃       ▅▅       ██          ▄▄       ▆▆ ▁▁       ▂▂ ██ ",
+        "▃▃ ▆▆ ██ ▁▁ ██ ██ ▇▇ ██ ██ ▁▁ ██ ██ ██ ▄▄ ▆▆ ██ ██ ▃▃ ▇▇ ██ ██ ",
+        "██ ██ ██ ██ ██ ██ ██ ██ ██ ██ ██ ██ ██ ██ ██ ██ ██ ██ ██ ██ ██ ",
+    ];
 
-    assert!(shown.contains("Last 6 weekend days by 09:20"), "{shown}");
+    assert!(shown.contains("Last 20 workdays · usual day $7"), "{shown}");
+    assert!(shown.contains("max $14 "), "{shown}");
+    for row in rows {
+        assert!(shown.contains(&format!("│ {row}")), "{row}\n{shown}");
+    }
+    assert_eq!(
+        last_cell_of(&app, 160, 40, "▂▂ ██").fg,
+        ratatui::style::Color::LightRed
+    );
+    assert_eq!(
+        cell_at(&app, 160, 40, "▃▃ ▆▆ ██ ▁▁").fg,
+        ratatui::style::Color::Cyan
+    );
 }
 
 #[test]
-fn a_sparkline_shows_the_earlier_days_by_this_clock_time_ending_with_today() {
+fn the_daily_chart_fits_the_days_the_pane_has_room_for() {
     let app = open(snapshot(vec![personal()]), None);
 
     let shown = screen(&app, 120, 40);
 
-    assert!(shown.contains("Last 20 workdays by 09:20"), "{shown}");
-    assert!(!shown.contains("days ago"), "{shown}");
-    assert!(shown.contains("▃▄▅▃▅▆▄▅▆▃▅▅▅▄▄▆▅▃▄▅█"), "{shown}");
-    assert_eq!(
-        last_cell_of(&app, 120, 40, "▄▅█").fg,
-        ratatui::style::Color::LightRed
+    assert!(shown.contains("Last 15 workdays · usual day $"), "{shown}");
+}
+
+#[test]
+fn on_a_weekend_the_daily_chart_compares_weekend_days() {
+    let mut account = personal();
+    account.pace.weekend = true;
+    account.pace.earlier_day_totals_usd.truncate(6);
+    let app = open(snapshot(vec![account]), None);
+
+    let shown = screen(&app, 120, 40);
+
+    assert!(
+        shown.contains("Last 6 weekend days · usual day $"),
+        "{shown}"
+    );
+}
+
+#[test]
+fn the_daily_chart_starts_with_the_date_of_its_first_day() {
+    let mut account = personal();
+    account.pace.earlier_day_totals_usd = vec![5.0, 10.5, 6.0, 7.0, 8.0];
+    account.pace.earlier_days = [
+        "2026-10-29",
+        "2026-10-30",
+        "2026-11-02",
+        "2026-11-03",
+        "2026-11-04",
+    ]
+    .map(String::from)
+    .to_vec();
+    let app = open(snapshot(vec![account]), None);
+
+    let shown = screen(&app, 160, 40);
+
+    assert!(shown.contains("Last 5 workdays · usual day $7"), "{shown}");
+    assert!(shown.contains("│ Oct 29      today "), "{shown}");
+}
+
+#[test]
+fn a_day_with_no_spend_still_shows_a_floor_in_the_daily_chart() {
+    let mut account = personal();
+    account.pace.earlier_day_totals_usd = vec![0.0, 14.2];
+    let app = open(snapshot(vec![account]), None);
+
+    let shown = screen(&app, 120, 40);
+
+    assert_eq!(shown.matches("│    ██ ██ ").count(), 3, "{shown}");
+    assert!(shown.contains("│ ▁▁ ██ ██ "), "{shown}");
+}
+
+#[test]
+fn just_after_midnight_the_earlier_days_stay_full_and_only_today_starts_over() {
+    let mut account = personal();
+    account.cost_usd = 0.0;
+    account.pace.today_usd = 0.0;
+    account.pace.usual_usd = Some(0.0);
+    account.pace.clock = "00:09".to_string();
+    let app = open(snapshot(vec![account]), None);
+
+    let shown = screen(&app, 160, 40);
+
+    assert!(shown.contains("Last 20 workdays · usual day $7"), "{shown}");
+    assert!(
+        shown.contains("██ ██ ██ ██ ██ ██ ██ ██ ██ ██ ██ ██ ██ ██ ██ ██ ██ ██ ██ ██ ▁▁ "),
+        "{shown}"
+    );
+    assert!(!shown.contains("too early"), "{shown}");
+}
+
+#[test]
+fn a_credit_account_draws_its_daily_budget_across_the_chart_and_marks_days_over_it() {
+    let mut account = work();
+    let credits = &mut account.limits.as_mut().unwrap().limits[0];
+    credits.limit.resets_at = Some("2026-12-01T00:00:00Z".to_string());
+    account.pace.earlier_day_totals_usd = vec![40.0, 200.0, 60.0];
+    let app = open(snapshot(vec![account]), None);
+
+    let shown = screen(&app, 150, 40);
+
+    assert!(shown.contains("┄┄ $"), "{shown}");
+    assert!(shown.contains(" a day lasts the credits"), "{shown}");
+    assert!(
+        shown
+            .lines()
+            .any(|line| line.contains("┄┄┄") && line.contains("██")),
+        "{shown}"
     );
     assert_eq!(
-        cell_at(&app, 120, 40, "▃▄▅▃").fg,
+        last_cell_of(&app, 150, 40, "┄▂▂").fg,
         ratatui::style::Color::Cyan
     );
+    assert_eq!(
+        last_cell_of(&app, 150, 40, "┄██").fg,
+        ratatui::style::Color::LightRed
+    );
+}
+
+#[test]
+fn the_daily_charts_max_names_the_biggest_day_even_when_the_budget_line_sits_higher() {
+    let mut account = work();
+    let credits = &mut account.limits.as_mut().unwrap().limits[0];
+    credits.limit.resets_at = Some("2026-12-01T00:00:00Z".to_string());
+    account.pace.earlier_day_totals_usd = vec![
+        5.0, 40.0, 20.0, 12.0, 30.0, 8.0, 15.0, 22.0, 9.0, 11.0, 25.0, 18.0, 6.0, 14.0, 10.0,
+    ];
+    let app = open(snapshot(vec![account]), None);
+
+    let shown = screen(&app, 150, 40);
+
+    assert!(shown.contains("┄┄ $"), "{shown}");
+    assert!(shown.contains("max $40 "), "{shown}");
 }
 
 fn last_cell_of(app: &App, width: u16, height: u16, text: &str) -> ratatui::buffer::Cell {
@@ -1954,7 +2070,7 @@ fn with_the_terminals_colors_known_every_muted_part_shares_one_soft_shade() {
     let track = cell_at(&app, 150, 40, "▇ │ │");
     let border = cell_at(&app, 150, 40, "╭ Limits");
     let details = cell_at(&app, 150, 40, "on even pace · 50% expected");
-    let label = cell_at(&app, 150, 40, "Last 20 workdays");
+    let label = cell_at(&app, 150, 40, "Last 19 workdays");
 
     assert_eq!(track.fg, muted);
     assert_eq!(border.fg, muted);

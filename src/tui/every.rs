@@ -193,6 +193,7 @@ fn roomy(
                 lines: padded(today_panel(
                     account,
                     &snapshot.problems,
+                    now_ms,
                     inner(width),
                     false,
                 )),
