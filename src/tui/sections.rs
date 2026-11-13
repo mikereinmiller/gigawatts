@@ -752,7 +752,7 @@ pub(crate) fn today_panel(
     let emphasis = Style::new()
         .fg(usual_color(&account.pace).unwrap_or(Color::Reset))
         .add_modifier(Modifier::BOLD);
-    let mut lines = vec![Line::styled("Spent so far", MUTED)];
+    let mut lines = Vec::new();
     match digits::large(&spent).filter(|rows| rows[0].chars().count() <= width as usize) {
         Some(rows) => lines.extend(rows.into_iter().map(|row| Line::styled(row, emphasis))),
         None => lines.push(Line::styled(spent, emphasis)),

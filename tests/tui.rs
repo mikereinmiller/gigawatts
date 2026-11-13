@@ -1932,7 +1932,7 @@ fn with_the_terminals_colors_known_every_muted_part_shares_one_soft_shade() {
     let track = cell_at(&app, 150, 40, "▇ │ │");
     let border = cell_at(&app, 150, 40, "╭ Limits");
     let details = cell_at(&app, 150, 40, "on even pace · 50% expected");
-    let label = cell_at(&app, 150, 40, "Spent so far");
+    let label = cell_at(&app, 150, 40, "Last 20 workdays");
 
     assert_eq!(track.fg, muted);
     assert_eq!(border.fg, muted);
@@ -1984,7 +1984,7 @@ fn side_by_side_limits_and_today_leave_a_blank_row_under_their_titles() {
 
     assert_eq!(padding, "", "{shown}");
     assert!(lines[title_row + 2].contains("│ Session "), "{shown}");
-    assert!(lines[title_row + 2].contains("│ Spent so far "), "{shown}");
+    assert!(lines[title_row + 2].contains("│ ▄█▄ ▀█"), "{shown}");
 }
 
 #[test]
@@ -2008,7 +2008,7 @@ fn side_by_side_limits_sit_one_blank_row_apart() {
 }
 
 #[test]
-fn todays_digits_sit_right_under_spent_so_far() {
+fn todays_digits_open_the_today_panel_without_a_label() {
     let app = open(snapshot(vec![personal()]), None);
 
     let shown = screen(&app, 150, 40);
@@ -2020,7 +2020,8 @@ fn todays_digits_sit_right_under_spent_so_far() {
             .unwrap_or_else(|| panic!("{text} isn't on screen:\n{shown}"))
     };
 
-    assert_eq!(row("▄█▄ ▀█  █ █") - row("Spent so far"), 1, "{shown}");
+    assert_eq!(row("▄█▄ ▀█  █ █") - row("╭ Today"), 2, "{shown}");
+    assert!(!shown.contains("Spent so far"), "{shown}");
 }
 
 fn cell_after(
