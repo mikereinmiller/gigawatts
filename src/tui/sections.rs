@@ -23,6 +23,11 @@ const NAME_WIDTH: usize = 20;
 const COLUMNS_FROM: u16 = 100;
 pub(crate) const COLUMN_GAP: u16 = 1;
 const PERCENT_WIDTH: usize = 6;
+const STACKED_BAR_MAX: usize = 40;
+const STACKED_BAR_MIN: usize = 12;
+const STATUS_GAP: usize = 2;
+const STATUS_WIDTH: usize = "resets 21d 14h".len();
+const SEPARATOR: &str = " · ";
 const DAY_MS: i64 = 24 * 3_600_000;
 const LIMITS_SHARE: u32 = 56;
 const SPARK_LEVELS: [char; 8] = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
@@ -308,17 +313,21 @@ pub(crate) fn limit_lines(
                         shown,
                         stale,
                         false,
+                        None,
                         forecast(shown, now_ms, local_minute),
                         &detail(shown, now_ms, local_minute),
                         width,
+                        &SOLID_BAR,
                     ),
                     LimitLayout::Stacked => named_limit_row(
                         shown,
                         stale,
                         has_reset(shown, now_ms),
+                        status(shown, now_ms),
                         forecast(shown, now_ms, local_minute),
                         &flags(shown, now_ms),
                         width,
+                        &SPACED_BAR,
                     ),
                 });
             }
@@ -373,7 +382,7 @@ fn limit_row(
             Span::raw(" ".repeat(gap)),
             Span::styled(reading, Style::new().fg(color).add_modifier(Modifier::BOLD)),
         ]),
-        Line::from(bar(shown, width, color)),
+        Line::from(bar(shown, width, color, &SOLID_BAR)),
     ];
     if let Some(forecast) = forecast(shown, now_ms, local_minute) {
         lines.extend(wrapped(&forecast, width as u16, forecast_style(stale)));
@@ -384,27 +393,36 @@ fn limit_row(
     lines
 }
 
+#[allow(clippy::too_many_arguments)]
 fn named_limit_row(
     shown: &PacedLimit,
     stale: bool,
     reset: bool,
+    status: Option<String>,
     forecast: Option<String>,
     parts: &[String],
     width: u16,
+    glyphs: &BarGlyphs,
 ) -> Vec<Line<'static>> {
     let color = if stale || reset {
         STALE
     } else {
         pace_color(shown)
     };
-    let bar_width = (width as usize)
-        .saturating_sub(NAME_WIDTH + PERCENT_WIDTH)
-        .max(8);
+    let room = (width as usize).saturating_sub(NAME_WIDTH + PERCENT_WIDTH);
+    let status_fits = room >= STACKED_BAR_MIN + STATUS_GAP + STATUS_WIDTH;
+    let bar_width = match (glyphs.capped, status_fits) {
+        (false, _) => room,
+        (true, true) => (room - STATUS_GAP - STATUS_WIDTH).min(STACKED_BAR_MAX),
+        (true, false) => room.min(STACKED_BAR_MAX),
+    };
+    let beside = status.is_some() && glyphs.capped && status_fits;
+    let bar_width = bar_width.max(8);
     let mut spans = vec![Span::raw(format!(
         "{:<NAME_WIDTH$}",
         clip(&limit_name(&shown.limit), NAME_WIDTH - 1)
     ))];
-    spans.extend(bar(shown, bar_width, color));
+    spans.extend(bar(shown, bar_width, color, glyphs));
     let reading = if reset {
         format!("{:>PERCENT_WIDTH$}", "reset")
     } else {
@@ -415,11 +433,61 @@ fn named_limit_row(
         Style::new().fg(color).add_modifier(Modifier::BOLD),
     ));
     let style = if stale { MUTED } else { NORMAL };
-    let mut lines = vec![Line::from(spans)];
+    let forecast_style = forecast_style(stale);
+    let mut lines = Vec::new();
+    let mut extras_inline = false;
+    match status {
+        Some(status) if beside => {
+            let extras_width: usize = forecast
+                .iter()
+                .map(|text| text.chars().count() + 3)
+                .chain(
+                    parts
+                        .iter()
+                        .map(|text| SEPARATOR.chars().count() + text.chars().count()),
+                )
+                .sum();
+            extras_inline = NAME_WIDTH
+                + bar_width
+                + PERCENT_WIDTH
+                + STATUS_GAP
+                + status.chars().count()
+                + extras_width
+                <= width as usize;
+            spans.push(Span::raw(" ".repeat(STATUS_GAP)));
+            spans.push(Span::styled(status, style));
+            if extras_inline {
+                if let Some(forecast) = &forecast {
+                    spans.push(Span::styled(format!(" ({forecast})"), forecast_style));
+                }
+                for part in parts {
+                    spans.push(Span::styled(SEPARATOR, style));
+                    spans.push(Span::styled(part.clone(), style));
+                }
+            }
+            lines.push(Line::from(spans));
+        }
+        Some(status) => {
+            lines.push(Line::from(spans));
+            for packed in wrapped(
+                &status,
+                (width as usize).saturating_sub(NAME_WIDTH) as u16,
+                style,
+            ) {
+                lines.push(Line::from(
+                    [vec![Span::raw(" ".repeat(NAME_WIDTH))], packed.spans].concat(),
+                ));
+            }
+        }
+        None => lines.push(Line::from(spans)),
+    }
+    if extras_inline {
+        return lines;
+    }
     if let Some(forecast) = forecast {
         lines.push(Line::from(vec![
             Span::raw(" ".repeat(NAME_WIDTH)),
-            Span::styled(forecast, forecast_style(stale)),
+            Span::styled(forecast, forecast_style),
         ]));
     }
     for packed in pack(parts, (width as usize).saturating_sub(NAME_WIDTH)) {
@@ -465,7 +533,28 @@ fn pace_color(shown: &PacedLimit) -> Color {
     }
 }
 
-fn bar(shown: &PacedLimit, width: usize, color: Color) -> Vec<Span<'static>> {
+struct BarGlyphs {
+    filled: &'static str,
+    empty: &'static str,
+    expected: &'static str,
+    capped: bool,
+}
+
+const SOLID_BAR: BarGlyphs = BarGlyphs {
+    filled: "█",
+    empty: "░",
+    expected: "▌",
+    capped: false,
+};
+
+const SPACED_BAR: BarGlyphs = BarGlyphs {
+    filled: "▆",
+    empty: "▂",
+    expected: "▆",
+    capped: true,
+};
+
+fn bar(shown: &PacedLimit, width: usize, color: Color, glyphs: &BarGlyphs) -> Vec<Span<'static>> {
     let filled = cells(shown.limit.percent, width);
     let expected = shown
         .pace
@@ -474,11 +563,11 @@ fn bar(shown: &PacedLimit, width: usize, color: Color) -> Vec<Span<'static>> {
     let mut spans = Vec::new();
     for index in 0..width {
         let (symbol, style) = if Some(index) == expected {
-            ("▌", Style::new().add_modifier(Modifier::BOLD))
+            (glyphs.expected, Style::new().add_modifier(Modifier::BOLD))
         } else if index < filled {
-            ("█", Style::new().fg(color))
+            (glyphs.filled, Style::new().fg(color))
         } else {
-            ("░", MUTED)
+            (glyphs.empty, MUTED)
         };
         spans.push(Span::styled(symbol, style));
     }
@@ -503,6 +592,13 @@ fn detail(shown: &PacedLimit, now_ms: i64, local_minute: LocalMinute) -> Vec<Str
     }
     parts.extend(unusual_severity(&shown.limit));
     parts
+}
+
+fn status(shown: &PacedLimit, now_ms: i64) -> Option<String> {
+    if has_reset(shown, now_ms) {
+        return None;
+    }
+    resets_ms(shown).map(|resets_ms| format!("resets {}", duration(resets_ms - now_ms)))
 }
 
 fn flags(shown: &PacedLimit, now_ms: i64) -> Vec<String> {
@@ -547,16 +643,21 @@ fn clock(ms: i64, local_minute: LocalMinute) -> String {
 
 fn countdown(resets_ms: i64, now_ms: i64, local_minute: LocalMinute) -> String {
     let minutes = (resets_ms - now_ms).max(0) / 60_000;
-    let countdown = match minutes {
-        0..60 => format!("{minutes}m"),
-        60..1440 => format!("{}h {}m", minutes / 60, minutes % 60),
-        _ => format!("{}d {}h", minutes / 1440, minutes % 1440 / 60),
-    };
+    let countdown = duration(resets_ms - now_ms);
     let clock = clock(resets_ms, local_minute);
     if minutes < 1440 && !clock.is_empty() {
         format!("in {countdown} at {clock}")
     } else {
         format!("in {countdown}")
+    }
+}
+
+fn duration(ms: i64) -> String {
+    let minutes = ms.max(0) / 60_000;
+    match minutes {
+        0..60 => format!("{minutes}m"),
+        60..1440 => format!("{}h {}m", minutes / 60, minutes % 60),
+        _ => format!("{}d {}h", minutes / 1440, minutes % 1440 / 60),
     }
 }
 
@@ -770,7 +871,7 @@ pub(crate) fn help(frame: &mut Frame, area: Rect) {
         color(
             "▌",
             Style::new().add_modifier(Modifier::BOLD),
-            "expected use by now",
+            "expected use by now; a bold ▆ in the all view",
         ),
         color(
             "▲",

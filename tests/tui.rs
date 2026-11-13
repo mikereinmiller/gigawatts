@@ -401,7 +401,7 @@ fn the_every_account_view_keeps_a_limits_severity_and_credits_at_80_columns() {
 
     assert_eq!(stacked.matches("warning").count(), 1, "{stacked}");
     assert!(stacked.contains("437.60 of 2200.00 USD"), "{stacked}");
-    assert!(!stacked.contains("resets in"), "{stacked}");
+    assert!(stacked.contains("20%  resets 21d 14h"), "{stacked}");
 }
 
 #[test]
@@ -2746,6 +2746,116 @@ fn a_window_wider_than_1170_columns_still_splits_limits_and_today() {
     );
 }
 
+fn three_accounts_screen(width: u16, height: u16) -> String {
+    let mut side = personal();
+    side.account = Some(NEW.to_string());
+    side.account_label = "side".to_string();
+    let mut app = with_spending(open(snapshot(vec![personal(), work(), side]), None));
+    app.handle(KeyCode::Char('a').into());
+    answer(&mut app);
+    screen(&app, width, height)
+}
+
+fn line_with<'a>(shown: &'a str, text: &str) -> &'a str {
+    shown.lines().find(|line| line.contains(text)).unwrap()
+}
+
+#[test]
+fn stacked_limits_show_their_reset_beside_a_bar_of_at_most_40_cells() {
+    let shown = three_accounts_screen(150, 50);
+    let session = line_with(&shown, "Session ");
+
+    assert!(session.contains("5%  resets 2h 40m"), "{shown}");
+    let cells = session.chars().filter(|c| "▆▂".contains(*c)).count();
+    assert_eq!(cells, 40, "{shown}");
+}
+
+#[test]
+fn stacked_limit_bars_line_up_across_accounts() {
+    let shown = three_accounts_screen(80, 40);
+    let percent_column = |text: &str| {
+        let line = line_with(&shown, text);
+        line[..line.find('%').unwrap()].chars().count()
+    };
+
+    assert_eq!(
+        percent_column("Session "),
+        percent_column("Credits "),
+        "{shown}"
+    );
+    assert_eq!(
+        percent_column("Weekly, all models"),
+        percent_column("Credits "),
+        "{shown}"
+    );
+}
+
+#[test]
+fn a_stacked_limit_too_narrow_for_its_status_puts_it_on_the_next_row() {
+    let shown = three_accounts_screen(50, 40);
+
+    assert!(!line_with(&shown, "Session ").contains("resets"), "{shown}");
+    assert!(
+        shown.contains("│                     resets 2h 40m"),
+        "{shown}"
+    );
+}
+
+#[test]
+fn stacked_limit_bars_leave_a_gap_above_so_bars_on_next_rows_stay_apart() {
+    let stacked = three_accounts_screen(150, 50);
+    let one = screen(&open(snapshot(vec![personal()]), None), 80, 24);
+
+    for name in [
+        "Session ",
+        "Weekly, all models",
+        "Weekly, Fable",
+        "Credits ",
+    ] {
+        let row = line_with(&stacked, name);
+        assert!(row.contains('▆'), "{stacked}");
+        assert!(!row.contains(['█', '░', '▌']), "{stacked}");
+    }
+    assert!(line_with(&one, "Session ").contains('█'), "{one}");
+}
+
+fn with_a_filling_limit_screen(width: u16, height: u16) -> String {
+    let mut fast = filling_fast();
+    fast.account = Some(NEW.to_string());
+    fast.account_label = "side".to_string();
+    let mut app = with_spending(open(snapshot(vec![personal(), work(), fast]), None));
+    app.handle(KeyCode::Char('a').into());
+    answer(&mut app);
+    screen(&app, width, height)
+}
+
+#[test]
+fn stacked_limits_with_room_add_their_forecast_to_the_reset_in_parentheses() {
+    let shown = with_a_filling_limit_screen(170, 50);
+    let side: String = shown
+        .lines()
+        .skip_while(|line| !line.contains("╭ side "))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    assert!(
+        line_with(&side, "Session ").contains("60%  resets 2h 40m (100% in 1h 20m)"),
+        "{shown}"
+    );
+    assert_eq!(shown.matches("100% in 1h 20m").count(), 1, "{shown}");
+}
+
+#[test]
+fn stacked_limits_without_room_put_their_forecast_on_the_next_row() {
+    let shown = with_a_filling_limit_screen(80, 40);
+
+    assert!(!shown.contains("(100% in"), "{shown}");
+    assert!(
+        shown.contains("│                     100% in 1h 20m "),
+        "{shown}"
+    );
+}
+
 #[test]
 fn stacked_today_has_its_own_header_and_starts_at_the_left_edge() {
     let mut young = personal();
@@ -2771,4 +2881,83 @@ fn stacked_today_has_its_own_header_and_starts_at_the_left_edge() {
         "{shown}"
     );
     assert!(!shown.contains("usual is provisional"), "{shown}");
+}
+
+fn reset_session_screen(width: u16, height: u16) -> String {
+    let mut reset = personal();
+    reset.limits.as_mut().unwrap().limits[0].limit.resets_at =
+        Some("2026-11-09T09:00:00Z".to_string());
+    let mut app = open(snapshot(vec![reset, work()]), None);
+    app.handle(KeyCode::Char('a').into());
+    screen(&app, width, height)
+}
+
+#[test]
+fn a_stacked_limit_that_reset_lines_up_with_the_limits_around_it() {
+    for width in [80, 150] {
+        let shown = reset_session_screen(width, 40);
+        let column = |name: &str, reading: &str| {
+            let line = line_with(&shown, name);
+            line[..line.find(reading).unwrap()].chars().count()
+        };
+
+        assert_eq!(
+            column("Session ", "reset") + "reset".len(),
+            column("Weekly, all models", "%") + 1,
+            "{shown}"
+        );
+        let cells = line_with(&shown, "Session ")
+            .chars()
+            .filter(|c| "▆▂".contains(*c))
+            .count();
+        assert!(cells <= 40, "{shown}");
+    }
+}
+
+fn bar_cells(app: &App, width: u16, height: u16, name: &str) -> Vec<ratatui::buffer::Cell> {
+    let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+    terminal
+        .draw(|frame| app.draw(frame, NOW_MS, &utc_minute))
+        .unwrap();
+    let buffer = terminal.backend().buffer().clone();
+    let y = (0..buffer.area.height)
+        .find(|y| {
+            let row: String = (0..buffer.area.width)
+                .map(|x| buffer[(x, *y)].symbol())
+                .collect();
+            row.contains(name)
+        })
+        .unwrap();
+    (22..buffer.area.width)
+        .map(|x| buffer[(x, y)].clone())
+        .take_while(|cell| cell.symbol() != " ")
+        .collect()
+}
+
+#[test]
+fn a_stale_stacked_bar_still_shows_how_much_is_filled() {
+    let mut app = open(snapshot(vec![personal(), work()]), None);
+    app.handle(KeyCode::Char('a').into());
+
+    let cells = bar_cells(&app, 80, 40, "Credits ");
+    let first = cells.first().unwrap();
+    let last = cells.last().unwrap();
+
+    assert!(
+        (first.symbol(), first.fg) != (last.symbol(), last.fg),
+        "{cells:?}"
+    );
+}
+
+#[test]
+fn help_explains_the_every_account_bar_too() {
+    let mut app = open(snapshot(vec![personal(), work()]), None);
+    app.handle(KeyCode::Char('?').into());
+
+    let shown = screen(&app, 80, 40);
+
+    assert!(
+        shown.contains("▌       expected use by now; a bold ▆ in the all view"),
+        "{shown}"
+    );
 }
