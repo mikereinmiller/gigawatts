@@ -403,7 +403,16 @@ fn limit_row(
     if let Some(forecast) = forecast(shown, now_ms, local_minute) {
         lines.extend(wrapped(&forecast, width as u16, forecast_style(stale)));
     }
-    for packed in pack(&detail(shown, now_ms, local_minute), width) {
+    let budget = credit_budget(shown, now_ms);
+    let details = if budget.is_empty() {
+        detail(shown, now_ms, local_minute)
+    } else {
+        detail_after_credits(shown, now_ms, local_minute)
+    };
+    for packed in pack(&budget, width)
+        .into_iter()
+        .chain(pack(&details, width))
+    {
         lines.extend(wrapped(&packed, width as u16, MUTED));
     }
     lines
@@ -579,6 +588,12 @@ fn detail(shown: &PacedLimit, now_ms: i64, local_minute: LocalMinute) -> Vec<Str
         return vec!["reset since this reading".to_string()];
     }
     let mut parts: Vec<String> = credits_used(&shown.limit).into_iter().collect();
+    parts.extend(detail_after_credits(shown, now_ms, local_minute));
+    parts
+}
+
+fn detail_after_credits(shown: &PacedLimit, now_ms: i64, local_minute: LocalMinute) -> Vec<String> {
+    let mut parts = Vec::new();
     if let Some(pace) = &shown.pace {
         parts.push(pace_phrase(pace));
         parts.push(format!("{}% expected", percent(pace.expected_percent)));

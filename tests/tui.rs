@@ -690,6 +690,24 @@ fn brackets_step_through_the_tabs_and_wrap_past_all() {
 }
 
 #[test]
+fn a_credit_limit_beside_today_shows_what_is_left_and_a_daily_budget() {
+    let mut account = work();
+    let credits = &mut account.limits.as_mut().unwrap().limits[0];
+    credits.limit.resets_at = Some("2026-12-01T00:00:00Z".to_string());
+    let app = open(snapshot(vec![account]), None);
+
+    let shown = screen(&app, 150, 40);
+
+    assert!(shown.contains("╭ Limits"), "{shown}");
+    assert!(
+        shown.contains("$437.60 of $2,200 · $1,762 left · $"),
+        "{shown}"
+    );
+    assert!(shown.contains(" a day to last"), "{shown}");
+    assert!(!shown.contains("437.60 of 2200.00 USD"), "{shown}");
+}
+
+#[test]
 fn with_one_account_brackets_do_nothing() {
     let mut app = open(snapshot(vec![personal()]), None);
     let before = screen(&app, 80, 24);
@@ -2721,11 +2739,12 @@ fn a_limit_detail_longer_than_its_pane_wraps_instead_of_being_cut() {
     let shown = screen(&app, 100, 56);
 
     assert!(
-        shown.contains("│ 437.60 of 2200.00 USD · under even pace │"),
+        shown.contains("│ $437.60 of $2,200 · $1,762 left         │"),
         "{shown}"
     );
+    assert!(shown.contains("│ $82 a day to last "), "{shown}");
     assert!(
-        shown.contains("│ 26% expected · resets in 21d 14h "),
+        shown.contains("│ under even pace · 26% expected          │"),
         "{shown}"
     );
     assert!(
