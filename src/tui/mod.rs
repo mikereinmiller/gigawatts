@@ -251,7 +251,9 @@ impl App {
                 let account = self.history_account().cloned();
                 self.history.select(-1, account.as_ref());
             }
-            KeyCode::Char('a') if self.snapshot.accounts.len() > 1 => {
+            KeyCode::Char('a')
+                if self.snapshot.accounts.len() > 1 && self.all_digit().is_none() =>
+            {
                 self.stacked = !self.stacked;
             }
             KeyCode::Char(digit @ '1'..='9') => self.pick(digit),
@@ -267,7 +269,17 @@ impl App {
         if let Some(account) = self.snapshot.accounts.get(index) {
             self.current = account.account.clone();
             self.stacked = false;
+        } else if Some(digit) == self.all_digit() {
+            self.stacked = true;
         }
+    }
+
+    fn all_digit(&self) -> Option<char> {
+        let count = self.snapshot.accounts.len();
+        (2..=8)
+            .contains(&count)
+            .then(|| char::from_digit(count as u32 + 1, 10))
+            .flatten()
     }
 
     fn step(&mut self, by: isize) {
@@ -538,7 +550,8 @@ impl App {
             spans.push(Span::raw(" "));
         }
         if accounts.len() > 1 {
-            spans.push(tab(" a all ".to_string(), self.stacked));
+            let key = self.all_digit().unwrap_or('a');
+            spans.push(tab(format!(" {key} all "), self.stacked));
         }
         Line::from(spans)
     }
@@ -593,10 +606,12 @@ impl App {
             if count > 1 {
                 keys.push((format!("1-{}", count.min(9)), "account"));
                 keys.push(("[ ]".to_string(), "switch"));
-                keys.push((
-                    "a".to_string(),
-                    if self.stacked { "one account" } else { "all" },
-                ));
+                match (self.stacked, self.all_digit()) {
+                    (false, Some(digit)) => keys.push((digit.to_string(), "all")),
+                    (false, None) => keys.push(("a".to_string(), "all")),
+                    (true, None) => keys.push(("a".to_string(), "one account")),
+                    (true, Some(_)) => {}
+                }
             }
             if self.compact.get() && self.history_shown {
                 keys.splice(0..0, self.history_keys());

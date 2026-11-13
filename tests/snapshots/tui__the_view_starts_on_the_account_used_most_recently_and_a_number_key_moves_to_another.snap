@@ -3,7 +3,7 @@ source: tests/tui.rs
 expression: first
 ---
 " Gigawatts                                                                      "
-"  1 personal   2 work   a all                                                   "
+"  1 personal   2 work   3 all                                                   "
 "╭ Limits · from cachedUsageUtilization, read 2 hours ago ──────────────────────╮"
 "│ Read over an hour ago, so it may not include use outside Claude Code.        │"
 "│ Credits             ▇▇▇▇▇▇▇▇▇▇▂▂▂▇▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂   20% │"
@@ -25,4 +25,4 @@ expression: first
 "                                                                                "
 "                                                                                "
 " 3 problems. `gigawatts doctor` lists them.                                     "
-" 1-2 account   [ ] switch   a all   ← → group   t time   ? help   q quit        "
+" 1-2 account   [ ] switch   3 all   ← → group   t time   ? help   q quit        "

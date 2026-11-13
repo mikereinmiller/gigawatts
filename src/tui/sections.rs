@@ -995,9 +995,9 @@ pub(crate) fn help(frame: &mut Frame, area: Rect) {
         ])
     };
     let lines = vec![
-        key("1-9", "show that account"),
+        key("1-9", "show that account; with up to 8, the next shows all"),
         key("[ ]", "step through the account tabs, including all"),
-        key("a", "show every account, or go back to one"),
+        key("a", "toggle the all view, with 9 or more accounts"),
         key("Tab", "switch to spending in a small window"),
         key("← → g", "spending by repo, skill, subagent, model"),
         key("t T", "spending today, this week, this month, all time"),

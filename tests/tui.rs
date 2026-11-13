@@ -284,13 +284,13 @@ fn the_view_starts_on_the_account_used_most_recently_and_a_number_key_moves_to_a
 }
 
 #[test]
-fn a_stacks_every_accounts_limits_and_spend_today() {
+fn the_all_tab_stacks_every_accounts_limits_and_spend_today() {
     let mut app = open(
         snapshot(vec![personal(), work()]),
         Some(PERSONAL.to_string()),
     );
 
-    app.handle(KeyCode::Char('a').into());
+    app.handle(KeyCode::Char('3').into());
 
     insta::assert_snapshot!(screen(&app, 80, 24));
 }
@@ -400,7 +400,7 @@ fn the_every_account_view_keeps_a_limits_severity_and_credits_at_80_columns() {
     flagged.limits.as_mut().unwrap().limits[1].limit.severity = Some("warning".to_string());
     let mut app = open(snapshot(vec![flagged, work()]), None);
 
-    app.handle(KeyCode::Char('a').into());
+    app.handle(KeyCode::Char('3').into());
     let stacked = screen(&app, 80, 40);
 
     assert_eq!(stacked.matches("warning").count(), 1, "{stacked}");
@@ -433,7 +433,7 @@ fn a_problem_marks_only_the_account_it_belongs_to_and_one_with_no_account_marks_
     ));
     let mut app = open(shown, Some(PERSONAL.to_string()));
 
-    app.handle(KeyCode::Char('a').into());
+    app.handle(KeyCode::Char('3').into());
     let stacked = screen(&app, 100, 40);
 
     assert_eq!(
@@ -694,6 +694,74 @@ fn brackets_step_through_the_tabs_and_wrap_past_all() {
 }
 
 #[test]
+fn the_all_tab_takes_the_number_after_the_last_account() {
+    let mut app = open(
+        snapshot(vec![personal(), work()]),
+        Some(PERSONAL.to_string()),
+    );
+
+    let tabs = screen(&app, 80, 24);
+    app.handle(KeyCode::Char('3').into());
+    let all = screen(&app, 80, 24);
+    app.handle(KeyCode::Char('a').into());
+    let after_a = screen(&app, 80, 24);
+    app.handle(KeyCode::Char('1').into());
+    let back = screen(&app, 80, 24);
+
+    assert!(tabs.contains(" 3 all "), "{tabs}");
+    assert!(!tabs.contains("a all"), "{tabs}");
+    assert!(all.contains("across 2 accounts"), "{all}");
+    assert!(!all.contains("one account"), "{all}");
+    assert_eq!(after_a, all);
+    assert_eq!(back, tabs);
+}
+
+fn numbered_accounts(count: usize) -> Snapshot {
+    snapshot(
+        (1..=count)
+            .map(|n| {
+                let mut account = work();
+                account.account = Some(format!("00000000-0000-4000-8000-0000000000{n:02}"));
+                account.account_label = format!("acct{n}");
+                account
+            })
+            .collect(),
+    )
+}
+
+#[test]
+fn with_eight_accounts_the_all_tab_takes_nine() {
+    let mut app = open(numbered_accounts(8), None);
+
+    let tabs = screen(&app, 150, 40);
+    app.handle(KeyCode::Char('9').into());
+    let all = screen(&app, 150, 40);
+
+    assert!(tabs.contains(" 9 all "), "{tabs}");
+    assert!(all.contains("across 8 accounts"), "{all}");
+}
+
+#[test]
+fn with_nine_accounts_the_all_tab_keeps_a_and_nine_opens_the_ninth_account() {
+    let mut app = open(numbered_accounts(9), None);
+
+    let tabs = screen(&app, 150, 40);
+    app.handle(KeyCode::Char('9').into());
+    let ninth = screen(&app, 150, 40);
+
+    let footer = tabs.lines().last().unwrap();
+    assert!(tabs.contains(" a all "), "{tabs}");
+    assert!(footer.contains("a all"), "{footer}");
+    assert!(!footer.contains("10 all"), "{footer}");
+    assert!(!ninth.contains("across 9 accounts"), "{ninth}");
+    assert!(
+        cell_at(&app, 150, 40, "9 acct9")
+            .modifier
+            .contains(Modifier::REVERSED)
+    );
+}
+
+#[test]
 fn a_credit_limit_beside_today_shows_what_is_left_and_a_daily_budget() {
     let mut account = work();
     let credits = &mut account.limits.as_mut().unwrap().limits[0];
@@ -762,7 +830,7 @@ fn the_footer_lists_the_keys_that_work_on_this_screen() {
 
     assert!(both.contains("1-2 account"), "{both}");
     assert!(both.contains("[ ] switch"), "{both}");
-    assert!(both.contains("a all"), "{both}");
+    assert!(both.contains("3 all"), "{both}");
     assert!(both.contains("? help"), "{both}");
     assert!(both.contains("q quit"), "{both}");
     assert!(!one.contains("1-1"), "{one}");
@@ -827,7 +895,7 @@ fn a_forecast_from_a_reading_over_an_hour_old_is_greyed_like_the_rest_of_the_lim
         ratatui::style::Color::DarkGray
     );
 
-    app.handle(KeyCode::Char('a').into());
+    app.handle(KeyCode::Char('3').into());
 
     assert_eq!(
         cell_at(&app, 80, 24, "100% in").fg,
@@ -866,7 +934,7 @@ fn a_limit_on_course_to_fill_before_its_reset_says_when_in_the_over_pace_color()
 #[test]
 fn the_every_account_view_says_when_a_limit_will_fill() {
     let mut app = open(snapshot(vec![filling_fast(), work()]), None);
-    app.handle(KeyCode::Char('a').into());
+    app.handle(KeyCode::Char('3').into());
 
     let shown = screen(&app, 80, 24);
 
@@ -886,7 +954,7 @@ fn a_forecast_time_already_past_says_by_when() {
 
     assert!(screen(&app, 120, 24).contains("100% by 09:10"));
 
-    app.handle(KeyCode::Char('a').into());
+    app.handle(KeyCode::Char('3').into());
 
     assert!(screen(&app, 80, 24).contains("100% by now"));
 }
@@ -916,7 +984,7 @@ fn a_limit_that_reset_since_its_reading_shows_no_forecast() {
         assert!(!shown.contains("100%"), "{shown}");
     }
 
-    app.handle(KeyCode::Char('a').into());
+    app.handle(KeyCode::Char('3').into());
 
     let shown = screen(&app, 80, 24);
     assert!(!shown.contains("100%"), "{shown}");
@@ -965,7 +1033,7 @@ fn spend_today_shows_the_usual_dollars_next_to_the_ratio() {
 fn every_account_view_adds_up_spend_today_across_accounts() {
     let mut app = open(snapshot(vec![personal(), work()]), None);
 
-    app.handle(KeyCode::Char('a').into());
+    app.handle(KeyCode::Char('3').into());
     let stacked = screen(&app, 80, 40);
 
     assert!(
@@ -1011,7 +1079,7 @@ fn a_usual_from_fewer_than_twenty_days_says_so_on_its_own_line() {
 #[test]
 fn the_every_account_view_closes_when_only_one_account_is_left() {
     let mut app = open(snapshot(vec![personal(), work()]), None);
-    app.handle(KeyCode::Char('a').into());
+    app.handle(KeyCode::Char('3').into());
 
     app.update(snapshot(vec![personal()]));
     let shown = screen(&app, 80, 24);
@@ -1024,7 +1092,7 @@ fn the_every_account_view_closes_when_only_one_account_is_left() {
 fn every_account_fits_two_accounts_in_80_by_24() {
     let mut app = open(snapshot(vec![personal(), work()]), None);
 
-    app.handle(KeyCode::Char('a').into());
+    app.handle(KeyCode::Char('3').into());
     let stacked = screen(&app, 80, 24);
 
     assert!(stacked.contains("$14.20  estimated"), "{stacked}");
@@ -1059,14 +1127,14 @@ fn while_help_is_open_the_key_strip_lists_only_the_keys_that_work() {
     assert!(strip.contains("? Esc close help"), "{strip}");
     assert!(strip.contains("q quit"), "{strip}");
     assert!(!strip.contains("account"), "{strip}");
-    assert!(!strip.contains("a all"), "{strip}");
+    assert!(!strip.contains(" all"), "{strip}");
 }
 
 #[test]
 fn the_combined_total_says_estimated_when_any_account_is() {
     let mut app = open(snapshot(vec![personal(), work()]), None);
 
-    app.handle(KeyCode::Char('a').into());
+    app.handle(KeyCode::Char('3').into());
     let stacked = screen(&app, 80, 24);
 
     assert!(
@@ -1113,7 +1181,7 @@ fn the_every_account_view_marks_a_limit_that_reset_since_its_reading() {
         Some("2026-11-09T09:00:00Z".to_string());
     let mut app = open(snapshot(vec![reset, work()]), None);
 
-    app.handle(KeyCode::Char('a').into());
+    app.handle(KeyCode::Char('3').into());
     let stacked = screen(&app, 80, 40);
     let session_row = stacked
         .lines()
@@ -1365,7 +1433,7 @@ fn spending_shows_the_shown_accounts_rows_and_every_account_view_labels_each_row
 
     app.handle(KeyCode::Char('2').into());
     let work_rows = screen(&app, 100, 34);
-    app.handle(KeyCode::Char('a').into());
+    app.handle(KeyCode::Char('3').into());
     let every = screen(&app, 100, 44);
 
     assert!(personal_rows.contains("orchard"), "{personal_rows}");
@@ -1776,7 +1844,7 @@ fn a_limit_with_no_pace_is_drawn_in_the_terminals_own_color_not_the_key_color() 
 fn the_every_account_view_names_each_limits_source_the_way_one_account_does() {
     let mut app = open(snapshot(vec![personal(), work()]), None);
 
-    app.handle(KeyCode::Char('a').into());
+    app.handle(KeyCode::Char('3').into());
     let stacked = screen(&app, 80, 40);
 
     assert!(
@@ -2720,7 +2788,7 @@ fn with_limits_and_today_stacked_no_pane_heading_has_a_blank_row_under_it() {
 
 fn every_account_screen(width: u16, height: u16) -> String {
     let mut app = with_spending(open(snapshot(vec![personal(), work()]), None));
-    app.handle(KeyCode::Char('a').into());
+    app.handle(KeyCode::Char('3').into());
     answer(&mut app);
     screen(&app, width, height)
 }
@@ -2767,7 +2835,7 @@ fn three_accounts_get_three_columns_from_150_columns_and_the_compact_boxes_below
     third.account = Some(NEW.to_string());
     third.account_label = "side".to_string();
     let mut app = with_spending(open(snapshot(vec![personal(), work(), third]), None));
-    app.handle(KeyCode::Char('a').into());
+    app.handle(KeyCode::Char('4').into());
     answer(&mut app);
 
     let wide = screen(&app, 160, 70);
@@ -2854,7 +2922,7 @@ fn a_limit_detail_longer_than_its_pane_wraps_instead_of_being_cut() {
     flagged.limits.as_mut().unwrap().limits[0].limit.severity =
         Some("close to the monthly credit cap your organization's admin set".to_string());
     let mut app = with_spending(open(snapshot(vec![personal(), flagged]), None));
-    app.handle(KeyCode::Char('a').into());
+    app.handle(KeyCode::Char('3').into());
     answer(&mut app);
     let shown = screen(&app, 100, 56);
 
@@ -2894,7 +2962,7 @@ fn three_accounts_screen(width: u16, height: u16) -> String {
     side.account = Some(NEW.to_string());
     side.account_label = "side".to_string();
     let mut app = with_spending(open(snapshot(vec![personal(), work(), side]), None));
-    app.handle(KeyCode::Char('a').into());
+    app.handle(KeyCode::Char('4').into());
     answer(&mut app);
     screen(&app, width, height)
 }
@@ -3013,7 +3081,7 @@ fn with_a_filling_limit_screen(width: u16, height: u16) -> String {
     fast.account = Some(NEW.to_string());
     fast.account_label = "side".to_string();
     let mut app = with_spending(open(snapshot(vec![personal(), work(), fast]), None));
-    app.handle(KeyCode::Char('a').into());
+    app.handle(KeyCode::Char('4').into());
     answer(&mut app);
     screen(&app, width, height)
 }
@@ -3070,7 +3138,7 @@ fn stacked_today_has_its_own_header_and_starts_at_the_left_edge() {
     let mut young = personal();
     young.pace.usual_days = 8;
     let mut app = open(snapshot(vec![young, work()]), None);
-    app.handle(KeyCode::Char('a').into());
+    app.handle(KeyCode::Char('3').into());
     let shown = screen(&app, 80, 40);
     let lines: Vec<&str> = shown.lines().collect();
     let header = lines
@@ -3126,7 +3194,7 @@ fn reset_session_screen(width: u16, height: u16) -> String {
     reset.limits.as_mut().unwrap().limits[0].limit.resets_at =
         Some("2026-11-09T09:00:00Z".to_string());
     let mut app = open(snapshot(vec![reset, work()]), None);
-    app.handle(KeyCode::Char('a').into());
+    app.handle(KeyCode::Char('3').into());
     screen(&app, width, height)
 }
 
@@ -3175,7 +3243,7 @@ fn bar_cells(app: &App, width: u16, height: u16, name: &str) -> Vec<ratatui::buf
 #[test]
 fn a_stale_stacked_bar_still_shows_how_much_is_filled() {
     let mut app = open(snapshot(vec![personal(), work()]), None);
-    app.handle(KeyCode::Char('a').into());
+    app.handle(KeyCode::Char('3').into());
 
     let cells = bar_cells(&app, 80, 40, "Credits ");
     let first = cells.first().unwrap();
@@ -3191,7 +3259,7 @@ fn work_credits_screen(width: u16, change: impl FnOnce(&mut PacedLimit)) -> Stri
     let mut account = work();
     change(&mut account.limits.as_mut().unwrap().limits[0]);
     let mut app = open(snapshot(vec![personal(), account]), None);
-    app.handle(KeyCode::Char('a').into());
+    app.handle(KeyCode::Char('3').into());
     screen(&app, width, 40)
 }
 
@@ -3287,7 +3355,7 @@ fn stacked_spacing_never_hides_a_running_session_card() {
     side.account_label = "side".to_string();
     side.active_sessions = Vec::new();
     let mut app = with_spending(open(snapshot(vec![busy, work(), side]), None));
-    app.handle(KeyCode::Char('a').into());
+    app.handle(KeyCode::Char('4').into());
     answer(&mut app);
 
     let shown = screen(&app, 100, 53);
@@ -3335,7 +3403,7 @@ fn stacked_spacing_never_hides_a_session_card_beside_the_spending_table() {
         accounts.push(extra);
     }
     let mut app = with_spending(open(snapshot(accounts), None));
-    app.handle(KeyCode::Char('a').into());
+    app.handle(KeyCode::Char('5').into());
     answer(&mut app);
 
     for height in 50..80 {

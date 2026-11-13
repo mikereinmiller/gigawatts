@@ -3,7 +3,7 @@ source: tests/tui.rs
 expression: table
 ---
 " Gigawatts                                                                      "
-"  1 personal   2 work   a all                                                   "
+"  1 personal   2 work   3 all                                                   "
 "╭ Spending · $40.00 this week ─────────────────────────────────────────────────╮"
 "│ ← →  repo  skill  subagent  model                t  today  week  month  all  │"
 "│ Repo                    Cost                                    Top skill    │"
