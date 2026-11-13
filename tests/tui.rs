@@ -2764,13 +2764,13 @@ fn line_with<'a>(shown: &'a str, text: &str) -> &'a str {
 }
 
 #[test]
-fn stacked_limits_show_their_reset_beside_a_bar_of_at_most_40_cells() {
+fn stacked_limits_show_their_reset_beside_a_bar_of_at_most_60_cells() {
     let shown = three_accounts_screen(150, 50);
     let session = line_with(&shown, "Session ");
 
     assert!(session.contains("5%  resets 2h 40m"), "{shown}");
     let cells = session.chars().filter(|c| "▇▂".contains(*c)).count();
-    assert_eq!(cells, 40, "{shown}");
+    assert_eq!(cells, 60, "{shown}");
 }
 
 #[test]
@@ -3008,7 +3008,7 @@ fn a_stacked_limit_that_reset_lines_up_with_the_limits_around_it() {
             .chars()
             .filter(|c| "▇▂".contains(*c))
             .count();
-        assert!(cells <= 40, "{shown}");
+        assert!(cells <= 60, "{shown}");
     }
 }
 
