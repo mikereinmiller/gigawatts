@@ -400,7 +400,10 @@ fn the_every_account_view_keeps_a_limits_severity_and_credits_at_80_columns() {
     let stacked = screen(&app, 80, 40);
 
     assert_eq!(stacked.matches("warning").count(), 1, "{stacked}");
-    assert!(stacked.contains("437.60 of 2200.00 USD"), "{stacked}");
+    assert!(
+        stacked.contains("$437.60 of $2,200 · $1,762 left · $82 a day to last"),
+        "{stacked}"
+    );
     assert!(stacked.contains("20%  resets 21d 14h"), "{stacked}");
 }
 
@@ -2857,6 +2860,26 @@ fn stacked_limits_without_room_put_their_forecast_on_the_next_row() {
 }
 
 #[test]
+fn stacked_credits_put_their_budget_on_its_own_row_at_any_width() {
+    for width in [80, 170] {
+        let shown = with_a_filling_limit_screen(width, 50);
+
+        assert!(
+            line_with(&shown, "Credits ")
+                .trim_end_matches(['"', '│', ' '])
+                .ends_with("resets 21d 14h"),
+            "{shown}"
+        );
+        assert!(
+            shown.contains(
+                "│                     $437.60 of $2,200 · $1,762 left · $82 a day to last"
+            ),
+            "{shown}"
+        );
+    }
+}
+
+#[test]
 fn stacked_today_has_its_own_header_and_starts_at_the_left_edge() {
     let mut young = personal();
     young.pace.usual_days = 8;
@@ -2946,6 +2969,95 @@ fn a_stale_stacked_bar_still_shows_how_much_is_filled() {
     assert!(
         (first.symbol(), first.fg) != (last.symbol(), last.fg),
         "{cells:?}"
+    );
+}
+
+fn work_credits_screen(width: u16, change: impl FnOnce(&mut PacedLimit)) -> String {
+    let mut account = work();
+    change(&mut account.limits.as_mut().unwrap().limits[0]);
+    let mut app = open(snapshot(vec![personal(), account]), None);
+    app.handle(KeyCode::Char('a').into());
+    screen(&app, width, 40)
+}
+
+#[test]
+fn a_stacked_credit_budget_too_long_for_its_row_wraps() {
+    let shown = work_credits_screen(50, |_| {});
+
+    assert!(
+        shown.contains("│                     $437.60 of $2,200 "),
+        "{shown}"
+    );
+    assert!(
+        shown.contains("│                     $1,762 left "),
+        "{shown}"
+    );
+    assert!(
+        shown.contains("│                     $82 a day to last "),
+        "{shown}"
+    );
+}
+
+#[test]
+fn credits_with_no_cap_show_only_what_was_used() {
+    let shown = work_credits_screen(80, |limit| {
+        limit.limit.credits.as_mut().unwrap().limit = None;
+    });
+
+    assert!(
+        shown.contains("│                     $437.60 used "),
+        "{shown}"
+    );
+    assert!(!shown.contains(" left"), "{shown}");
+}
+
+#[test]
+fn credits_in_another_currency_put_its_code_after_each_amount() {
+    let shown = work_credits_screen(80, |limit| {
+        limit.limit.credits.as_mut().unwrap().currency = "EUR".to_string();
+    });
+
+    assert!(
+        shown.contains("437.60 EUR of 2,200 EUR · 1,762 EUR left"),
+        "{shown}"
+    );
+    assert!(shown.contains("82 EUR a day to last"), "{shown}");
+}
+
+#[test]
+fn credits_under_a_day_from_their_reset_leave_out_the_daily_figure() {
+    let shown = work_credits_screen(80, |limit| {
+        limit.pace.as_mut().unwrap().window_end_ms = NOW_MS + 12 * 3_600_000;
+    });
+
+    assert!(
+        shown.contains("$437.60 of $2,200 · $1,762 left "),
+        "{shown}"
+    );
+    assert!(!shown.contains("a day to last"), "{shown}");
+}
+
+#[test]
+fn credits_over_their_cap_show_none_left_and_no_daily_figure() {
+    let shown = work_credits_screen(80, |limit| {
+        limit.limit.credits.as_mut().unwrap().used = 2300.0;
+    });
+
+    assert!(shown.contains("$2,300.00 of $2,200 · $0 left "), "{shown}");
+    assert!(!shown.contains("a day to last"), "{shown}");
+}
+
+#[test]
+fn credits_in_the_millions_group_every_three_digits() {
+    let shown = work_credits_screen(80, |limit| {
+        let credits = limit.limit.credits.as_mut().unwrap();
+        credits.used = 1_234_567.89;
+        credits.limit = Some(2_000_000.0);
+    });
+
+    assert!(
+        shown.contains("$1,234,567.89 of $2,000,000 · $765,432 left"),
+        "{shown}"
     );
 }
 

@@ -319,16 +319,30 @@ pub(crate) fn limit_lines(
                         width,
                         &SOLID_BAR,
                     ),
-                    LimitLayout::Stacked => named_limit_row(
-                        shown,
-                        stale,
-                        has_reset(shown, now_ms),
-                        status(shown, now_ms),
-                        forecast(shown, now_ms, local_minute),
-                        &flags(shown, now_ms),
-                        width,
-                        &SPACED_BAR,
-                    ),
+                    LimitLayout::Stacked => {
+                        let mut rows = named_limit_row(
+                            shown,
+                            stale,
+                            has_reset(shown, now_ms),
+                            status(shown, now_ms),
+                            forecast(shown, now_ms, local_minute),
+                            &flags(shown, now_ms),
+                            width,
+                            &SPACED_BAR,
+                        );
+                        let budget = credit_budget(shown, now_ms);
+                        rows.extend(
+                            pack(&budget, (width as usize).saturating_sub(NAME_WIDTH))
+                                .into_iter()
+                                .map(|packed| {
+                                    Line::from(vec![
+                                        Span::raw(" ".repeat(NAME_WIDTH)),
+                                        Span::styled(packed, MUTED),
+                                    ])
+                                }),
+                        );
+                        rows
+                    }
                 });
             }
         }
@@ -601,14 +615,62 @@ fn status(shown: &PacedLimit, now_ms: i64) -> Option<String> {
     resets_ms(shown).map(|resets_ms| format!("resets {}", duration(resets_ms - now_ms)))
 }
 
+fn credit_budget(shown: &PacedLimit, now_ms: i64) -> Vec<String> {
+    if has_reset(shown, now_ms) {
+        return Vec::new();
+    }
+    let Some(credits) = shown.limit.credits.as_ref() else {
+        return Vec::new();
+    };
+    let currency = &credits.currency;
+    let Some(cap) = credits.limit else {
+        return vec![format!("{} used", money(credits.used, currency, true))];
+    };
+    let left = (cap - credits.used).max(0.0);
+    let mut parts = vec![
+        format!(
+            "{} of {}",
+            money(credits.used, currency, true),
+            money(cap, currency, false)
+        ),
+        format!("{} left", money(left, currency, false)),
+    ];
+    let days_left = resets_ms(shown).map(|resets_ms| (resets_ms - now_ms) as f64 / DAY_MS as f64);
+    if let Some(days_left) = days_left.filter(|days| *days >= 1.0 && left > 0.0) {
+        parts.push(format!(
+            "{} a day to last",
+            money(left / days_left, currency, false)
+        ));
+    }
+    parts
+}
+
+fn money(amount: f64, currency: &str, cents: bool) -> String {
+    let text = if cents {
+        format!("{amount:.2}")
+    } else {
+        format!("{amount:.0}")
+    };
+    let (whole, fraction) = text.split_at(text.find('.').unwrap_or(text.len()));
+    let mut grouped = String::new();
+    for (index, digit) in whole.chars().enumerate() {
+        if index > 0 && (whole.len() - index) % 3 == 0 {
+            grouped.push(',');
+        }
+        grouped.push(digit);
+    }
+    if currency == "USD" {
+        format!("${grouped}{fraction}")
+    } else {
+        format!("{grouped}{fraction} {currency}")
+    }
+}
+
 fn flags(shown: &PacedLimit, now_ms: i64) -> Vec<String> {
     if has_reset(shown, now_ms) {
         return Vec::new();
     }
-    credits_used(&shown.limit)
-        .into_iter()
-        .chain(unusual_severity(&shown.limit))
-        .collect()
+    unusual_severity(&shown.limit).into_iter().collect()
 }
 
 fn forecast_style(stale: bool) -> Style {
