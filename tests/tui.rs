@@ -780,6 +780,30 @@ fn a_credit_limit_beside_today_shows_what_is_left_and_a_daily_budget() {
 }
 
 #[test]
+fn a_blank_row_separates_the_account_tabs_from_the_panes_when_the_window_has_room() {
+    let app = open(
+        snapshot(vec![personal(), work()]),
+        Some(PERSONAL.to_string()),
+    );
+    let gap_under_tabs = |shown: &str| {
+        let lines: Vec<&str> = shown.lines().collect();
+        let tabs = lines
+            .iter()
+            .position(|line| line.contains("1 personal"))
+            .unwrap();
+        lines[tabs + 1]
+            .trim_matches(|c| c == '"' || c == ' ')
+            .is_empty()
+    };
+
+    let roomy = screen(&app, 150, 50);
+    let tight = screen(&app, 80, 24);
+
+    assert!(gap_under_tabs(&roomy), "{roomy}");
+    assert!(!gap_under_tabs(&tight), "{tight}");
+}
+
+#[test]
 fn with_one_account_brackets_do_nothing() {
     let mut app = open(snapshot(vec![personal()]), None);
     let before = screen(&app, 80, 24);

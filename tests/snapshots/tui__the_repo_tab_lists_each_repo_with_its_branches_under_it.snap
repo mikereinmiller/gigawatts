@@ -4,6 +4,7 @@ expression: shown
 ---
 " Gigawatts                                                                                          "
 " personal                                                                                           "
+"                                                                                                    "
 "╭ Limits · from get_usage, read 3 minutes ago ─────────╮ ╭ Today ──────────────────────────────────╮"
 "│                                                      │ │                                         │"
 "│ Session                                           5% │ │ ▄█▄ ▀█  █ █   ▀▀█ █▀█                   │"
@@ -42,7 +43,6 @@ expression: shown
 "│ ▾ wiki                    $440.00  ▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇    49%                          │"
 "│     - ab/milestone-04     $322.00  ▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇    36%  50% review              │"
 "│     - ab/milestone-03     $118.00  ▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇    13%                          │"
-"│   unlogged usage           $20.00  ▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇     2%                          │"
 "╰──────────────────────────────────────────────────────────────────────────────────────────────────╯"
 " 3 problems. `gigawatts doctor` lists them.                                                         "
 " ← → group   t time   Enter hide   u advice   s sessions   e collapse all   ? help   q quit         "

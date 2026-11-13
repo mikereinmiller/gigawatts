@@ -338,26 +338,16 @@ impl App {
         let sessions_open = self.sessions_open && self.shown().is_some();
         let sessions_beside =
             !sessions_open && self.shown().is_some() && body.width >= SESSIONS_BESIDE_SPENDING_FROM;
-        let top_height = match (self.stacked, self.shown()) {
-            (_, None) => 1,
-            (true, Some(_)) => every::height(
-                &self.snapshot,
-                now_ms,
-                local_minute,
-                body.width,
-                body.height,
-                !sessions_beside && !sessions_open,
-            ),
-            (false, Some(account)) => sections::one_account_height(
-                account,
-                &self.snapshot.problems,
-                now_ms,
-                local_minute,
-                body.width,
-                body.height,
-                !sessions_beside && !sessions_open,
-            ),
+        let with_sessions = !sessions_beside && !sessions_open;
+        let below_tabs = Rect {
+            y: body.y + 1,
+            height: body.height.saturating_sub(1),
+            ..body
         };
+        let top_height = self.top_height(body, now_ms, local_minute, with_sessions);
+        let spare_row = below_tabs.height >= top_height + HISTORY_MIN_HEIGHT
+            && self.top_height(below_tabs, now_ms, local_minute, with_sessions) == top_height;
+        let body = if spare_row { below_tabs } else { body };
         let compact = body.height < top_height + HISTORY_MIN_HEIGHT;
         self.compact.set(compact);
         let roomy = match (self.stacked, self.shown()) {
@@ -465,6 +455,35 @@ impl App {
             advice::draw(frame, frame.area(), self.advice.as_ref(), now_ms);
         }
         palette::apply(frame.buffer_mut(), self.palette.as_ref());
+    }
+
+    fn top_height(
+        &self,
+        body: Rect,
+        now_ms: i64,
+        local_minute: &dyn Fn(i64) -> String,
+        with_sessions: bool,
+    ) -> u16 {
+        match (self.stacked, self.shown()) {
+            (_, None) => 1,
+            (true, Some(_)) => every::height(
+                &self.snapshot,
+                now_ms,
+                local_minute,
+                body.width,
+                body.height,
+                with_sessions,
+            ),
+            (false, Some(account)) => sections::one_account_height(
+                account,
+                &self.snapshot.problems,
+                now_ms,
+                local_minute,
+                body.width,
+                body.height,
+                with_sessions,
+            ),
+        }
     }
 
     fn draw_overview(
