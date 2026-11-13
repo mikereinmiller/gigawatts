@@ -1198,7 +1198,7 @@ function creditsTile(credits) {
   const subs = [`${dollars(left, 0)} left of ${dollars(cap, 0)}`];
   if (runOutMs) subs.push(runsOutFirst ? [`Runs out about ${longDate(runOutMs)}`, 'status-line warning'] : `Lasts past the reset, ${longDate(resetMs ?? runOutMs)}`);
   if (limit.pace) subs.push([`Mark shows even pace (${percent(limit.pace.expected_percent)})`, 'faint']);
-  subs.push([`From ${limitAge(limits)}${limit.pace?.provisional ? ' · reset day provisional' : ''}`, 'faint']);
+  subs.push([`From ${limitAge(limits)}`, 'faint']);
   return tile('Credits used', dollars(used, 0), subs, {meter: used / cap, expected: limit.pace ? limit.pace.expected_percent / 100 : undefined});
 }
 

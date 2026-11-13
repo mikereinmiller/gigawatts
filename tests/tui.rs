@@ -811,7 +811,7 @@ fn a_forecast_from_a_reading_over_an_hour_old_is_greyed_like_the_rest_of_the_lim
 }
 
 #[test]
-fn a_credit_forecast_on_a_provisional_pace_is_labeled_provisional() {
+fn a_credit_forecast_on_the_default_reset_has_no_caveat() {
     let mut account = work();
     account.limits.as_mut().unwrap().limits[0].forecast = Some(LimitForecast {
         full_at_ms: NOW_MS + 80 * 60_000,
@@ -820,10 +820,8 @@ fn a_credit_forecast_on_a_provisional_pace_is_labeled_provisional() {
 
     let shown = screen(&app, 120, 24);
 
-    assert!(
-        shown.contains("100% in 1h 20m at 10:40 (provisional)"),
-        "{shown}"
-    );
+    assert!(shown.contains("100% in 1h 20m at 10:40 "), "{shown}");
+    assert!(!shown.contains("10:40 ("), "{shown}");
 }
 
 #[test]
@@ -2710,13 +2708,27 @@ fn a_limits_heading_too_long_for_its_pane_keeps_the_age_and_drops_the_source() {
 
 #[test]
 fn a_limit_detail_longer_than_its_pane_wraps_instead_of_being_cut() {
-    let shown = every_account_screen(100, 56);
+    let mut flagged = work();
+    flagged.limits.as_mut().unwrap().limits[0].limit.severity =
+        Some("close to the monthly credit cap your organization's admin set".to_string());
+    let mut app = with_spending(open(snapshot(vec![personal(), flagged]), None));
+    app.handle(KeyCode::Char('a').into());
+    answer(&mut app);
+    let shown = screen(&app, 100, 56);
 
     assert!(
-        shown.contains("│ under even pace (provisional until"),
+        shown.contains("│ 437.60 of 2200.00 USD · under even pace │"),
         "{shown}"
     );
-    assert!(shown.contains("credit_reset is set)"), "{shown}");
+    assert!(
+        shown.contains("│ 26% expected · resets in 21d 14h "),
+        "{shown}"
+    );
+    assert!(
+        shown.contains("│ close to the monthly credit cap"),
+        "{shown}"
+    );
+    assert!(shown.contains("organization's admin set"), "{shown}");
 }
 
 #[test]

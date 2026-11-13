@@ -235,7 +235,7 @@ fn the_fullest_limit_filling_first_is_not_named_twice() {
 }
 
 #[test]
-fn a_credit_forecast_on_a_provisional_pace_is_labeled_provisional() {
+fn a_credit_forecast_on_the_default_reset_has_no_caveat() {
     let limits = AccountLimits {
         source: LimitSource::CachedUsageUtilization,
         fetched_at_ms: NOW_MS - 3 * 60_000,
@@ -264,13 +264,13 @@ fn a_credit_forecast_on_a_provisional_pace_is_labeled_provisional() {
     );
 
     assert!(
-        line.contains(", 100% by 2026-11-04 18:50 (provisional), resets "),
+        line.contains(", 100% by 2026-11-04 18:50, resets "),
         "{line}"
     );
 }
 
 #[test]
-fn monthly_credits_show_their_pace_window_end_and_the_provisional_label() {
+fn monthly_credits_on_the_default_reset_show_their_pace_and_window_end() {
     let limits = AccountLimits {
         source: LimitSource::CachedUsageUtilization,
         fetched_at_ms: NOW_MS - 2 * 3_600_000,
@@ -302,7 +302,7 @@ fn monthly_credits_show_their_pace_window_end_and_the_provisional_label() {
 
     assert_eq!(
         line,
-        "personal: Credits 20% under even pace (provisional until credit_reset is set), resets 2026-11-12 00:00, read 2 hours ago, may not include use outside Claude Code · today $0.00, no usual yet"
+        "personal: Credits 20% under even pace, resets 2026-11-12 00:00, read 2 hours ago, may not include use outside Claude Code · today $0.00, no usual yet"
     );
 }
 

@@ -10,9 +10,7 @@ use crate::contract::{
 };
 use crate::limits::{age, credits_used, limit_name, percent, unusual_severity};
 use crate::pace::USUAL_DAYS;
-use crate::status::{
-    MAY_MISS_OUTSIDE_USE_MS, has_reset, pace_phrase, provisional_forecast, resets_ms,
-};
+use crate::status::{MAY_MISS_OUTSIDE_USE_MS, has_reset, pace_phrase, resets_ms};
 
 use super::HISTORY_MIN_HEIGHT;
 use super::digits;
@@ -511,14 +509,8 @@ fn flags(shown: &PacedLimit, now_ms: i64) -> Vec<String> {
     if has_reset(shown, now_ms) {
         return Vec::new();
     }
-    let provisional = shown
-        .pace
-        .as_ref()
-        .filter(|pace| pace.provisional)
-        .map(|_| "pace provisional until credit_reset is set".to_string());
     credits_used(&shown.limit)
         .into_iter()
-        .chain(provisional)
         .chain(unusual_severity(&shown.limit))
         .collect()
 }
@@ -542,7 +534,7 @@ fn forecast(shown: &PacedLimit, now_ms: i64, local_minute: LocalMinute) -> Optio
     } else {
         format!("by {clock}")
     };
-    Some(format!("100% {when}{}", provisional_forecast(shown)))
+    Some(format!("100% {when}"))
 }
 
 fn resets(resets_ms: i64, now_ms: i64, local_minute: LocalMinute) -> String {

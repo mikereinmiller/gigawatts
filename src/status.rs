@@ -99,19 +99,7 @@ fn closest_limit(shown: &PacedLimit) -> String {
 
 fn forecast_phrase(shown: &PacedLimit, local_minute: &dyn Fn(i64) -> String) -> Option<String> {
     let forecast = shown.forecast?;
-    Some(format!(
-        "100% by {}{}",
-        local_minute(forecast.full_at_ms),
-        provisional_forecast(shown)
-    ))
-}
-
-pub(crate) fn provisional_forecast(shown: &PacedLimit) -> &'static str {
-    if shown.pace.as_ref().is_some_and(|pace| pace.provisional) {
-        " (provisional)"
-    } else {
-        ""
-    }
+    Some(format!("100% by {}", local_minute(forecast.full_at_ms)))
 }
 
 pub(crate) fn pace_phrase(pace: &LimitPace) -> String {
@@ -124,11 +112,7 @@ pub(crate) fn pace_phrase(pace: &LimitPace) -> String {
         PaceBasis::Even => "even pace",
         PaceBasis::Usual => "your usual pace",
     };
-    let mut text = format!("{state} {basis}");
-    if pace.provisional {
-        text.push_str(" (provisional until credit_reset is set)");
-    }
-    text
+    format!("{state} {basis}")
 }
 
 pub(crate) fn resets_ms(shown: &PacedLimit) -> Option<i64> {
