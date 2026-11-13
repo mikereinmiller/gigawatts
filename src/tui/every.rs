@@ -105,7 +105,11 @@ pub(crate) fn height(
     let fit = fit(snapshot, now_ms, local_minute, width, height, with_sessions);
     let overview = match roomy(snapshot, now_ms, local_minute, width) {
         Some(overview) if fit.roomy => overview.height(),
-        _ => compact_height(snapshot, now_ms, width),
+        _ => {
+            compact_height(snapshot, now_ms, width)
+                + compact_spacing(snapshot, now_ms, width, height, fit.with_sessions)
+                    .rows(snapshot.accounts.len() as u16)
+        }
     };
     let sessions = if fit.with_sessions {
         let room = height.saturating_sub(overview + HISTORY_MIN_HEIGHT);
@@ -136,7 +140,13 @@ pub(crate) fn draw(
     );
     let rest = match roomy(snapshot, now_ms, local_minute, area.width) {
         Some(overview) if fit.roomy => draw_roomy(frame, area, snapshot, overview),
-        _ => draw_compact(frame, area, snapshot, now_ms),
+        _ => draw_compact(
+            frame,
+            area,
+            snapshot,
+            now_ms,
+            compact_spacing(snapshot, now_ms, area.width, room, fit.with_sessions),
+        ),
     };
     if fit.with_sessions {
         sessions::draw(
@@ -308,6 +318,7 @@ fn compact_lines(
     snapshot: &Snapshot,
     now_ms: i64,
     width: u16,
+    before_today: bool,
 ) -> Vec<(&AccountToday, Vec<Line<'static>>)> {
     let inner_width = inner(width);
     snapshot
@@ -322,6 +333,9 @@ fn compact_lines(
                 inner_width,
                 LimitLayout::Stacked,
             );
+            if before_today {
+                lines.push(Line::default());
+            }
             lines.extend(today_lines(account, &snapshot.problems, inner_width, true));
             (account, lines)
         })
@@ -329,29 +343,96 @@ fn compact_lines(
 }
 
 fn compact_height(snapshot: &Snapshot, now_ms: i64, width: u16) -> u16 {
-    let blocks: usize = compact_lines(snapshot, now_ms, width)
+    let blocks: usize = compact_lines(snapshot, now_ms, width, false)
         .iter()
         .map(|(_, lines)| lines.len() + BORDER_ROWS)
         .sum();
     blocks as u16 + SUMMARY_ROWS
 }
 
-fn draw_compact(frame: &mut Frame, area: Rect, snapshot: &Snapshot, now_ms: i64) -> Rect {
-    let blocks = compact_lines(snapshot, now_ms, area.width);
-    let mut constraints = vec![Constraint::Length(SUMMARY_ROWS)];
-    constraints.extend(
-        blocks
-            .iter()
-            .map(|(_, lines)| Constraint::Length((lines.len() + BORDER_ROWS) as u16)),
+#[derive(Clone, Copy, Default)]
+struct Spacing {
+    between_boxes: bool,
+    before_today: bool,
+}
+
+impl Spacing {
+    fn rows(self, accounts: u16) -> u16 {
+        let between = if self.between_boxes {
+            accounts.saturating_sub(1)
+        } else {
+            0
+        };
+        let before = if self.before_today { accounts } else { 0 };
+        between + before
+    }
+}
+
+fn compact_spacing(
+    snapshot: &Snapshot,
+    now_ms: i64,
+    width: u16,
+    room: u16,
+    with_sessions: bool,
+) -> Spacing {
+    if !with_sessions {
+        return Spacing::default();
+    }
+    let accounts = snapshot.accounts.len() as u16;
+    let overview = compact_height(snapshot, now_ms, width);
+    let unspaced_room = room.saturating_sub(overview + HISTORY_MIN_HEIGHT);
+    let sessions = sessions::height(
+        &Running::every(&snapshot.accounts),
+        width,
+        unspaced_room,
+        false,
     );
-    constraints.push(Constraint::Fill(1));
-    let areas = Layout::vertical(constraints).split(area);
-    frame.render_widget(Paragraph::new(strip(snapshot)), areas[0]);
+    let base = overview + sessions + HISTORY_MIN_HEIGHT;
+    [
+        Spacing {
+            between_boxes: true,
+            before_today: true,
+        },
+        Spacing {
+            between_boxes: true,
+            before_today: false,
+        },
+    ]
+    .into_iter()
+    .find(|spacing| base + spacing.rows(accounts) <= room)
+    .unwrap_or_default()
+}
+
+fn draw_compact(
+    frame: &mut Frame,
+    area: Rect,
+    snapshot: &Snapshot,
+    now_ms: i64,
+    spacing: Spacing,
+) -> Rect {
+    let blocks = compact_lines(snapshot, now_ms, area.width, spacing.before_today);
+    let gap = u16::from(spacing.between_boxes);
+    let bottom = area.bottom();
+    let row = |y: u16, height: u16| Rect {
+        y,
+        height: height.min(bottom.saturating_sub(y)),
+        ..area
+    };
+    frame.render_widget(Paragraph::new(strip(snapshot)), row(area.y, SUMMARY_ROWS));
+    let mut y = area.y + SUMMARY_ROWS;
     for (index, (account, lines)) in blocks.into_iter().enumerate() {
+        if index > 0 {
+            y += gap;
+        }
+        let block = row(y, (lines.len() + BORDER_ROWS) as u16);
+        if block.height == 0 {
+            break;
+        }
+        y += block.height;
         frame.render_widget(
             Paragraph::new(lines).block(section(&account.account_label)),
-            areas[index + 1],
+            block,
         );
     }
-    areas[areas.len() - 1]
+    row(y.min(bottom), bottom.saturating_sub(y))
 }

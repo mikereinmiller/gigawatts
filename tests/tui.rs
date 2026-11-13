@@ -2805,6 +2805,37 @@ fn a_stacked_limit_too_narrow_for_its_status_puts_it_on_the_next_row() {
 }
 
 #[test]
+fn stacked_accounts_get_a_blank_row_between_them_when_the_window_has_room() {
+    let roomy = three_accounts_screen(150, 50);
+    let tight = three_accounts_screen(80, 40);
+    let gap_before = |shown: &str, label: &str| {
+        let lines: Vec<&str> = shown.lines().collect();
+        let at = lines.iter().position(|line| line.contains(label)).unwrap();
+        lines[at - 1]
+            .trim_matches(|c| c == '"' || c == ' ')
+            .is_empty()
+    };
+
+    assert!(gap_before(&roomy, "╭ work "), "{roomy}");
+    assert!(gap_before(&roomy, "╭ side "), "{roomy}");
+    assert!(!gap_before(&tight, "╭ work "), "{tight}");
+}
+
+#[test]
+fn stacked_accounts_too_tall_for_the_window_cut_the_last_box_not_the_first() {
+    let shown = three_accounts_screen(80, 26);
+    let personal_box: String = shown
+        .lines()
+        .skip_while(|line| !line.contains("╭ personal "))
+        .take_while(|line| !line.contains("╭ work "))
+        .collect();
+
+    assert!(personal_box.contains("Weekly, Fable"), "{shown}");
+    assert!(personal_box.contains("$14.20  estimated"), "{shown}");
+    assert!(shown.contains("╭ side "), "{shown}");
+}
+
+#[test]
 fn stacked_limit_bars_leave_a_gap_above_so_bars_on_next_rows_stay_apart() {
     let stacked = three_accounts_screen(150, 50);
     let one = screen(&open(snapshot(vec![personal()]), None), 80, 24);
@@ -2904,6 +2935,35 @@ fn stacked_today_has_its_own_header_and_starts_at_the_left_edge() {
         "{shown}"
     );
     assert!(!shown.contains("usual is provisional"), "{shown}");
+}
+
+#[test]
+fn stacked_today_gets_a_blank_row_above_it_only_after_the_boxes_have_their_gaps() {
+    let today_gap = |shown: &str| {
+        let lines: Vec<&str> = shown.lines().collect();
+        let at = lines
+            .iter()
+            .position(|line| line.contains("│ Today"))
+            .unwrap();
+        lines[at - 1]
+            .trim_matches(|c| c == '"' || c == ' ' || c == '│')
+            .is_empty()
+    };
+    let box_gap = |shown: &str| {
+        let lines: Vec<&str> = shown.lines().collect();
+        let at = lines
+            .iter()
+            .position(|line| line.contains("╭ work "))
+            .unwrap();
+        lines[at - 1]
+            .trim_matches(|c| c == '"' || c == ' ')
+            .is_empty()
+    };
+    let roomy = with_a_filling_limit_screen(100, 58);
+    let tighter = with_a_filling_limit_screen(100, 56);
+
+    assert!(today_gap(&roomy) && box_gap(&roomy), "{roomy}");
+    assert!(!today_gap(&tighter) && box_gap(&tighter), "{tighter}");
 }
 
 fn reset_session_screen(width: u16, height: u16) -> String {
@@ -3062,6 +3122,40 @@ fn credits_in_the_millions_group_every_three_digits() {
 }
 
 #[test]
+fn stacked_spacing_never_hides_a_running_session_card() {
+    let mut busy = personal();
+    busy.active_sessions = (0..8)
+        .map(|n| session(&format!("Task {n}"), "orchard", "main", 0.1, 1.0 + n as f64))
+        .collect();
+    let mut side = personal();
+    side.account = Some(NEW.to_string());
+    side.account_label = "side".to_string();
+    side.active_sessions = Vec::new();
+    let mut app = with_spending(open(snapshot(vec![busy, work(), side]), None));
+    app.handle(KeyCode::Char('a').into());
+    answer(&mut app);
+
+    let shown = screen(&app, 100, 53);
+    let lines: Vec<&str> = shown.lines().collect();
+    let work_box = lines
+        .iter()
+        .position(|line| line.contains("╭ work "))
+        .unwrap();
+
+    assert_eq!(
+        shown.matches("personal · orchard · main").count(),
+        4,
+        "{shown}"
+    );
+    assert!(
+        !lines[work_box - 1]
+            .trim_matches(|c| c == '"' || c == ' ')
+            .is_empty(),
+        "{shown}"
+    );
+}
+
+#[test]
 fn help_explains_the_every_account_bar_too() {
     let mut app = open(snapshot(vec![personal(), work()]), None);
     app.handle(KeyCode::Char('?').into());
@@ -3072,4 +3166,38 @@ fn help_explains_the_every_account_bar_too() {
         shown.contains("▌       expected use by now; a bold ▆ in the all view"),
         "{shown}"
     );
+}
+
+#[test]
+fn stacked_spacing_never_hides_a_session_card_beside_the_spending_table() {
+    let mut busy = personal();
+    busy.active_sessions = (0..8)
+        .map(|n| session(&format!("Task {n}"), "orchard", "main", 0.1, 1.0 + n as f64))
+        .collect();
+    let mut accounts = vec![busy, work()];
+    for (id, label) in [(NEW, "side"), (PERSONAL, "spare")] {
+        let mut extra = personal();
+        extra.account = Some(format!("{id}-{label}"));
+        extra.account_label = label.to_string();
+        extra.active_sessions = Vec::new();
+        accounts.push(extra);
+    }
+    let mut app = with_spending(open(snapshot(accounts), None));
+    app.handle(KeyCode::Char('a').into());
+    answer(&mut app);
+
+    for height in 50..80 {
+        let shown = screen(&app, 200, height);
+        let lines: Vec<&str> = shown.lines().collect();
+        let work_box = lines
+            .iter()
+            .position(|line| line.contains("╭ work "))
+            .unwrap();
+        assert!(
+            !lines[work_box - 1]
+                .trim_matches(|c| c == '"' || c == ' ')
+                .is_empty(),
+            "height {height}\n{shown}"
+        );
+    }
 }
