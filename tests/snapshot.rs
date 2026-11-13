@@ -31,6 +31,17 @@ fn local_noon_in_utc(store_day: &str, days_back: i64) -> String {
         .unwrap()
 }
 
+fn days_before(store_day: &str, days: i64) -> String {
+    rusqlite::Connection::open_in_memory()
+        .unwrap()
+        .query_row(
+            "SELECT date(?1, ?2 || ' days')",
+            rusqlite::params![store_day, -days],
+            |row| row.get(0),
+        )
+        .unwrap()
+}
+
 fn local_ms(store_day: &str, clock: &str) -> i64 {
     rusqlite::Connection::open_in_memory()
         .unwrap()
@@ -99,6 +110,7 @@ fn the_snapshot_carries_each_tracked_accounts_spend_today_and_the_engines_proble
         dir.path(),
     )
     .unwrap();
+    let week_ago = days_before(&today, 7);
     let now_ms = local_ms(&today, "12:10:00");
     let two_days_ms = 2 * 24 * 3_600_000;
     let weekly = Limit {
@@ -179,6 +191,8 @@ fn the_snapshot_carries_each_tracked_accounts_spend_today_and_the_engines_proble
                         clock: "12:10".to_string(),
                         weekend: false,
                         earlier_days_usd: vec![0.014],
+                        earlier_day_totals_usd: vec![0.014],
+                        earlier_days: vec![week_ago.clone()],
                     },
                     fastest_session: Some(s1.clone()),
                     active_sessions: vec![s1],
@@ -215,6 +229,8 @@ fn the_snapshot_carries_each_tracked_accounts_spend_today_and_the_engines_proble
                         clock: "12:10".to_string(),
                         weekend: false,
                         earlier_days_usd: vec![0.014],
+                        earlier_day_totals_usd: vec![0.014],
+                        earlier_days: vec![week_ago.clone()],
                     },
                     fastest_session: None,
                     active_sessions: Vec::new(),

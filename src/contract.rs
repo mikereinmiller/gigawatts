@@ -364,6 +364,10 @@ pub struct DollarPace {
     #[serde(default)]
     pub earlier_days_usd: Vec<f64>,
     #[serde(default)]
+    pub earlier_day_totals_usd: Vec<f64>,
+    #[serde(default)]
+    pub earlier_days: Vec<String>,
+    #[serde(default)]
     pub weekend: bool,
 }
 

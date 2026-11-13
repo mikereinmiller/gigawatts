@@ -70,6 +70,8 @@ fn usual(today_usd: f64, usual_usd: Option<f64>, usual_days: u32) -> DollarPace 
         clock: "12:10".to_string(),
         weekend: false,
         earlier_days_usd: Vec::new(),
+        earlier_day_totals_usd: Vec::new(),
+        earlier_days: Vec::new(),
     }
 }
 

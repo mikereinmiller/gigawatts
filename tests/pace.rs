@@ -141,6 +141,15 @@ fn dollar_pace_compares_today_with_the_median_of_the_last_20_workdays_by_this_cl
                 20.0, 19.0, 18.0, 17.0, 16.0, 15.0, 14.0, 13.0, 12.0, 11.0, 10.0, 9.0, 8.0, 7.0,
                 6.0, 5.0, 4.0, 3.0, 2.0, 1.0,
             ],
+            earlier_day_totals_usd: vec![
+                120.0, 119.0, 118.0, 117.0, 116.0, 115.0, 114.0, 113.0, 112.0, 111.0, 110.0, 109.0,
+                108.0, 107.0, 106.0, 105.0, 104.0, 103.0, 102.0, 101.0,
+            ],
+            earlier_days: workdays_newest_first
+                .iter()
+                .rev()
+                .map(|day| day.to_string())
+                .collect(),
         }
     );
     assert_eq!(pace.times_usual(), Some(2.0));

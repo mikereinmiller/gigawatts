@@ -28,6 +28,8 @@ pub struct ClockSpend {
     pub clock: String,
     pub today_usd: f64,
     pub earlier_days_usd: Vec<f64>,
+    pub earlier_day_totals_usd: Vec<f64>,
+    pub earlier_days: Vec<String>,
     pub weekend: bool,
 }
 
@@ -63,14 +65,18 @@ impl Store {
                         today_usd: 0.0,
                         weekend,
                         earlier_days_usd: Vec::new(),
+                        earlier_day_totals_usd: Vec::new(),
+                        earlier_days: Vec::new(),
                     });
                 }
             },
         };
         let mut spend_by = self.connection.prepare_cached(
-            "SELECT coalesce(sum(cost_usd), 0) FROM requests INDEXED BY requests_by_day
-             WHERE day = ?1 AND account_id IS ?2
-               AND time_ms <= unixepoch(?1 || ' ' || ?3, 'utc') * 1000 + 999",
+            "SELECT coalesce(sum(cost_usd)
+                        FILTER (WHERE time_ms <= unixepoch(?1 || ' ' || ?3, 'utc') * 1000 + 999), 0),
+                    coalesce(sum(cost_usd), 0)
+             FROM requests INDEXED BY requests_by_day
+             WHERE day = ?1 AND account_id IS ?2",
         )?;
         let today_usd: f64 =
             spend_by.query_row(params![today, account_id, clock], |row| row.get(0))?;
@@ -89,14 +95,21 @@ impl Store {
             })?
             .collect::<rusqlite::Result<_>>()?;
         let mut earlier_days_usd = Vec::new();
-        for day in days {
-            earlier_days_usd
-                .push(spend_by.query_row(params![day, account_id, clock], |row| row.get(0))?);
+        let mut earlier_day_totals_usd = Vec::new();
+        for day in &days {
+            let (by_clock, whole_day): (f64, f64) = spend_by
+                .query_row(params![day, account_id, clock], |row| {
+                    Ok((row.get(0)?, row.get(1)?))
+                })?;
+            earlier_days_usd.push(by_clock);
+            earlier_day_totals_usd.push(whole_day);
         }
         Ok(ClockSpend {
             clock: shown_clock,
             today_usd,
             earlier_days_usd,
+            earlier_day_totals_usd,
+            earlier_days: days,
             weekend,
         })
     }

@@ -17,13 +17,15 @@ pub fn dollar_pace(
         today_usd: spend.today_usd,
         usual_usd: median(spend.earlier_days_usd.clone()),
         usual_days: spend.earlier_days_usd.len() as u32,
+        earlier_days_usd: spend.earlier_days_usd.into_iter().rev().collect(),
         clock: spend.clock,
         weekend: spend.weekend,
-        earlier_days_usd: spend.earlier_days_usd.into_iter().rev().collect(),
+        earlier_day_totals_usd: spend.earlier_day_totals_usd.into_iter().rev().collect(),
+        earlier_days: spend.earlier_days.into_iter().rev().collect(),
     })
 }
 
-fn median(mut values: Vec<f64>) -> Option<f64> {
+pub fn median(mut values: Vec<f64>) -> Option<f64> {
     values.sort_by(f64::total_cmp);
     let middle = values.len() / 2;
     match values.len() {

@@ -170,6 +170,8 @@ fn no_pace() -> DollarPace {
         clock: String::new(),
         weekend: false,
         earlier_days_usd: Vec::new(),
+        earlier_day_totals_usd: Vec::new(),
+        earlier_days: Vec::new(),
     }
 }
 
