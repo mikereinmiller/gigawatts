@@ -981,7 +981,7 @@ pub(crate) fn clip_middle(text: &str, width: usize) -> String {
     format!("{start}…{end}")
 }
 
-pub(crate) fn help(frame: &mut Frame, area: Rect) {
+pub(crate) fn help(frame: &mut Frame, area: Rect, report_port: Option<u16>) {
     let key = |key: &'static str, what: &'static str| {
         Line::from(vec![
             Span::styled(format!("  {key:<8}"), KEY.add_modifier(Modifier::BOLD)),
@@ -994,7 +994,7 @@ pub(crate) fn help(frame: &mut Frame, area: Rect) {
             Span::raw(what),
         ])
     };
-    let lines = vec![
+    let mut lines = vec![
         key("1-9", "show that account; with up to 8, the next shows all"),
         key("[ ]", "step through the account tabs, including all"),
         key("a", "toggle the all view, with 9 or more accounts"),
@@ -1006,6 +1006,17 @@ pub(crate) fn help(frame: &mut Frame, area: Rect) {
         key("e", "show or hide every repo's branches"),
         key("s", "list every running session"),
         key("u", "show Anthropic's usage advice for today"),
+    ];
+    if let Some(port) = report_port {
+        lines.push(Line::from(vec![
+            Span::styled(
+                format!("  {:<8}", "report"),
+                KEY.add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(format!("http://127.0.0.1:{port}")),
+        ]));
+    }
+    lines.extend([
         key("?", "open or close this help"),
         key("Esc", "close help, advice, or the sessions list"),
         key("q", "quit (Ctrl-C too)"),
@@ -1024,7 +1035,7 @@ pub(crate) fn help(frame: &mut Frame, area: Rect) {
             Style::new().fg(OVER).add_modifier(Modifier::BOLD),
             "a session spending $20/hr or more",
         ),
-    ];
+    ]);
     let popup = super::centered(area, 64, lines.len() as u16 + 2);
     frame.render_widget(Clear, popup);
     frame.render_widget(Paragraph::new(lines).block(section("Keys")), popup);

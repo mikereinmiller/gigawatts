@@ -8,7 +8,7 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
-use crate::contract::{AccountToday, Snapshot};
+use crate::contract::{AccountToday, ProblemKind, Snapshot};
 use crate::problems;
 use crate::store::UsageAdvice;
 mod advice;
@@ -53,6 +53,7 @@ pub struct App {
     advice_wanted: bool,
     advice: Option<LoadedAdvice>,
     palette: Option<palette::Palette>,
+    report_port: Option<u16>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -96,6 +97,7 @@ impl App {
             advice_wanted: false,
             advice: None,
             palette: None,
+            report_port: None,
         };
         let accounts = std::mem::take(&mut app.snapshot.accounts);
         app.record_found(&accounts);
@@ -180,6 +182,20 @@ impl App {
 
     pub fn failed_to_save_announced(&mut self) {
         self.unsaved_announced = true;
+    }
+
+    pub fn set_report_port(&mut self, port: Option<u16>) {
+        self.report_port = port;
+    }
+
+    fn served_report_port(&self) -> Option<u16> {
+        let unavailable = self
+            .snapshot
+            .problems
+            .iter()
+            .any(|problem| problem.kind == ProblemKind::ReportUnavailable);
+        self.report_port
+            .filter(|_| self.engine_running && !unavailable)
     }
 
     pub fn set_engine_running(&mut self, running: bool) {
@@ -449,7 +465,7 @@ impl App {
         frame.render_widget(Paragraph::new(notices), bottom);
         frame.render_widget(Paragraph::new(self.key_strip(keys.width)), keys);
         if self.help {
-            sections::help(frame, frame.area());
+            sections::help(frame, frame.area(), self.served_report_port());
         }
         if self.advice_open {
             advice::draw(frame, frame.area(), self.advice.as_ref(), now_ms);
@@ -657,6 +673,16 @@ impl App {
         for (key, what) in shown {
             spans.push(Span::styled(key, KEY.add_modifier(Modifier::BOLD)));
             spans.push(Span::styled(format!(" {what}   "), MUTED));
+        }
+        if let Some(port) = self.served_report_port() {
+            let url = format!("http://127.0.0.1:{port}");
+            let used: usize = spans.iter().map(|span| span.content.chars().count()).sum();
+            let free = (width as usize).saturating_sub(used);
+            if free > url.len() {
+                spans.push(Span::raw(" ".repeat(free - url.len() - 1)));
+                spans.push(Span::styled(url, MUTED.add_modifier(Modifier::UNDERLINED)));
+                spans.push(Span::raw(" "));
+            }
         }
         Line::from(spans)
     }

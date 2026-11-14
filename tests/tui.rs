@@ -3445,3 +3445,59 @@ fn stacked_spacing_never_hides_a_session_card_beside_the_spending_table() {
         );
     }
 }
+
+#[test]
+fn the_footer_and_help_show_the_report_page_address_when_the_footer_has_room() {
+    let mut app = open(snapshot(vec![personal()]), None);
+    app.set_report_port(Some(7878));
+
+    let wide = screen(&app, 160, 24);
+    let narrow = screen(&app, 60, 24);
+    app.handle(KeyCode::Char('?').into());
+    let help = screen(&app, 80, 24);
+
+    assert!(wide.contains("q quit"), "{wide}");
+    assert!(wide.contains("http://127.0.0.1:7878"), "{wide}");
+    assert!(!narrow.contains("http://127.0.0.1"), "{narrow}");
+    assert!(narrow.contains("q quit"), "{narrow}");
+    assert!(help.contains("report  http://127.0.0.1:7878"), "{help}");
+    assert!(help.contains("q       quit"), "{help}");
+}
+
+#[test]
+fn with_the_report_page_off_neither_the_footer_nor_help_shows_its_address() {
+    let mut app = open(snapshot(vec![personal()]), None);
+    app.set_report_port(None);
+
+    let footer = screen(&app, 160, 24);
+    app.handle(KeyCode::Char('?').into());
+    let help = screen(&app, 80, 24);
+
+    assert!(!footer.contains("http://127.0.0.1"), "{footer}");
+    assert!(!help.contains("http://127.0.0.1"), "{help}");
+}
+
+#[test]
+fn the_report_page_address_is_hidden_while_the_engine_is_not_serving_that_port() {
+    let mut moved = snapshot(vec![personal()]);
+    moved.problems.push(problem(
+        ProblemKind::ReportUnavailable,
+        "the report page: the engine is still serving the report page on port 7878",
+        None,
+        "`report_port` in ~/.config/gigawatts/config.toml is now port 9000, and the engine reads it only when it starts",
+    ));
+    let mut port_moved = open(moved, None);
+    port_moved.set_report_port(Some(9000));
+    let mut stopped = open(snapshot(vec![personal()]), None);
+    stopped.set_report_port(Some(7878));
+    stopped.set_engine_running(false);
+
+    for app in [&mut port_moved, &mut stopped] {
+        let footer = screen(app, 160, 24);
+        app.handle(KeyCode::Char('?').into());
+        let help = screen(app, 80, 24);
+
+        assert!(!footer.contains("http://127.0.0.1"), "{footer}");
+        assert!(!help.contains("http://127.0.0.1"), "{help}");
+    }
+}
