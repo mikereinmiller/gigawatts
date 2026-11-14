@@ -320,7 +320,7 @@ fn a_taken_port_leaves_the_engine_running_with_a_problem() {
     let stopped = gigawatts(&home.path, &["stop"]);
     assert_eq!(
         String::from_utf8_lossy(&stopped.stdout),
-        "Stopped the engine.\n"
+        "Stopped the engine. The flux capacitor is cooling down.\n"
     );
 }
 

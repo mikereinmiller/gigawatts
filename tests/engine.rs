@@ -133,7 +133,11 @@ fn the_engine_keeps_the_snapshot_current_until_stopped() {
     assert_eq!(stdout(&again), "The engine is already running.\n");
 
     let stopped = gigawatts(&home.path, &["stop"]);
-    assert_eq!(stdout(&stopped), "Stopped the engine.\n", "{stopped:?}");
+    assert_eq!(
+        stdout(&stopped),
+        "Stopped the engine. The flux capacitor is cooling down.\n",
+        "{stopped:?}"
+    );
     assert!(!EngineLock::is_held(&paths.lock()).unwrap());
     assert!(!paths.socket().exists());
     let stopped_again = gigawatts(&home.path, &["stop"]);
@@ -605,7 +609,11 @@ fn stop_reaches_an_engine_that_holds_the_lock_but_isnt_listening_yet() {
 
     let stopped = gigawatts(&home.path, &["stop"]);
 
-    assert_eq!(stdout(&stopped), "Stopped the engine.\n", "{stopped:?}");
+    assert_eq!(
+        stdout(&stopped),
+        "Stopped the engine. The flux capacitor is cooling down.\n",
+        "{stopped:?}"
+    );
 }
 
 #[test]

@@ -905,7 +905,7 @@ fn paths() -> engine::Paths {
 fn stop() -> ExitCode {
     match engine::stop(&paths()) {
         Ok(true) => {
-            println!("Stopped the engine.");
+            println!("Stopped the engine. The flux capacitor is cooling down.");
             ExitCode::SUCCESS
         }
         Ok(false) => {
