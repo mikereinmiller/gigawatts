@@ -113,6 +113,10 @@ Gigawatts does the math; an agent can do the interpreting. Any agent that can ru
 - "Compare this month's spend by repo with last month's using `gigawatts data`, and point out anything that jumped."
 - "Use `gigawatts data --range month --by repo --drill <repo> --json` to tell me which branches in this repo were the most expensive."
 
+## Build on it
+
+[`docs/integrations.md`](docs/integrations.md) explains the JSON commands, what each field means, and how to show alerts, for anyone building a pane, a status bar, or a script on Gigawatts' numbers. Point an agent at it.
+
 ## License
 
 MIT. See [`LICENSE`](LICENSE).
