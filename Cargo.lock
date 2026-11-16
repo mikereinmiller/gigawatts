@@ -673,7 +673,7 @@ dependencies = [
 
 [[package]]
 name = "gigawatts"
-version = "0.1.21"
+version = "0.1.22"
 dependencies = [
  "clap",
  "insta",

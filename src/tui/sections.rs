@@ -767,6 +767,12 @@ pub(crate) fn today_panel(
     }
     lines.push(Line::default());
     lines.push(Line::from(against_usual(&account.pace)));
+    if let Some(projected) = projected_day_usd(account) {
+        lines.push(Line::styled(
+            format!("on pace for ~${projected:.0} today"),
+            MUTED,
+        ));
+    }
     for text in spend_markers(account, problems) {
         lines.extend(wrapped(&text, width, PROBLEM));
     }
@@ -775,6 +781,12 @@ pub(crate) fn today_panel(
         lines.extend(daily_chart(&account.pace, budget, width, emphasis));
     }
     lines
+}
+
+fn projected_day_usd(account: &AccountToday) -> Option<f64> {
+    let usual_by_now = account.pace.usual_usd?;
+    let usual_day = crate::pace::median(account.pace.earlier_day_totals_usd.clone())?;
+    Some(account.cost_usd + (usual_day - usual_by_now).max(0.0))
 }
 
 fn daily_chart(
@@ -804,7 +816,7 @@ fn daily_chart(
     };
     let chart_width = (shown + 1) * day_width - SPARK_DAY_GAP;
     let mut title = format!("Last {shown} {}", day_kind(pace));
-    if let Some(usual) = crate::pace::median(earlier.to_vec()) {
+    if let Some(usual) = crate::pace::median(totals.clone()) {
         title.push_str(&format!(" · usual day ${usual:.0}"));
     }
     let scale = format!("max ${biggest_day:.0}");

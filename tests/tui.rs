@@ -1967,6 +1967,57 @@ fn todays_spend_is_drawn_in_large_digits_above_how_it_compares_with_usual() {
     );
 }
 
+fn heading_for(usual_by_now: Option<f64>, usual_days: &[f64]) -> AccountToday {
+    let mut account = personal();
+    account.pace.usual_usd = usual_by_now;
+    account.pace.earlier_day_totals_usd = usual_days.to_vec();
+    account
+}
+
+#[test]
+fn today_says_what_the_day_costs_if_the_rest_of_it_goes_as_usual() {
+    let account = heading_for(Some(4.0), &[9.0, 10.0, 11.0]);
+
+    let shown = screen(&open(snapshot(vec![account]), None), 160, 40);
+
+    assert!(shown.contains("on pace for ~$20 today"), "{shown}");
+}
+
+#[test]
+fn a_day_already_past_its_usual_total_is_on_pace_for_what_it_has_spent() {
+    let account = heading_for(Some(12.0), &[9.0, 10.0, 11.0]);
+
+    let shown = screen(&open(snapshot(vec![account]), None), 160, 40);
+
+    assert!(shown.contains("on pace for ~$14 today"), "{shown}");
+}
+
+#[test]
+fn the_day_is_on_pace_from_its_whole_spend_including_what_the_transcripts_left_out() {
+    let mut account = heading_for(Some(4.0), &[9.0, 10.0, 11.0]);
+    account.cost_usd = 20.0;
+
+    let shown = screen(&open(snapshot(vec![account]), None), 160, 40);
+
+    assert!(shown.contains("on pace for ~$26 today"), "{shown}");
+}
+
+#[test]
+fn with_no_earlier_days_today_says_nothing_about_its_pace() {
+    let account = heading_for(None, &[]);
+
+    let shown = screen(&open(snapshot(vec![account]), None), 160, 40);
+
+    assert!(!shown.contains("on pace for"), "{shown}");
+}
+
+#[test]
+fn each_accounts_column_says_what_its_day_is_on_pace_for() {
+    let shown = every_account_screen(100, 56);
+
+    assert!(shown.contains("on pace for ~$14 today"), "{shown}");
+}
+
 #[test]
 fn the_daily_chart_shows_each_earlier_days_total_ending_with_today_so_far() {
     let app = open(snapshot(vec![personal()]), None);
@@ -2001,6 +2052,19 @@ fn the_daily_chart_fits_the_days_the_pane_has_room_for() {
     let shown = screen(&app, 120, 40);
 
     assert!(shown.contains("Last 15 workdays · usual day $"), "{shown}");
+}
+
+#[test]
+fn the_daily_charts_usual_day_counts_every_earlier_day_even_ones_it_has_no_room_for() {
+    let mut account = personal();
+    account.pace.earlier_day_totals_usd = [vec![50.0; 10], vec![10.0; 10]].concat();
+
+    let shown = screen(&open(snapshot(vec![account]), None), 120, 40);
+
+    assert!(
+        shown.contains("Last 15 workdays · usual day $30"),
+        "{shown}"
+    );
 }
 
 #[test]
