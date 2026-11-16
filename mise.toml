@@ -1,2 +1,10 @@
 [tools]
 rust = "stable"
+
+[tasks.install]
+description = "Build and install gigawatts, then restart the engine on the new binary"
+run = [
+  "cargo install --path . --locked --root \"${CARGO_HOME:-$HOME/.cargo}\"",
+  "${CARGO_HOME:-$HOME/.cargo}/bin/gigawatts stop",
+  "${CARGO_HOME:-$HOME/.cargo}/bin/gigawatts engine",
+]
