@@ -20,3 +20,4 @@ For a Herdr mod, a status bar, a script, a dashboard, or any other reader: read 
   - Adding a field keeps `schema_version`. Removing or renaming one, or changing what it means, raises it.
   - A change readers would notice gets a matching edit to `docs/integrations.md`.
 - Gigawatts reads Claude Code's files and never writes to them, and never reads its login token.
+- Names from the author's own projects, work, and accounts (repos, branches, tickets, custom skills, employers) are replaced with invented ones in tests, fixtures, docs, and plans. Gigawatts' own repo, the public projects the docs cite, and Claude Code's built-in names stay real. Captured data goes through `gigawatts scrub` before it's committed.
