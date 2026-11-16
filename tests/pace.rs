@@ -4,7 +4,8 @@ use std::path::Path;
 use gigawatts::accounts::Attribution;
 use gigawatts::config::{Config, epoch_ms_from_text};
 use gigawatts::contract::{
-    DollarPace, Limit, LimitForecast, LimitPace, PaceBasis, PaceState, SessionSpend, Share,
+    DollarPace, ForecastBasis, Limit, LimitForecast, LimitPace, PaceBasis, PaceState, SessionSpend,
+    Share,
 };
 use gigawatts::ingest::ingest_tree;
 use gigawatts::pace::{active_sessions, dollar_pace, fastest_session, limit_forecast, limit_pace};
@@ -254,7 +255,166 @@ fn the_5_hour_limit_compares_with_even_pace_through_its_window() {
 fn forecast_at(limit: &Limit, fetched_at: &str) -> Option<LimitForecast> {
     let fetched_at_ms = utc_ms(fetched_at);
     let pace = limit_pace(limit, fetched_at_ms, fetched_at_ms, &[], None).unwrap();
-    limit_forecast(limit, &pace, fetched_at_ms)
+    limit_forecast(limit, &pace, fetched_at_ms, &[])
+}
+
+fn session_point(fetched_at: &str, percent: f64) -> LimitPoint {
+    LimitPoint {
+        kind: "session".to_string(),
+        scope: None,
+        fetched_at_ms: utc_ms(fetched_at),
+        percent,
+        resets_at: None,
+    }
+}
+
+fn forecast_with(limit: &Limit, fetched_at: &str, recent: &[LimitPoint]) -> Option<LimitForecast> {
+    let fetched_at_ms = utc_ms(fetched_at);
+    let pace = limit_pace(limit, fetched_at_ms, fetched_at_ms, &[], None).unwrap();
+    limit_forecast(limit, &pace, fetched_at_ms, recent)
+}
+
+fn window_forecast(full_at: &str) -> Option<LimitForecast> {
+    Some(LimitForecast {
+        full_at_ms: utc_ms(full_at),
+        basis: ForecastBasis::Window,
+    })
+}
+
+#[test]
+fn a_burst_in_the_last_30_minutes_forecasts_100_percent_when_the_window_rate_resets_first() {
+    let limit = timed_limit("session", 40.0, "2026-11-11T15:00:00Z");
+
+    let forecast = forecast_with(
+        &limit,
+        "2026-11-11T12:00:00Z",
+        &[session_point("2026-11-11T11:20:00Z", 25.0)],
+    );
+
+    assert_eq!(
+        forecast,
+        Some(LimitForecast {
+            full_at_ms: utc_ms("2026-11-11T14:00:00Z"),
+            basis: ForecastBasis::Recent,
+        })
+    );
+}
+
+#[test]
+fn the_window_rate_wins_when_it_reaches_100_percent_first() {
+    let limit = timed_limit("session", 60.0, "2026-11-11T15:00:00Z");
+
+    let forecast = forecast_with(
+        &limit,
+        "2026-11-11T12:00:00Z",
+        &[session_point("2026-11-11T11:20:00Z", 50.0)],
+    );
+
+    assert_eq!(forecast, window_forecast("2026-11-11T13:20:00Z"));
+}
+
+#[test]
+fn no_change_in_the_last_30_minutes_falls_back_to_the_window_rate() {
+    let limit = timed_limit("session", 60.0, "2026-11-11T15:00:00Z");
+
+    let forecast = forecast_with(
+        &limit,
+        "2026-11-11T12:00:00Z",
+        &[session_point("2026-11-11T11:00:00Z", 60.0)],
+    );
+
+    assert_eq!(forecast, window_forecast("2026-11-11T13:20:00Z"));
+}
+
+#[test]
+fn there_is_no_recent_rate_until_30_minutes_of_the_window_have_passed() {
+    let limit = timed_limit("session", 20.0, "2026-11-11T15:00:00Z");
+
+    let forecast = forecast_with(
+        &limit,
+        "2026-11-11T10:20:00Z",
+        &[session_point("2026-11-11T09:40:00Z", 0.0)],
+    );
+
+    assert_eq!(forecast, None);
+}
+
+#[test]
+fn a_reading_from_the_previous_window_counts_as_0_percent() {
+    let limit = timed_limit("session", 30.0, "2026-11-11T15:00:00Z");
+
+    let forecast = forecast_with(
+        &limit,
+        "2026-11-11T10:40:00Z",
+        &[session_point("2026-11-11T09:55:00Z", 70.0)],
+    );
+
+    assert_eq!(
+        forecast,
+        Some(LimitForecast {
+            full_at_ms: utc_ms("2026-11-11T11:50:00Z"),
+            basis: ForecastBasis::Recent,
+        })
+    );
+}
+
+#[test]
+fn a_changed_reading_followed_by_a_fetch_gap_gives_no_recent_rate() {
+    let limit = timed_limit("session", 40.0, "2026-11-11T15:00:00Z");
+
+    let forecast = forecast_with(
+        &limit,
+        "2026-11-11T12:10:00Z",
+        &[session_point("2026-11-11T11:00:00Z", 10.0)],
+    );
+
+    assert_eq!(forecast, None);
+}
+
+#[test]
+fn a_reading_too_old_to_be_in_effect_30_minutes_ago_gives_no_recent_rate() {
+    let limit = timed_limit("session", 40.0, "2026-11-11T15:00:00Z");
+
+    let forecast = forecast_with(
+        &limit,
+        "2026-11-11T12:00:00Z",
+        &[session_point("2026-11-11T10:00:00Z", 10.0)],
+    );
+
+    assert_eq!(forecast, None);
+}
+
+#[test]
+fn a_one_point_tick_on_a_weekly_limit_forecasts_nothing() {
+    let limit = timed_limit("weekly_all", 20.0, "2026-11-08T04:00:00Z");
+
+    let forecast = forecast_with(
+        &limit,
+        "2026-11-03T04:00:00Z",
+        &[weekly_point("2026-11-03T03:25:00Z", 19.0)],
+    );
+
+    assert_eq!(forecast, None);
+}
+
+#[test]
+fn a_one_point_rise_in_30_minutes_forecasts_nothing_when_both_rates_reset_first() {
+    let limit = timed_limit("session", 10.0, "2026-11-11T15:00:00Z");
+
+    let forecast = forecast_with(
+        &limit,
+        "2026-11-11T12:00:00Z",
+        &[session_point("2026-11-11T11:20:00Z", 9.0)],
+    );
+
+    assert_eq!(forecast, None);
+}
+
+#[test]
+fn a_forecast_without_a_basis_reads_as_the_window_rate() {
+    let forecast: LimitForecast = serde_json::from_str(r#"{"full_at_ms": 1}"#).unwrap();
+
+    assert_eq!(forecast.basis, ForecastBasis::Window);
 }
 
 #[test]
@@ -267,6 +427,7 @@ fn a_session_limit_at_60_percent_two_hours_in_reaches_100_percent_80_minutes_lat
         forecast,
         Some(LimitForecast {
             full_at_ms: utc_ms("2026-11-11T13:20:00Z"),
+            basis: ForecastBasis::Window,
         })
     );
 }
@@ -280,6 +441,7 @@ fn a_limit_has_no_forecast_before_a_tenth_of_its_window_has_passed() {
         forecast_at(&limit, "2026-11-11T10:30:00Z"),
         Some(LimitForecast {
             full_at_ms: utc_ms("2026-11-11T11:00:00Z"),
+            basis: ForecastBasis::Window,
         })
     );
 }
@@ -315,6 +477,7 @@ fn a_weekly_limit_at_40_percent_two_days_in_reaches_100_percent_on_day_five() {
         forecast_at(&limit, "2026-11-03T04:00:00Z"),
         Some(LimitForecast {
             full_at_ms: utc_ms("2026-11-06T04:00:00Z"),
+            basis: ForecastBasis::Window,
         })
     );
 }
@@ -327,9 +490,10 @@ fn monthly_credits_forecast_from_their_window_with_or_without_credit_reset() {
 
     assert!(unset.provisional);
     assert_eq!(
-        limit_forecast(&credits, &unset, unset_fetch),
+        limit_forecast(&credits, &unset, unset_fetch, &[]),
         Some(LimitForecast {
             full_at_ms: utc_ms("2026-11-16T00:00:00Z"),
+            basis: ForecastBasis::Window,
         })
     );
 
@@ -349,9 +513,10 @@ fn monthly_credits_forecast_from_their_window_with_or_without_credit_reset() {
     .unwrap();
 
     assert_eq!(
-        limit_forecast(&credits, &set_pace, set_fetch),
+        limit_forecast(&credits, &set_pace, set_fetch, &[]),
         Some(LimitForecast {
             full_at_ms: utc_ms("2026-11-25T00:00:00Z"),
+            basis: ForecastBasis::Window,
         })
     );
 }

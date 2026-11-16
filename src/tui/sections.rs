@@ -10,7 +10,7 @@ use crate::contract::{
 };
 use crate::limits::{age, credits_used, limit_name, percent, unusual_severity};
 use crate::pace::USUAL_DAYS;
-use crate::status::{MAY_MISS_OUTSIDE_USE_MS, has_reset, pace_phrase, resets_ms};
+use crate::status::{MAY_MISS_OUTSIDE_USE_MS, has_reset, pace_phrase, recent_suffix, resets_ms};
 
 use super::HISTORY_MIN_HEIGHT;
 use super::digits;
@@ -677,7 +677,8 @@ fn forecast_style(stale: bool) -> Style {
 }
 
 fn forecast(shown: &PacedLimit, now_ms: i64, local_minute: LocalMinute) -> Option<String> {
-    let full_at_ms = shown.forecast?.full_at_ms;
+    let forecast = shown.forecast?;
+    let full_at_ms = forecast.full_at_ms;
     if has_reset(shown, now_ms) {
         return None;
     }
@@ -691,7 +692,7 @@ fn forecast(shown: &PacedLimit, now_ms: i64, local_minute: LocalMinute) -> Optio
     } else {
         format!("by {clock}")
     };
-    Some(format!("100% {when}"))
+    Some(format!("100% {when}{}", recent_suffix(&forecast)))
 }
 
 fn resets(resets_ms: i64, now_ms: i64, local_minute: LocalMinute) -> String {

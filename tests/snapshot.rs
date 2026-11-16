@@ -3,9 +3,9 @@ use std::fs;
 use gigawatts::accounts::Attribution;
 use gigawatts::config::Config;
 use gigawatts::contract::{
-    AccountLimits, AccountToday, DollarPace, Limit, LimitForecast, LimitPace, LimitSource,
-    PaceBasis, PaceState, PacedLimit, Problem, ProblemKind, SCHEMA_VERSION, SessionSpend, Share,
-    Snapshot,
+    AccountLimits, AccountToday, DollarPace, ForecastBasis, Limit, LimitForecast, LimitPace,
+    LimitSource, PaceBasis, PaceState, PacedLimit, Problem, ProblemKind, SCHEMA_VERSION,
+    SessionSpend, Share, Snapshot,
 };
 use gigawatts::engine::snapshot;
 use gigawatts::ingest::ingest_tree;
@@ -300,6 +300,62 @@ fn a_limit_on_course_to_fill_carries_a_forecast_from_the_time_it_was_read() {
         limits.limits[0].forecast,
         Some(LimitForecast {
             full_at_ms: fetched_at_ms + 80 * 60_000,
+            basis: ForecastBasis::Window,
+        })
+    );
+}
+
+#[test]
+fn a_burst_in_the_last_30_minutes_gives_a_forecast_at_the_recent_pace() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut store = Store::open(&dir.path().join("history.sqlite3")).unwrap();
+    let today = store.local_today().unwrap();
+    let projects = dir.path().join("projects");
+    fs::create_dir_all(&projects).unwrap();
+    fs::write(
+        projects.join("s1.jsonl"),
+        request_line("r1", &local_noon_in_utc(&today, 0)),
+    )
+    .unwrap();
+    ingest(&mut store, &projects, &PriceTable::built_in(), ACCOUNT);
+    let fetched_at_ms = local_ms(&today, "12:00:00");
+    let minute_ms = 60_000;
+    let resets_at = utc_text(fetched_at_ms + 180 * minute_ms);
+    let session = |percent: f64| Limit {
+        kind: "session".to_string(),
+        group: None,
+        scope: None,
+        percent,
+        severity: None,
+        resets_at: Some(resets_at.clone()),
+        active: true,
+        credits: None,
+    };
+    for (at_ms, percent) in [
+        (fetched_at_ms - 40 * minute_ms, 30.0),
+        (fetched_at_ms, 60.0),
+    ] {
+        store
+            .record_limits(
+                &ACCOUNT.parse().unwrap(),
+                &LimitsReading {
+                    fetched_at_ms: at_ms,
+                    source: LimitSource::GetUsage,
+                    limits: vec![session(percent)],
+                },
+            )
+            .unwrap();
+    }
+    let config = Config::parse("", dir.path()).unwrap();
+
+    let built = snapshot::build(&store, &config, fetched_at_ms + 5 * minute_ms, &[]).unwrap();
+
+    let limits = built.accounts[0].limits.as_ref().unwrap();
+    assert_eq!(
+        limits.limits[0].forecast,
+        Some(LimitForecast {
+            full_at_ms: fetched_at_ms + 40 * minute_ms,
+            basis: ForecastBasis::Recent,
         })
     );
 }

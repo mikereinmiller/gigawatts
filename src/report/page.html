@@ -1041,7 +1041,7 @@ function summary(view) {
   }
   const closest = closestLimit(view);
   if (closest?.limit.forecast) {
-    sentences.push(`${limitName(closest.limit)} reaches 100% by ${localTime(closest.limit.forecast.full_at_ms)}, before it resets.`);
+    sentences.push(`${limitName(closest.limit)} reaches 100% by ${localTime(closest.limit.forecast.full_at_ms)}${recentPace(closest.limit.forecast)}, before it resets.`);
   } else if (closest) {
     const headed = headedFor(closest.limit, closest.limits.fetched_at_ms);
     if (headed !== null) sentences.push(`${limitName(closest.limit)} is headed for about ${percent(Math.min(headed, 999))} at its reset.`);
@@ -1219,10 +1219,14 @@ function weekdayTile(credits, view) {
   return tile('Per weekday left', dollars(perDay, 0), subs);
 }
 
+function recentPace(forecast) {
+  return forecast.basis === 'recent' ? " at the last 30m's pace" : '';
+}
+
 function limitTile({limit, limits}) {
   const subs = [];
   const headed = headedFor(limit, limits.fetched_at_ms);
-  if (limit.forecast) subs.push([`100% by ${localTime(limit.forecast.full_at_ms)}`, 'status-line critical']);
+  if (limit.forecast) subs.push([`100% by ${localTime(limit.forecast.full_at_ms)}${recentPace(limit.forecast)}`, 'status-line critical']);
   else if (headed !== null) subs.push(headed >= 100 ? [`Headed past 100% before the reset`, 'status-line warning'] : `Headed for about ${percent(headed)} at the reset`);
   if (limit.resets_at) subs.push('Resets ' + localTime(Date.parse(limit.resets_at)));
   if (limit.pace) subs.push([`Mark shows even pace (${percent(limit.pace.expected_percent)}) · from ${limitAge(limits)}`, 'faint']);

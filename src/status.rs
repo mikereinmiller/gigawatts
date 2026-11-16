@@ -1,5 +1,8 @@
 use crate::config::epoch_ms_from_text;
-use crate::contract::{AccountToday, DollarPace, LimitPace, PaceBasis, PaceState, PacedLimit};
+use crate::contract::{
+    AccountToday, DollarPace, ForecastBasis, LimitForecast, LimitPace, PaceBasis, PaceState,
+    PacedLimit,
+};
 use crate::limits::{age, limit_name, percent};
 use crate::pace::USUAL_DAYS;
 
@@ -99,7 +102,18 @@ fn closest_limit(shown: &PacedLimit) -> String {
 
 fn forecast_phrase(shown: &PacedLimit, local_minute: &dyn Fn(i64) -> String) -> Option<String> {
     let forecast = shown.forecast?;
-    Some(format!("100% by {}", local_minute(forecast.full_at_ms)))
+    Some(format!(
+        "100% by {}{}",
+        local_minute(forecast.full_at_ms),
+        recent_suffix(&forecast)
+    ))
+}
+
+pub(crate) fn recent_suffix(forecast: &LimitForecast) -> &'static str {
+    match forecast.basis {
+        ForecastBasis::Window => "",
+        ForecastBasis::Recent => " at the last 30m's pace",
+    }
 }
 
 pub(crate) fn pace_phrase(pace: &LimitPace) -> String {

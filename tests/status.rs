@@ -1,6 +1,6 @@
 use gigawatts::contract::{
-    AccountLimits, AccountToday, Credits, DollarPace, Limit, LimitForecast, LimitPace, LimitSource,
-    PaceBasis, PaceState, PacedLimit,
+    AccountLimits, AccountToday, Credits, DollarPace, ForecastBasis, Limit, LimitForecast,
+    LimitPace, LimitSource, PaceBasis, PaceState, PacedLimit,
 };
 use gigawatts::status::render_line;
 
@@ -118,6 +118,7 @@ fn a_limit_on_course_to_fill_before_its_reset_says_when_it_reaches_100_percent()
     );
     session.forecast = Some(LimitForecast {
         full_at_ms: NOW_MS + 40 * 60_000,
+        basis: ForecastBasis::Window,
     });
     let limits = AccountLimits {
         source: LimitSource::GetUsage,
@@ -137,6 +138,22 @@ fn a_limit_on_course_to_fill_before_its_reset_says_when_it_reaches_100_percent()
     );
 }
 
+#[test]
+fn a_forecast_from_the_last_30_minutes_says_so() {
+    let mut session = session_filling_by_18_50(60.0);
+    session.forecast = Some(LimitForecast {
+        full_at_ms: NOW_MS + 40 * 60_000,
+        basis: ForecastBasis::Recent,
+    });
+
+    let line = line_for(vec![session]);
+
+    assert!(
+        line.contains("100% by 2026-11-04 18:50 at the last 30m's pace, resets"),
+        "{line}"
+    );
+}
+
 fn session_filling_by_18_50(percent: f64) -> PacedLimit {
     let mut session = timed(
         "session",
@@ -146,6 +163,7 @@ fn session_filling_by_18_50(percent: f64) -> PacedLimit {
     );
     session.forecast = Some(LimitForecast {
         full_at_ms: NOW_MS + 40 * 60_000,
+        basis: ForecastBasis::Window,
     });
     session
 }
@@ -206,7 +224,10 @@ fn weekly_filling_at(full_at_ms: i64) -> PacedLimit {
         "2026-11-08T02:59:59.945600+00:00",
         pace(PaceState::Over, PaceBasis::Usual, false),
     );
-    weekly.forecast = Some(LimitForecast { full_at_ms });
+    weekly.forecast = Some(LimitForecast {
+        full_at_ms,
+        basis: ForecastBasis::Window,
+    });
     weekly
 }
 
@@ -255,6 +276,7 @@ fn a_credit_forecast_on_the_default_reset_has_no_caveat() {
             pace: pace(PaceState::Over, PaceBasis::Even, true),
             forecast: Some(LimitForecast {
                 full_at_ms: NOW_MS + 40 * 60_000,
+                basis: ForecastBasis::Window,
             }),
         }],
     };

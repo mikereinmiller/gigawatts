@@ -353,6 +353,16 @@ pub struct PacedLimit {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct LimitForecast {
     pub full_at_ms: i64,
+    #[serde(default)]
+    pub basis: ForecastBasis,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ForecastBasis {
+    #[default]
+    Window,
+    Recent,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]

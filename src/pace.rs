@@ -1,7 +1,8 @@
 use crate::config::{CreditReset, days_from_civil, epoch_ms_from_text};
 use crate::contract::{
-    DollarPace, Limit, LimitForecast, LimitPace, PaceBasis, PaceState, SessionSpend,
+    DollarPace, ForecastBasis, Limit, LimitForecast, LimitPace, PaceBasis, PaceState, SessionSpend,
 };
+use crate::limits::REFRESH_INTERVAL_MS;
 use crate::sources::claude_json::Account;
 use crate::store::{self, LimitPoint, Store};
 
@@ -101,22 +102,71 @@ pub fn limit_pace(
 }
 
 const FORECAST_AFTER_WINDOW_SHARE: f64 = 0.1;
+pub const RECENT_MS: i64 = 30 * 60_000;
+const FETCH_LATE_MS: i64 = 5 * 60_000;
 
 pub fn limit_forecast(
     limit: &Limit,
     pace: &LimitPace,
     fetched_at_ms: i64,
+    recent: &[LimitPoint],
 ) -> Option<LimitForecast> {
-    let elapsed_ms = (fetched_at_ms - pace.window_start_ms) as f64;
-    let window_ms = (pace.window_end_ms - pace.window_start_ms) as f64;
     if limit.percent <= 0.0 || limit.percent >= 100.0 {
         return None;
     }
+    let window = window_full_at(limit, pace, fetched_at_ms).map(|full_at_ms| LimitForecast {
+        full_at_ms,
+        basis: ForecastBasis::Window,
+    });
+    let recent =
+        recent_full_at(limit, pace, fetched_at_ms, recent).map(|full_at_ms| LimitForecast {
+            full_at_ms,
+            basis: ForecastBasis::Recent,
+        });
+    [window, recent]
+        .into_iter()
+        .flatten()
+        .filter(|forecast| forecast.full_at_ms < pace.window_end_ms)
+        .min_by_key(|forecast| forecast.full_at_ms)
+}
+
+fn window_full_at(limit: &Limit, pace: &LimitPace, fetched_at_ms: i64) -> Option<i64> {
+    let elapsed_ms = (fetched_at_ms - pace.window_start_ms) as f64;
+    let window_ms = (pace.window_end_ms - pace.window_start_ms) as f64;
     if elapsed_ms < window_ms * FORECAST_AFTER_WINDOW_SHARE {
         return None;
     }
-    let full_at_ms = pace.window_start_ms + (elapsed_ms * 100.0 / limit.percent).round() as i64;
-    (full_at_ms < pace.window_end_ms).then_some(LimitForecast { full_at_ms })
+    Some(pace.window_start_ms + (elapsed_ms * 100.0 / limit.percent).round() as i64)
+}
+
+fn recent_full_at(
+    limit: &Limit,
+    pace: &LimitPace,
+    fetched_at_ms: i64,
+    recent: &[LimitPoint],
+) -> Option<i64> {
+    let since_ms = fetched_at_ms - RECENT_MS;
+    if limit.kind != "session" || since_ms < pace.window_start_ms {
+        return None;
+    }
+    let then = recent
+        .iter()
+        .filter(|point| point.fetched_at_ms <= since_ms)
+        .max_by_key(|point| point.fetched_at_ms)?;
+    if since_ms - then.fetched_at_ms > REFRESH_INTERVAL_MS + FETCH_LATE_MS {
+        return None;
+    }
+    let then_percent = if then.fetched_at_ms < pace.window_start_ms {
+        0.0
+    } else {
+        then.percent
+    };
+    let rise = limit.percent - then_percent;
+    if rise <= 0.0 {
+        return None;
+    }
+    let left_ms = (100.0 - limit.percent) * RECENT_MS as f64 / rise;
+    Some(fetched_at_ms + left_ms.round() as i64)
 }
 
 fn usual_weekly_percent(

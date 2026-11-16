@@ -132,8 +132,17 @@ pub fn build(
                     &history,
                     credit_reset.as_ref(),
                 );
+                let recent = match limit.kind.as_str() {
+                    "session" => store.limit_series(
+                        &stored,
+                        &limit.kind,
+                        limit.scope.as_deref(),
+                        reading.fetched_at_ms - pace::RECENT_MS,
+                    )?,
+                    _ => Vec::new(),
+                };
                 let forecast = limit_pace.as_ref().and_then(|limit_pace| {
-                    pace::limit_forecast(&limit, limit_pace, reading.fetched_at_ms)
+                    pace::limit_forecast(&limit, limit_pace, reading.fetched_at_ms, &recent)
                 });
                 limits.push(PacedLimit {
                     pace: limit_pace,

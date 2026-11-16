@@ -282,7 +282,7 @@ Version 1, the engine and terminal view, working correctly on macOS and Omarchy 
 
 Version 1.1:
 
-- A forecast of when you'll hit a limit compared with when it resets, built on the pace and limit readings version 1 records. Built in 0.1.13 as a straight-line projection of the current window.
+- A forecast of when you'll hit a limit compared with when it resets, built on the pace and limit readings version 1 records. Built in 0.1.13 as a straight-line projection of the current window; from 0.1.16 it takes the earlier of that and the last 30 minutes' rate.
 - The HTML report page.
 - The insights skill.
 
