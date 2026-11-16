@@ -27,16 +27,7 @@ pub fn render_line(
 }
 
 pub(crate) fn spend_today(account: &AccountToday) -> String {
-    let estimated = if account.cost_estimated {
-        ", estimated"
-    } else {
-        ""
-    };
-    format!(
-        "${:.2}{estimated}{}",
-        account.cost_usd,
-        against_usual(&account.pace)
-    )
+    format!("${:.2}{}", account.cost_usd, against_usual(&account.pace))
 }
 
 fn limit_part(

@@ -562,18 +562,11 @@ fn the_number_key_hint_is_left_off_for_the_account_already_shown() {
 }
 
 #[test]
-fn spend_today_says_estimated_only_while_a_session_is_unchecked() {
-    let mut checked = personal();
-    checked.cost_estimated = false;
+fn spend_today_is_not_labeled_estimated_while_a_session_is_unchecked() {
+    let shown = screen(&open(snapshot(vec![personal()]), None), 80, 24);
 
-    let unchecked = screen(&open(snapshot(vec![personal()]), None), 80, 24);
-    let done = screen(&open(snapshot(vec![checked]), None), 80, 24);
-
-    assert!(
-        unchecked.contains("$14.20  estimated · 2.0×"),
-        "{unchecked}"
-    );
-    assert!(done.contains("$14.20 · 2.0×"), "{done}");
+    assert!(shown.contains("$14.20 · 2.0×"), "{shown}");
+    assert!(!shown.contains("estimated"), "{shown}");
 }
 
 #[test]
@@ -1141,7 +1134,7 @@ fn every_account_fits_two_accounts_in_80_by_24() {
     app.handle(KeyCode::Char('3').into());
     let stacked = screen(&app, 80, 24);
 
-    assert!(stacked.contains("$14.20  estimated"), "{stacked}");
+    assert!(stacked.contains("$14.20 · 2.0×"), "{stacked}");
     assert!(stacked.contains("Weekly, Fable"), "{stacked}");
     assert!(stacked.contains("Credits"), "{stacked}");
     assert!(stacked.contains("$0.40 · no usual yet"), "{stacked}");
@@ -1177,14 +1170,16 @@ fn while_help_is_open_the_key_strip_lists_only_the_keys_that_work() {
 }
 
 #[test]
-fn the_combined_total_says_estimated_when_any_account_is() {
+fn the_combined_total_is_not_labeled_estimated_when_any_account_is() {
     let mut app = open(snapshot(vec![personal(), work()]), None);
 
     app.handle(KeyCode::Char('3').into());
     let stacked = screen(&app, 80, 24);
 
     assert!(
-        stacked.contains("$14.60 today across 2 accounts · estimated"),
+        line_with(&stacked, "today across 2 accounts")
+            .trim_end_matches(['"', ' '])
+            .ends_with("$14.60 today across 2 accounts"),
         "{stacked}"
     );
 }
@@ -2856,7 +2851,7 @@ fn with_room_the_all_view_gives_each_account_a_column_with_its_today_over_its_li
     let single_today = one.lines().find(|line| line.contains("╭ Today")).unwrap();
 
     assert!(
-        lines[today - 1].contains(" $14.60 today across 2 accounts · estimated"),
+        lines[today - 1].contains(" $14.60 today across 2 accounts"),
         "{shown}"
     );
     assert!(lines[today].contains("╭ work · today"), "{shown}");
@@ -3096,7 +3091,7 @@ fn stacked_accounts_too_tall_for_the_window_cut_the_last_box_not_the_first() {
         .collect();
 
     assert!(personal_box.contains("Weekly, Fable"), "{shown}");
-    assert!(personal_box.contains("$14.20  estimated"), "{shown}");
+    assert!(personal_box.contains("$14.20 · 2.0×"), "{shown}");
     assert!(shown.contains("╭ side "), "{shown}");
 }
 
@@ -3134,7 +3129,7 @@ fn with_a_filling_limit_screen(width: u16, height: u16) -> String {
 
 #[test]
 fn stacked_limits_with_room_add_their_forecast_to_the_reset_in_parentheses() {
-    let shown = with_a_filling_limit_screen(170, 50);
+    let shown = with_a_filling_limit_screen(170, 49);
     let side: String = shown
         .lines()
         .skip_while(|line| !line.contains("╭ side "))
@@ -3162,7 +3157,7 @@ fn stacked_limits_without_room_put_their_forecast_on_the_next_row() {
 #[test]
 fn stacked_credits_put_their_budget_on_its_own_row_at_any_width() {
     for width in [80, 170] {
-        let shown = with_a_filling_limit_screen(width, 50);
+        let shown = with_a_filling_limit_screen(width, 49);
 
         assert!(
             line_with(&shown, "Credits ")
@@ -3192,7 +3187,7 @@ fn stacked_today_has_its_own_header_and_starts_at_the_left_edge() {
         .position(|line| line.contains("│ Today · usual from 8 of 20 days "))
         .unwrap_or_else(|| panic!("{shown}"));
 
-    assert!(lines[header + 1].contains("│ $14.20  estimated"), "{shown}");
+    assert!(lines[header + 1].contains("│ $14.20 · 2.0×"), "{shown}");
     let work_box = lines
         .iter()
         .position(|line| line.contains("╭ work "))

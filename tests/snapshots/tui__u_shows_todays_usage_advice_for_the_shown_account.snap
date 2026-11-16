@@ -15,7 +15,7 @@ expression: advice
 "│ limits: re╭ Usage advice · read 12 minutes ago ──────────────────────────────────────╮           │"
 "╰───────────│ Percentages are each pattern's share of your usage.                      │───────────╯"
 "╭ Today ────│                                                                          │───────────╮"
-"│ $14.20  es│ Today · 13 sessions, 2319 requests                                       │           │"
+"│ $14.20 · 2│ Today · 13 sessions, 2319 requests                                       │           │"
 "│ cost leave│   94%  Give "review" subagents a cheaper model                           │           │"
 "╰───────────│   38%  Start fresh when you switch tasks · run /clear                    │───────────╯"
 "╭ Running no│   22%  always on context                                                 │───────────╮"

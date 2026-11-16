@@ -745,9 +745,6 @@ pub(crate) fn today_lines(
         format!("${:.2}", account.cost_usd),
         Modifier::BOLD,
     )];
-    if account.cost_estimated {
-        spans.push(Span::styled("  estimated", Style::new().fg(EVEN)));
-    }
     spans.push(Span::styled(" · ", MUTED));
     spans.extend(against_usual(&account.pace));
     lines.push(Line::from(spans));
@@ -778,13 +775,6 @@ pub(crate) fn today_panel(
     }
     lines.push(Line::default());
     lines.push(Line::from(against_usual(&account.pace)));
-    if account.cost_estimated {
-        lines.extend(wrapped(
-            "estimated until today's sessions are checked",
-            width,
-            Style::new().fg(EVEN),
-        ));
-    }
     if let Some(provisional) = provisional_usual(&account.pace) {
         lines.push(Line::styled(provisional, MUTED));
     }

@@ -250,22 +250,10 @@ fn strip(snapshot: &Snapshot) -> Line<'static> {
         .iter()
         .map(|account| account.cost_usd)
         .sum();
-    let estimated = if snapshot
-        .accounts
-        .iter()
-        .any(|account| account.cost_estimated)
-    {
-        " · estimated"
-    } else {
-        ""
-    };
     Line::from(vec![
         Span::styled(format!(" ${combined:.2}"), Modifier::BOLD),
         Span::styled(
-            format!(
-                " today across {} accounts{estimated}",
-                snapshot.accounts.len()
-            ),
+            format!(" today across {} accounts", snapshot.accounts.len()),
             MUTED,
         ),
     ])

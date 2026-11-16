@@ -15,7 +15,7 @@ Status: versions 1 and 1.1 are built. A beta for coworkers is next.
 ## Non-goals
 
 - **Monitoring other people.** Gigawatts shows one person their own usage. Team dashboards are what Anthropic's admin console is for.
-- **Exact billing.** It reports the figures Claude Code records and labels anything it estimates. Anthropic's bill is the authority.
+- **Exact billing.** It reports the figures Claude Code records and labels anything it estimates except today's running total (see principle 3). Anthropic's bill is the authority.
 - **A server.** Nothing runs outside the user's own machines.
 - **Calling a model.** Gigawatts never sends anything to Claude. Judgment about the numbers comes from asking an agent to read `gigawatts data --json`, which happens only when you ask.
 
@@ -23,7 +23,7 @@ Status: versions 1 and 1.1 are built. A beta for coworkers is next.
 
 1. **Read-only toward Claude Code.** Gigawatts reads Claude Code's files and never writes to them or to its settings. Optional integrations are installed by an explicit command, add to the user's setup without replacing anything, and come out with one command.
 2. **Never touch credentials.** Anthropic's [legal and compliance page](https://code.claude.com/docs/en/legal-and-compliance) says "developers may not collect, store, or intermediate Claude.ai credentials or session tokens." Gigawatts never reads the OAuth token. When it needs fresh limits, it asks the unmodified `claude` binary, which uses its own login.
-3. **Every number shows its source and age.** For example: "32% weekly, from Claude Code, 4 min ago" or "$14.20 today, estimated."
+3. **Every number shows its source and age.** For example: "32% weekly, from Claude Code, 4 min ago." Today's dollars are the exception: Gigawatts prices them itself until each session closes and Claude Code records its own cost, and they rise when Claude Code's unlogged usage arrives. That's true nearly all day, so the views don't label it.
 4. **Event-driven.** It reacts to file changes and sets no polling timers while Claude Code is idle.
 5. **Degrade instead of breaking.** Every source is undocumented or can change. When one changes, Gigawatts marks the numbers it affects and keeps showing the rest.
 6. **Numbers stay local.** The database holds counts, costs, models, repos, branches, times, and session titles. It never stores prompts, responses, tool inputs, file contents, or commands. Gigawatts never sends your data anywhere. The one network request, a download of Anthropic's public pricing page when a price looks out of date (beta), can be turned off.

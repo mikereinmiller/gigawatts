@@ -427,7 +427,7 @@ fn when_every_limit_reset_since_the_reading_the_line_says_so() {
 }
 
 #[test]
-fn spend_from_sessions_claude_code_has_not_checked_yet_is_labeled_estimated() {
+fn spend_from_sessions_claude_code_has_not_checked_yet_is_not_labeled_estimated() {
     let mut open = account(None, 3.0, usual(3.0, Some(2.0), 20));
     open.cost_estimated = true;
 
@@ -435,6 +435,6 @@ fn spend_from_sessions_claude_code_has_not_checked_yet_is_labeled_estimated() {
 
     assert_eq!(
         line,
-        "personal: no limit readings yet · today $3.00, estimated, 1.5× your usual by 12:10"
+        "personal: no limit readings yet · today $3.00, 1.5× your usual by 12:10"
     );
 }

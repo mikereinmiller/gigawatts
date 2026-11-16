@@ -1135,8 +1135,8 @@ fn status_shows_the_account_used_most_recently_unless_asked_for_another_or_all()
     request_seconds_ago(&work.join("projects/p/b.jsonl"), "b", 1);
     let ingested = gigawatts(&home.path, &["ingest"]);
     assert!(ingested.status.success(), "{ingested:?}");
-    let personal = "personal: no limit readings yet · today $0.01, estimated, no usual yet\n";
-    let work_line = "work: no limit readings yet · today $0.01, estimated, no usual yet\n";
+    let personal = "personal: no limit readings yet · today $0.01, no usual yet\n";
+    let work_line = "work: no limit readings yet · today $0.01, no usual yet\n";
 
     assert_eq!(stdout(&gigawatts(&home.path, &["status"])), work_line);
     assert_eq!(
@@ -1201,7 +1201,7 @@ fn status_skips_an_untracked_account_for_the_most_recent_tracked_one() {
 
     assert_eq!(
         stdout(&gigawatts(&home.path, &["status"])),
-        "work: no limit readings yet · today $0.01, estimated, no usual yet\n"
+        "work: no limit readings yet · today $0.01, no usual yet\n"
     );
 }
 
