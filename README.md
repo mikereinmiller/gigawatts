@@ -47,7 +47,7 @@ A red light at the right end of the title row means a limit is on course to fill
 | `gigawatts status` | Prints one line: the closest limit and today's spend. `--all` prints one line per account, `--json` everything as JSON |
 | `gigawatts report` | Opens the report page in your browser, at `http://127.0.0.1:7878` |
 | `gigawatts data` | Prints cost history. `--range week`, `--by repo`, `--json` for scripts and agents |
-| `gigawatts schema` | Prints the JSON Schema for `data --json` |
+| `gigawatts schema` | Prints the JSON Schema, with a description of every field, for `status --json`, `data --json`, and `data --limits --json` |
 | `gigawatts accounts` | Lists the Claude Code accounts Gigawatts found and whether each is tracked |
 | `gigawatts doctor` | Lists anything wrong, with its cause and fix |
 | `gigawatts stop` | Stops the engine |

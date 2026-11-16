@@ -327,3 +327,28 @@ fn data_since_conflicts_with_range() {
         "{output:?}"
     );
 }
+
+#[test]
+fn the_schema_explains_every_field_and_type() {
+    let dir = tempfile::tempdir().unwrap();
+    let output = gigawatts(Some(dir.path()), dir.path(), &["schema"]);
+    let schemas: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let mut missing = Vec::new();
+    for (root_name, root) in schemas.as_object().unwrap() {
+        let mut types = vec![(root_name.clone(), root)];
+        if let Some(defs) = root["$defs"].as_object() {
+            types.extend(defs.iter().map(|(name, def)| (name.clone(), def)));
+        }
+        for (type_name, schema) in types {
+            if schema.get("description").is_none() {
+                missing.push(format!("{root_name}: {type_name}"));
+            }
+            for (field, property) in schema["properties"].as_object().into_iter().flatten() {
+                if property.get("description").is_none() {
+                    missing.push(format!("{root_name}: {type_name}.{field}"));
+                }
+            }
+        }
+    }
+    assert!(missing.is_empty(), "no description: {missing:#?}");
+}
