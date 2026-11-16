@@ -44,7 +44,7 @@ A red light at the right end of the title row means a limit is on course to fill
 | Command | Does |
 |---|---|
 | `gigawatts` | Opens the terminal view, starting the engine if needed |
-| `gigawatts status` | Prints one line: the closest limit and today's spend. `--all` prints one line per account |
+| `gigawatts status` | Prints one line: the closest limit and today's spend. `--all` prints one line per account, `--json` everything as JSON |
 | `gigawatts report` | Opens the report page in your browser, at `http://127.0.0.1:7878` |
 | `gigawatts data` | Prints cost history. `--range week`, `--by repo`, `--json` for scripts and agents |
 | `gigawatts schema` | Prints the JSON Schema for `data --json` |

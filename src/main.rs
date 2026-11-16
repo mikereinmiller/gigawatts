@@ -68,6 +68,9 @@ enum Command {
         /// Print one line per account
         #[arg(long)]
         all: bool,
+        /// Print the whole snapshot as versioned JSON, built fresh, starting the engine if it isn't running. Building on it: see docs/integrations.md in the Gigawatts repo, and `gigawatts schema`
+        #[arg(long, conflicts_with_all = ["account", "all"])]
+        json: bool,
     },
     /// List every current problem with its cause and fix, and exit 1 if there are any
     Doctor,
@@ -173,7 +176,8 @@ fn main() -> ExitCode {
             };
             data(days, by, &drill, json)
         }
-        Command::Status { account, all } => status(account.as_deref(), all),
+        Command::Status { json: true, .. } => status_json(),
+        Command::Status { account, all, .. } => status(account.as_deref(), all),
         Command::Doctor => doctor(),
         Command::Report => report(),
         Command::Accounts { action } => match action {
@@ -429,6 +433,35 @@ fn status(name: Option<&str>, all: bool) -> ExitCode {
         eprintln!("gigawatts: can't ask the engine to refresh limits: {error}");
     }
     ExitCode::SUCCESS
+}
+
+fn status_json() -> ExitCode {
+    let paths = paths();
+    match engine::ensure_running(&paths, &executable()) {
+        Ok(engine::Started::AlreadyRunning) => {}
+        Ok(engine::Started::Started | engine::Started::Replaced { .. }) => {
+            if let Err(error) = engine::refresh_if_running(&paths, &executable()) {
+                eprintln!("gigawatts: {error}");
+            }
+        }
+        Err(error) => {
+            eprintln!("gigawatts: {error}");
+            return ExitCode::from(2);
+        }
+    }
+    let (Ok(config), Ok(store)) = (load_config(), open_store()) else {
+        return ExitCode::from(2);
+    };
+    match engine::snapshot::build(&store, &config, now_ms(), &engine::running_problems(&paths)) {
+        Ok(snapshot) => {
+            println!("{}", to_json(&snapshot));
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("gigawatts: can't read the history database: {error}");
+            ExitCode::from(2)
+        }
+    }
 }
 
 fn view() -> ExitCode {

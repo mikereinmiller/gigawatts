@@ -1204,3 +1204,36 @@ fn status_skips_an_untracked_account_for_the_most_recent_tracked_one() {
         "work: no limit readings yet · today $0.01, estimated, no usual yet\n"
     );
 }
+
+#[test]
+fn status_json_starts_a_stopped_engine_and_prints_a_fresh_snapshot() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = Home {
+        path: dir.path().join("h"),
+        _dir: dir,
+    };
+    without_report_page(&home.path);
+    let projects = home.path.join(".claude").join("projects").join("p");
+    fs::create_dir_all(&projects).unwrap();
+    fs::write(
+        home.path.join(".claude.json"),
+        r#"{"oauthAccount":{"accountUuid":"00000000-0000-4000-8000-00000000000a","organizationUuid":"00000000-0000-4000-8000-0000000000f0"}}"#,
+    )
+    .unwrap();
+    let transcript = projects.join("s1.jsonl");
+    for request in 0..300 {
+        append_request(&transcript, &format!("req_{request}"));
+    }
+    let paths = Paths::new(&home.path);
+    assert!(!EngineLock::is_held(&paths.lock()).unwrap());
+
+    let printed = gigawatts(&home.path, &["status", "--json"]);
+
+    assert!(printed.status.success(), "{printed:?}");
+    let snapshot: serde_json::Value = serde_json::from_str(&stdout(&printed)).unwrap();
+    assert_eq!(snapshot["schema_version"], 2);
+    assert_eq!(snapshot["engine_version"], version());
+    assert_eq!(snapshot["alerts"], serde_json::json!([]));
+    assert_eq!(snapshot["accounts"][0]["requests"], 300);
+    assert!(EngineLock::is_held(&paths.lock()).unwrap());
+}
