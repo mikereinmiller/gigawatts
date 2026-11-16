@@ -32,7 +32,7 @@ Status: versions 1 and 1.1 are built. A beta for coworkers is next.
 
 - **Version 1.** The engine and the terminal view, working correctly on macOS and Omarchy Linux, for one user (the author) on two machines.
 - **Version 1.1.** Forecasts, the alert light, and the HTML report page.
-- **Beta.** Ready for coworkers to install, a Herdr pane, prices that update themselves, spend used elsewhere, and report themes.
+- **Beta.** Ready for coworkers to install, data and a guide for integrations such as a Herdr pane, prices that update themselves, spend used elsewhere, and report themes.
 - **Later.** The macOS menu bar, and packaging for people outside the beta.
 
 ## How the numbers work
@@ -99,7 +99,7 @@ An account is one Claude Code config directory (`~/.claude`, or wherever `CLAUDE
 Claude Code's files ──▶ engine ──▶ SQLite history ──▶ snapshot + gigawatts data ──▶ views
   transcripts            readers     (private)          (view contract)               terminal
   .claude.json           cost model                                                   report page (1.1)
-  claude -p get_usage    rollups                                                      Herdr pane (beta)
+  claude -p get_usage    rollups                                                      integrations
                                                                                       macOS menu bar (later)
 ```
 
@@ -231,7 +231,7 @@ There is no insights skill. Gigawatts calculates, and any agent interprets: it r
 | Terminal: full view, one-line summary, and `gigawatts data` | All | Rust, [`ratatui`](https://ratatui.rs) 0.30, redrawn when data changes and once a minute while open | Version 1 |
 | Floating terminal window on a key binding | Omarchy | The terminal view | Version 1, no extra code |
 | HTML report page | All | A page the engine serves on 127.0.0.1 only, current on every reload, with an Export button that saves a summary as Markdown or PDF | Version 1.1 |
-| Herdr pane | All | A Herdr app mod shipped from this repo with a recipe for building your own, reading `gigawatts status --json` | Beta |
+| Herdr pane | All | A Herdr app mod built outside this repo from `docs/integrations.md`, reading `gigawatts status --json` | Beta, not in this repo |
 | Menu bar with a popover and charts | macOS | SwiftUI, reading the view contract. No Rust bindings | Later |
 
 Why SwiftUI for the macOS view, and the alternatives considered:
@@ -243,7 +243,7 @@ Why SwiftUI for the macOS view, and the alternatives considered:
 
 ## Menu bar (later)
 
-The menu bar comes after the Herdr pane, if at all.
+The menu bar comes after a Herdr pane built on `gigawatts status --json`, if at all.
 
 - **The icon is a ring gauge** that fills toward whichever limit is closest. It's monochrome while normal (a template icon on macOS, tinted by the system), turns amber at 70% and red at 90%, and shows a dashed outline when the data is stale. It changes in 10% steps with a small buffer before changing back, so it never flickers, and it's never animated.
 - **One number sits beside the icon** where the platform allows text. The headline is a setting. The default shows the closest limit's percentage, falling back to today's dollars when every limit is under 50%.
@@ -280,7 +280,7 @@ Version 1.1:
 Beta, for coworkers:
 
 - Install and update with one command, `mise run install`, an MIT license, and a README. The repo stays private until the author opens it.
-- A Herdr pane, built on a new `gigawatts status --json` that carries the alert light's alerts.
+- Data for integrations: `gigawatts status --json` with the alert light's alerts, a description of every field in `gigawatts schema`, and `docs/integrations.md`. A Herdr pane gets built outside this repo from them.
 - Prices that update themselves. When the engine sees a model with no price or a finished session whose cost disagrees with Claude Code's, it downloads `pricing.md`, at most once a day while the problem lasts, updates changed prices, and reprices history. A failed download, an unreadable page, or an implausible price keeps the current prices and raises a problem. A setting turns it off.
 - Spend used elsewhere. For a credits-only account, Anthropic's month-to-date credits minus this machine's spend, as "$494 of $2,200 ($84 elsewhere)" with a second shade in the bar. For a subscription, an estimate from limit rises while this machine made no requests, shipped only if a week of real data from two machines shows it lands close.
 - Color themes for the report page.
