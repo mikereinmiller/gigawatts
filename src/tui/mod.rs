@@ -8,7 +8,7 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
-use crate::contract::{AccountToday, ProblemKind, Snapshot};
+use crate::contract::{AccountToday, AlertState, ProblemKind, Snapshot};
 use crate::problems;
 use crate::store::UsageAdvice;
 mod advice;
@@ -573,8 +573,14 @@ impl App {
     }
 
     fn title_right(&self, updated: String, now_ms: i64, room: usize) -> Vec<Span<'static>> {
-        let alerts = alert::alerts(&self.snapshot, now_ms);
         let shown_account = self.shown().and_then(|account| account.account.as_deref());
+        let alerts: Vec<_> = self
+            .snapshot
+            .alerts
+            .iter()
+            .filter(|alert| alert.state == AlertState::Filling || alert.at_ms > now_ms)
+            .cloned()
+            .collect();
         let mut right = Vec::new();
         for (with_quote, with_updated, with_account) in [
             (true, true, true),

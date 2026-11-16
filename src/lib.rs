@@ -1,4 +1,5 @@
 pub mod accounts;
+pub mod alerts;
 pub mod check_costs;
 pub mod config;
 pub mod contract;

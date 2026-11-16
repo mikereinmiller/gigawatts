@@ -2,63 +2,10 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::Span;
 
 use super::sections::duration;
-use crate::contract::Snapshot;
-use crate::limits::short_limit_name;
-use crate::status::{MAY_MISS_OUTSIDE_USE_MS, has_reset, resets_ms};
+use crate::contract::{Alert, AlertState};
 
 const QUOTE: &str = "1.21 gigawatts! ";
 const RED: Color = Color::Red;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Trouble {
-    Out { back_at_ms: i64 },
-    Filling { full_at_ms: i64 },
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct Alert {
-    account: Option<String>,
-    account_label: String,
-    limit: String,
-    trouble: Trouble,
-}
-
-pub(crate) fn alerts(snapshot: &Snapshot, now_ms: i64) -> Vec<Alert> {
-    let mut found = Vec::new();
-    for account in &snapshot.accounts {
-        let Some(limits) = &account.limits else {
-            continue;
-        };
-        let stale = now_ms - limits.fetched_at_ms > MAY_MISS_OUTSIDE_USE_MS;
-        for shown in &limits.limits {
-            if has_reset(shown, now_ms) {
-                continue;
-            }
-            let trouble = if shown.limit.percent >= 100.0 {
-                resets_ms(shown).map(|back_at_ms| Trouble::Out { back_at_ms })
-            } else if stale {
-                None
-            } else {
-                shown.forecast.map(|forecast| Trouble::Filling {
-                    full_at_ms: forecast.full_at_ms,
-                })
-            };
-            if let Some(trouble) = trouble {
-                found.push(Alert {
-                    account: account.account.clone(),
-                    account_label: account.account_label.clone(),
-                    limit: short_limit_name(&shown.limit),
-                    trouble,
-                });
-            }
-        }
-    }
-    found.sort_by_key(|alert| match alert.trouble {
-        Trouble::Out { back_at_ms } => (0, -back_at_ms),
-        Trouble::Filling { full_at_ms } => (1, full_at_ms),
-    });
-    found
-}
 
 pub(crate) struct Light {
     pub(crate) with_quote: bool,
@@ -84,12 +31,12 @@ pub(crate) fn light(
         text.push_str(&format!("{} · ", worst.account_label));
     }
     text.push_str(&worst.limit);
-    match worst.trouble {
-        Trouble::Out { back_at_ms } => {
-            text.push_str(&format!(" back in {}", duration(back_at_ms - now_ms)));
+    match worst.state {
+        AlertState::Full => {
+            text.push_str(&format!(" back in {}", duration(worst.at_ms - now_ms)));
         }
-        Trouble::Filling { full_at_ms } => {
-            text.push_str(&format!(" full in {}", rough(full_at_ms - now_ms)));
+        AlertState::Filling => {
+            text.push_str(&format!(" full in {}", rough(worst.at_ms - now_ms)));
         }
     }
     if alerts.len() > 1 {

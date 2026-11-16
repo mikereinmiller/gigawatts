@@ -148,6 +148,31 @@ pub struct Snapshot {
     pub today: String,
     pub accounts: Vec<AccountToday>,
     pub problems: Vec<Problem>,
+    /// Limits that are full or on course to fill before they reset, worst first: full limits by the latest reset, then filling limits by the soonest. Empty when nothing needs attention.
+    pub alerts: Vec<Alert>,
+}
+
+/// A limit that needs attention: full now, or on course to fill before it resets.
+#[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
+pub struct Alert {
+    /// The account ID, `<accountUuid>/<organizationUuid>`, or null for requests made before any login was seen.
+    pub account: Option<String>,
+    /// The account's display name.
+    pub account_label: String,
+    /// A short name for the limit: `Session`, `Weekly`, a weekly limit's scope such as `Fable`, `Credits`, or Anthropic's own name for a kind Gigawatts doesn't know.
+    pub limit: String,
+    /// Whether the limit is already full or still filling.
+    pub state: AlertState,
+    /// For `full`, when the limit resets; for `filling`, when it's forecast to reach 100%, or `written_at_ms` when that forecast has already passed, meaning any minute now. Unix milliseconds. Count down from the reader's clock.
+    pub at_ms: i64,
+}
+
+/// `full`: the limit is at 100% and comes back at its reset. `filling`: the limit is forecast to reach 100% before it resets.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum AlertState {
+    Full,
+    Filling,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]

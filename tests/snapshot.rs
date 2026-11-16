@@ -3,9 +3,9 @@ use std::fs;
 use gigawatts::accounts::Attribution;
 use gigawatts::config::Config;
 use gigawatts::contract::{
-    AccountLimits, AccountToday, DollarPace, ForecastBasis, Limit, LimitForecast, LimitPace,
-    LimitSource, PaceBasis, PaceState, PacedLimit, Problem, ProblemKind, SCHEMA_VERSION,
-    SessionSpend, Share, Snapshot,
+    AccountLimits, AccountToday, Alert, AlertState, DollarPace, ForecastBasis, Limit,
+    LimitForecast, LimitPace, LimitSource, PaceBasis, PaceState, PacedLimit, Problem, ProblemKind,
+    SCHEMA_VERSION, SessionSpend, Share, Snapshot,
 };
 use gigawatts::engine::snapshot;
 use gigawatts::ingest::ingest_tree;
@@ -176,6 +176,7 @@ fn the_snapshot_carries_each_tracked_accounts_spend_today_and_the_engines_proble
             schema_version: SCHEMA_VERSION,
             engine_version: gigawatts::engine::version(),
             written_at_ms: now_ms,
+            alerts: Vec::new(),
             today,
             accounts: vec![
                 AccountToday {
@@ -358,6 +359,16 @@ fn a_burst_in_the_last_30_minutes_gives_a_forecast_at_the_recent_pace() {
             basis: ForecastBasis::Recent,
         })
     );
+    assert_eq!(
+        built.alerts,
+        vec![Alert {
+            account: Some(ACCOUNT.to_string()),
+            account_label: built.accounts[0].account_label.clone(),
+            limit: "Session".to_string(),
+            state: AlertState::Filling,
+            at_ms: fetched_at_ms + 40 * minute_ms,
+        }]
+    );
 }
 
 #[test]
@@ -372,6 +383,7 @@ fn writing_replaces_the_whole_file_and_leaves_no_staging_file() {
         today: "2026-11-03".to_string(),
         accounts: Vec::new(),
         problems: Vec::new(),
+        alerts: Vec::new(),
     };
 
     snapshot::write(&path, &snapshot).unwrap();

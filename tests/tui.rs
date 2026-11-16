@@ -210,6 +210,7 @@ fn owned_by(account: &str, problem: Problem) -> Problem {
 
 fn snapshot(accounts: Vec<AccountToday>) -> Snapshot {
     Snapshot {
+        alerts: gigawatts::alerts::alerts(&accounts, NOW_MS),
         schema_version: SCHEMA_VERSION,
         engine_version: "0.1.5+r1.m9".to_string(),
         written_at_ms: NOW_MS,
@@ -3659,6 +3660,14 @@ fn a_limit_out_beats_one_still_filling() {
         "{}",
         title_row(&app, 100)
     );
+}
+
+#[test]
+fn a_full_alert_whose_reset_has_passed_lights_nothing() {
+    let mut shown = snapshot(vec![session_out()]);
+    shown.alerts[0].at_ms = NOW_MS - 60_000;
+
+    assert!(!title_row(&open(shown, None), 100).contains("ϟ"));
 }
 
 #[test]

@@ -157,6 +157,7 @@ pub fn build(
             });
         }
     }
+    let alerts = crate::alerts::alerts(&accounts, now_ms);
     Ok(Snapshot {
         schema_version: SCHEMA_VERSION,
         engine_version: crate::engine::version(),
@@ -168,6 +169,7 @@ pub fn build(
             engine_problems.to_vec(),
         ]
         .concat(),
+        alerts,
     })
 }
 
