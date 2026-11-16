@@ -32,7 +32,7 @@ Status: version 1 shaped. Slice 1 (`gigawatts check-costs`) is built.
 
 - **Version 1.** The engine and the terminal view, working correctly on macOS and Omarchy Linux, for one user (the author) on two machines.
 - **Version 1.1.** Forecasts, the HTML report page, and the insights skill.
-- **Version 2.** The macOS menu bar, notifications, and themes.
+- **Version 2.** The macOS menu bar and notifications.
 - **Later.** Packaging for other people, the Omarchy bar widget, syncing across machines, Windows, and the status line integration if a use case appears.
 
 ## How the numbers work
@@ -244,7 +244,7 @@ Why SwiftUI for the macOS view, and the alternatives considered:
 
 ## Menu bar (version 2)
 
-The menu bar icon and panel, notifications, and themes are version 2.
+The menu bar icon and panel and notifications are version 2. The Back to the Future voice under Themes is already built into the terminal view.
 
 ### Menu bar icon and panel
 
@@ -262,9 +262,8 @@ The menu bar icon and panel, notifications, and themes are version 2.
 
 ### Themes
 
-- **The default theme is generic:** the ring gauge and plain wording above. Most people never open settings, so the default has to look clean and say things plainly.
-- **Movie themes are opt-in,** split into a voice (wording) and a look (icons). Voices are short text files: Ghostbusters, Back to the Future, Spinal Tap, Hitchhiker's Guide, Spaceballs, Star Trek, and Jaws. Looks need an icon set per state, drawn to read at 16 pixels in light and dark, so they come one at a time.
-- **A joke never hides a number.** "Don't cross the streams!" still comes with "5-hour limit at 91%, resets in 1h 20m".
+- **The Back to the Future voice is built in.** There are no other voices and no theme setting. The terminal view's alert light reads "ϟ 1.21 gigawatts! Session full in ~1h 20m" when a limit is on course to hit 100% before it resets, and "ϟ 1.21 gigawatts! Session back in 2h 40m" once it has.
+- **A joke never hides a number.** "ϟ 1.21 gigawatts!" always comes with the limit and its countdown, as in "Session full in ~1h 20m".
 
 ## Features
 
@@ -291,7 +290,6 @@ Version 2:
 
 - The macOS menu bar view.
 - Notifications at limit thresholds, when a window resets, and when a session spends far above your normal rate.
-- Themes: the default theme and the opt-in movie voices.
 
 Later:
 
@@ -299,7 +297,6 @@ Later:
 - The Omarchy bar widget.
 - Combined totals across your machines, by syncing daily rollups through a shared folder.
 - The Windows view.
-- Movie theme looks, one at a time.
 - A one-time import of earlier `/spend` history (`~/.claude/spend/`), so months whose transcripts Claude Code already deleted still appear.
 - The status line integration, for limits that are current to the second, if a use case appears.
 - The daily `pricing.md` download, once open question 2 is settled in its favor. It would read the page's model pricing table, map names like "Claude Opus 5.5" to IDs like `claude-opus-5-5`, keep the last good copy when the table can't be read or a price looks implausible, and sit between the built-in table and the overrides.
