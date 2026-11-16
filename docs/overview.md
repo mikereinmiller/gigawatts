@@ -128,7 +128,7 @@ Anthropic's `behaviors` section from `get_usage` is fetched at most once an hour
 
 ### Storage and retention
 
-Rows are written only when something happens, never on a timer.
+Rows are written only when something happens, never on a timer, except the session limit reading, kept on every fetch.
 
 | Table | One row per | Kept |
 |---|---|---|
@@ -137,7 +137,7 @@ Rows are written only when something happens, never on a timer.
 | Sessions | Session, updated in place | Forever |
 | Unlogged usage | Session × model, with the session's main folder and branch, rewritten on each `cost-state` while the model has request detail | Forever |
 | Directories | Working directory, resolved once | Forever |
-| Limit readings | Change in a limit percentage, per account | Forever |
+| Limit readings | Every fetch for the session limit; a change in percentage for other limits, per account | Forever |
 | Usage advice | Day × account, from `behaviors` | Forever |
 | File positions | Transcript file, updated in place | While the file exists |
 

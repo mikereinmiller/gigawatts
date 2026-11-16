@@ -84,6 +84,37 @@ fn readings_are_kept_only_when_a_percentage_changes() {
 }
 
 #[test]
+fn session_readings_are_kept_on_every_fetch_even_at_the_same_percentage() {
+    let (_dir, mut store) = open();
+    let personal = account("00000000-0000-4000-8000-0000000000f0");
+
+    for fetched_at_ms in [1_000, 2_000] {
+        store
+            .record_limits(
+                &personal,
+                &reading(
+                    fetched_at_ms,
+                    LimitSource::GetUsage,
+                    vec![
+                        limit("session", None, 30.0),
+                        limit("weekly_all", None, 60.0),
+                    ],
+                ),
+            )
+            .unwrap();
+    }
+
+    assert_eq!(
+        store.limit_history(&personal).unwrap(),
+        vec![
+            point("session", None, 1_000, 30.0),
+            point("weekly_all", None, 1_000, 60.0),
+            point("session", None, 2_000, 30.0),
+        ]
+    );
+}
+
+#[test]
 fn the_latest_reading_is_the_newest_fetch_whatever_its_source() {
     let (_dir, mut store) = open();
     let personal = account("00000000-0000-4000-8000-0000000000f0");

@@ -74,7 +74,7 @@ impl Store {
                     |row| Ok((row.get(0)?, row.get(1)?)),
                 )
                 .optional()?;
-            if last == Some((limit.percent, false)) {
+            if limit.kind != "session" && last == Some((limit.percent, false)) {
                 continue;
             }
             insert.execute(params![
