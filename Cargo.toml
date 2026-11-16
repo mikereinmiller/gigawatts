@@ -2,6 +2,7 @@
 name = "gigawatts"
 version = "0.1.16"
 edition = "2024"
+license = "MIT"
 
 [dependencies]
 clap = { version = "4.6.7", features = ["derive"] }
