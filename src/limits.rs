@@ -364,6 +364,14 @@ pub(crate) fn limit_name(limit: &Limit) -> String {
     }
 }
 
+pub(crate) fn short_limit_name(limit: &Limit) -> String {
+    match (limit.kind.as_str(), limit.scope.as_deref()) {
+        ("weekly_all", None) => "Weekly".to_string(),
+        ("weekly_scoped", Some(scope)) => scope.to_string(),
+        _ => limit_name(limit),
+    }
+}
+
 pub(crate) fn percent(value: f64) -> String {
     let tenths = format!("{value:.1}");
     tenths.strip_suffix(".0").unwrap_or(&tenths).to_string()

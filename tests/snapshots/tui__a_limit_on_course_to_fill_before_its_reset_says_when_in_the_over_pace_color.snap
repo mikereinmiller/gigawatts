@@ -2,7 +2,7 @@
 source: tests/tui.rs
 expression: "screen(&app, 80, 24)"
 ---
-" Gigawatts                                                                      "
+" Gigawatts                         ▐ ϟ 1.21 gigawatts! Session full in ~1h 20m ▌"
 " personal                                                                       "
 "╭ Limits · from get_usage, read 3 minutes ago ─────────────────────────────────╮"
 "│ Session             ▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇   60% │"

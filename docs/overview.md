@@ -283,6 +283,7 @@ Version 1, the engine and terminal view, working correctly on macOS and Omarchy 
 Version 1.1:
 
 - A forecast of when you'll hit a limit compared with when it resets, built on the pace and limit readings version 1 records. Built in 0.1.13 as a straight-line projection of the current window; from 0.1.16 it takes the earlier of that and the last 30 minutes' rate.
+- A red alert light at the right end of the terminal view's title row when any account's limit is on course to fill before it resets, or is already full. Built in 0.1.16.
 - The HTML report page.
 - The insights skill.
 

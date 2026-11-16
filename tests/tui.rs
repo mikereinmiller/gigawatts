@@ -3522,3 +3522,211 @@ fn the_report_page_address_is_hidden_while_the_engine_is_not_serving_that_port()
         assert!(!help.contains("http://127.0.0.1"), "{help}");
     }
 }
+
+fn title_row(app: &App, width: u16) -> String {
+    screen(app, width, 24).lines().next().unwrap().to_string()
+}
+
+fn filling_in(minutes: i64) -> AccountToday {
+    let mut account = filling_fast();
+    account.limits.as_mut().unwrap().limits[0].forecast = Some(LimitForecast {
+        full_at_ms: NOW_MS + minutes * 60_000,
+        basis: ForecastBasis::Window,
+    });
+    account
+}
+
+fn session_out() -> AccountToday {
+    let mut account = personal();
+    let session = &mut account.limits.as_mut().unwrap().limits[0];
+    session.limit.percent = 100.0;
+    session.forecast = None;
+    account
+}
+
+fn work_credits_filling_in(minutes: i64) -> AccountToday {
+    let mut account = work();
+    let limits = account.limits.as_mut().unwrap();
+    limits.fetched_at_ms = NOW_MS - 3 * 60_000;
+    limits.limits[0].forecast = Some(LimitForecast {
+        full_at_ms: NOW_MS + minutes * 60_000,
+        basis: ForecastBasis::Window,
+    });
+    account
+}
+
+#[test]
+fn a_limit_on_course_to_fill_lights_a_red_alert_at_the_end_of_the_title_row() {
+    let app = open(snapshot(vec![filling_fast()]), None);
+
+    let title = title_row(&app, 100);
+
+    assert!(
+        title.ends_with("▐ ϟ 1.21 gigawatts! Session full in ~1h 20m ▌\""),
+        "{title}"
+    );
+    let cell = cell_at(&app, 100, 24, "ϟ 1.21");
+    assert_eq!(cell.bg, ratatui::style::Color::Red);
+    assert_eq!(cell.fg, ratatui::style::Color::Black);
+    assert_eq!(cell_at(&app, 100, 24, "▐ ϟ").fg, ratatui::style::Color::Red);
+}
+
+#[test]
+fn no_limit_in_trouble_leaves_the_title_row_without_an_alert() {
+    let app = open(snapshot(vec![personal(), work()]), None);
+
+    assert!(!title_row(&app, 100).contains("ϟ"));
+}
+
+#[test]
+fn a_limit_at_100_percent_says_when_it_comes_back() {
+    let app = open(snapshot(vec![session_out()]), None);
+
+    assert!(
+        title_row(&app, 100).contains("ϟ 1.21 gigawatts! Session back in 2h 40m "),
+        "{}",
+        title_row(&app, 100)
+    );
+}
+
+#[test]
+fn the_full_in_countdown_rounds_to_10_minutes_and_to_the_hour_from_a_day() {
+    for (minutes, text) in [
+        (4, "full in ~10m "),
+        (9, "full in ~10m "),
+        (84, "full in ~1h 20m "),
+        (85, "full in ~1h 30m "),
+        (23 * 60 + 59, "full in ~1d 0h "),
+        (28 * 60 + 40, "full in ~1d 5h "),
+    ] {
+        let app = open(snapshot(vec![filling_in(minutes)]), None);
+
+        assert!(
+            title_row(&app, 100).contains(text),
+            "{minutes}: {}",
+            title_row(&app, 100)
+        );
+    }
+}
+
+#[test]
+fn an_alert_from_another_account_names_it_and_counts_the_rest() {
+    let only_work = open(
+        snapshot(vec![personal(), work_credits_filling_in(120)]),
+        Some(PERSONAL.to_string()),
+    );
+    let both = open(
+        snapshot(vec![filling_fast(), work_credits_filling_in(120)]),
+        Some(PERSONAL.to_string()),
+    );
+
+    assert!(
+        title_row(&only_work, 100).contains("ϟ 1.21 gigawatts! work · Credits full in ~2h 0m "),
+        "{}",
+        title_row(&only_work, 100)
+    );
+    assert!(
+        title_row(&both, 100).contains("ϟ 1.21 gigawatts! Session full in ~1h 20m +1 "),
+        "{}",
+        title_row(&both, 100)
+    );
+}
+
+#[test]
+fn the_all_view_names_the_account_on_every_alert() {
+    let mut app = open(
+        snapshot(vec![filling_fast(), work()]),
+        Some(PERSONAL.to_string()),
+    );
+    app.handle(KeyCode::Char('3').into());
+
+    assert!(
+        title_row(&app, 100).contains("ϟ 1.21 gigawatts! personal · Session full in ~1h 20m "),
+        "{}",
+        title_row(&app, 100)
+    );
+}
+
+#[test]
+fn a_limit_out_beats_one_still_filling() {
+    let app = open(
+        snapshot(vec![session_out(), work_credits_filling_in(30)]),
+        Some(PERSONAL.to_string()),
+    );
+
+    assert!(
+        title_row(&app, 100).contains("Session back in 2h 40m +1 "),
+        "{}",
+        title_row(&app, 100)
+    );
+}
+
+#[test]
+fn of_two_limits_at_100_percent_the_one_back_last_shows() {
+    let mut account = session_out();
+    let weekly = &mut account.limits.as_mut().unwrap().limits[1];
+    weekly.limit.percent = 100.0;
+    weekly.forecast = None;
+
+    let app = open(snapshot(vec![account]), None);
+
+    assert!(
+        title_row(&app, 100).contains("ϟ 1.21 gigawatts! Weekly back in 2d 17h +1 "),
+        "{}",
+        title_row(&app, 100)
+    );
+}
+
+#[test]
+fn a_stale_reading_lights_no_full_in_but_a_limit_at_100_percent_still_shows() {
+    let mut filling = filling_fast();
+    filling.limits.as_mut().unwrap().fetched_at_ms = NOW_MS - 2 * 3_600_000;
+    let mut out = session_out();
+    out.limits.as_mut().unwrap().fetched_at_ms = NOW_MS - 2 * 3_600_000;
+
+    assert!(!title_row(&open(snapshot(vec![filling]), None), 100).contains("ϟ"));
+    assert!(title_row(&open(snapshot(vec![out]), None), 100).contains("Session back in 2h 40m"));
+}
+
+#[test]
+fn a_narrow_window_drops_the_quote_then_the_age_then_the_account() {
+    let mut app = open(
+        snapshot(vec![personal(), work_credits_filling_in(120)]),
+        Some(PERSONAL.to_string()),
+    );
+    app.set_engine_written_at(Some(NOW_MS - 3 * 60_000));
+
+    let wide = title_row(&app, 100);
+    let no_quote = title_row(&app, 70);
+    let no_age = title_row(&app, 50);
+    let bare = title_row(&app, 40);
+
+    assert!(
+        wide.contains("updated 3 minutes ago ▐ ϟ 1.21 gigawatts! work · Credits full in ~2h 0m ▌"),
+        "{wide}"
+    );
+    assert!(
+        no_quote.contains("updated 3 minutes ago ▐ ϟ work · Credits full in ~2h 0m ▌"),
+        "{no_quote}"
+    );
+    assert!(
+        no_age.contains(" ▐ ϟ work · Credits full in ~2h 0m ▌") && !no_age.contains("updated"),
+        "{no_age}"
+    );
+    assert!(bare.ends_with(" ▐ ϟ Credits full in ~2h 0m ▌\""), "{bare}");
+}
+
+#[test]
+fn a_credit_limit_at_100_percent_with_no_reset_lights_nothing() {
+    let mut account = work();
+    let credits = &mut account.limits.as_mut().unwrap().limits[0];
+    credits.limit.percent = 100.0;
+    credits.pace = None;
+    let app = open(snapshot(vec![account]), None);
+
+    assert!(
+        !title_row(&app, 100).contains("ϟ"),
+        "{}",
+        title_row(&app, 100)
+    );
+}

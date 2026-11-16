@@ -714,7 +714,7 @@ fn countdown(resets_ms: i64, now_ms: i64, local_minute: LocalMinute) -> String {
     }
 }
 
-fn duration(ms: i64) -> String {
+pub(crate) fn duration(ms: i64) -> String {
     let minutes = ms.max(0) / 60_000;
     match minutes {
         0..60 => format!("{minutes}m"),

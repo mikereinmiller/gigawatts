@@ -12,6 +12,7 @@ use crate::contract::{AccountToday, ProblemKind, Snapshot};
 use crate::problems;
 use crate::store::UsageAdvice;
 mod advice;
+mod alert;
 pub mod announced;
 mod digits;
 mod every;
@@ -550,21 +551,57 @@ impl App {
             None => String::new(),
         };
         let title = " Gigawatts";
-        let gap = (width as usize).saturating_sub(title.len() + updated.chars().count());
-        let mut lines = vec![
-            Line::from(vec![
-                Span::styled(title, KEY.add_modifier(Modifier::BOLD)),
-                Span::raw(" ".repeat(gap)),
-                Span::styled(updated, MUTED),
-            ]),
-            self.account_tabs(),
+        let right = self.title_right(
+            updated,
+            now_ms,
+            (width as usize).saturating_sub(title.len()),
+        );
+        let right_width: usize = right.iter().map(Span::width).sum();
+        let gap = (width as usize).saturating_sub(title.len() + right_width);
+        let mut first = vec![
+            Span::styled(title, KEY.add_modifier(Modifier::BOLD)),
+            Span::raw(" ".repeat(gap)),
         ];
+        first.extend(right);
+        let mut lines = vec![Line::from(first), self.account_tabs()];
         lines.extend(
             self.announcements.iter().map(|found| {
                 Line::styled(self.announcement(found), KEY.add_modifier(Modifier::BOLD))
             }),
         );
         lines
+    }
+
+    fn title_right(&self, updated: String, now_ms: i64, room: usize) -> Vec<Span<'static>> {
+        let alerts = alert::alerts(&self.snapshot, now_ms);
+        let shown_account = self.shown().and_then(|account| account.account.as_deref());
+        let mut right = Vec::new();
+        for (with_quote, with_updated, with_account) in [
+            (true, true, true),
+            (false, true, true),
+            (false, false, true),
+            (false, false, false),
+        ] {
+            right.clear();
+            if with_updated {
+                right.push(Span::styled(updated.clone(), MUTED));
+            }
+            right.extend(alert::light(
+                &alerts,
+                shown_account,
+                self.stacked,
+                alert::Light {
+                    with_quote,
+                    with_account,
+                },
+                now_ms,
+            ));
+            let right_width: usize = right.iter().map(Span::width).sum();
+            if right_width < room {
+                break;
+            }
+        }
+        right
     }
 
     fn account_tabs(&self) -> Line<'static> {
