@@ -309,7 +309,7 @@ fn a_taken_port_leaves_the_engine_running_with_a_problem() {
 
     assert_eq!(
         String::from_utf8_lossy(&started.stdout),
-        "Started the engine.\n",
+        "Started the engine. The flux capacitor is warming up.\n",
         "{started:?}"
     );
     let listed = wait_for_problem(&home.path);

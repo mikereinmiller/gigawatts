@@ -1118,10 +1118,12 @@ fn executable() -> PathBuf {
 fn start_engine() -> ExitCode {
     match engine::ensure_running(&paths(), &executable()) {
         Ok(engine::Started::AlreadyRunning) => println!("The engine is already running."),
-        Ok(engine::Started::Started) => println!("Started the engine."),
+        Ok(engine::Started::Started) => {
+            println!("Started the engine. The flux capacitor is warming up.")
+        }
         Ok(engine::Started::Replaced { old }) => {
             println!(
-                "Stopped engine version {old} and started {}.",
+                "Stopped engine version {old} and started {}. The flux capacitor is warming up.",
                 engine::version()
             )
         }
