@@ -100,7 +100,7 @@ pub struct Store {
     connection: Connection,
 }
 
-pub const MIGRATIONS: [&str; 11] = [
+pub const MIGRATIONS: [&str; 12] = [
     include_str!("migrations/001_history.sql"),
     include_str!("migrations/002_accounts.sql"),
     include_str!("migrations/003_repricing.sql"),
@@ -112,6 +112,7 @@ pub const MIGRATIONS: [&str; 11] = [
     include_str!("migrations/009_limits.sql"),
     include_str!("migrations/010_reresolve_folders.sql"),
     include_str!("migrations/011_unlogged_places.sql"),
+    include_str!("migrations/012_custom_titles.sql"),
 ];
 
 fn migrations() -> Migrations<'static> {
@@ -241,6 +242,15 @@ impl Store {
                         && attribution.stores_titles(account.as_ref())
                     {
                         writer.title(session_id, title)?;
+                    }
+                }
+                Line::CustomTitle { session_id, title } => {
+                    let account =
+                        session_account(&transaction, &session_accounts, session_id, attribution)?;
+                    if attribution.tracks(account.as_ref())
+                        && attribution.stores_titles(account.as_ref())
+                    {
+                        writer.custom_title(session_id, title)?;
                     }
                 }
                 Line::Request(_) | Line::Unrecognized { .. } => {}
@@ -466,7 +476,7 @@ impl Store {
 
     pub fn delete_titles(&mut self, account: &Account) -> Result<u64> {
         let deleted = self.connection.execute(
-            "UPDATE sessions SET title = NULL
+            "UPDATE sessions SET title = NULL, title_is_custom = 0
              WHERE title IS NOT NULL AND id IN (
                 SELECT requests.session_id FROM requests
                 JOIN accounts ON accounts.id = requests.account_id
@@ -1136,7 +1146,16 @@ impl<'a> Writer<'a> {
     fn title(&mut self, session_uuid: &str, title: &str) -> Result<()> {
         let session_id = self.session(session_uuid)?;
         self.transaction.execute(
-            "UPDATE sessions SET title = ?2 WHERE id = ?1",
+            "UPDATE sessions SET title = ?2 WHERE id = ?1 AND NOT title_is_custom",
+            params![session_id, title],
+        )?;
+        Ok(())
+    }
+
+    fn custom_title(&mut self, session_uuid: &str, title: &str) -> Result<()> {
+        let session_id = self.session(session_uuid)?;
+        self.transaction.execute(
+            "UPDATE sessions SET title = ?2, title_is_custom = 1 WHERE id = ?1",
             params![session_id, title],
         )?;
         Ok(())

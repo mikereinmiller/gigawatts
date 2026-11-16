@@ -72,6 +72,10 @@ fn unrecognized_lines(unrecognized: &UnrecognizedKind) -> Problem {
             "Title lines that don't parse".to_string(),
             "session titles: those sessions show without one",
         ),
+        "custom-title" => (
+            "Rename lines that don't parse".to_string(),
+            "session titles: renamed sessions show the generated title instead",
+        ),
         "untyped" => (
             "Lines with no type that carry usage".to_string(),
             missing_requests,

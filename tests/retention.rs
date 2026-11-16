@@ -759,3 +759,50 @@ fn cleanup_frees_pages_a_previous_cleanup_left_behind_even_when_nothing_new_expi
     assert_eq!(expired, 0);
     assert_eq!(free_pages(), 0);
 }
+
+#[test]
+fn a_renamed_sessions_title_is_not_stored_for_an_account_with_titles_off() {
+    let mut history = History::new();
+    let attribution = Attribution {
+        current: Some(account()),
+        without_titles: HashSet::from([account()]),
+        ..Attribution::default()
+    };
+    let table = PriceTable::built_in();
+    let kept = request("s1", "req_1", KEPT_NOON);
+    let mut lines = requests(&[&kept]);
+    lines.push(Line::CustomTitle {
+        session_id: "s1".to_string(),
+        title: "Secret".to_string(),
+    });
+
+    history.read_as("s1.jsonl", lines, &table, &attribution);
+
+    assert_eq!(history.store.session_title("s1").unwrap(), None);
+}
+
+#[test]
+fn after_deleting_a_renamed_sessions_title_a_generated_title_is_stored_again() {
+    let mut history = History::new();
+    let kept = request("s1", "req_1", KEPT_NOON);
+    let mut lines = requests(&[&kept]);
+    lines.push(Line::CustomTitle {
+        session_id: "s1".to_string(),
+        title: "Login page".to_string(),
+    });
+    history.read("s1.jsonl", lines);
+    history.store.delete_titles(&account()).unwrap();
+
+    history.read(
+        "s1.jsonl",
+        vec![Line::Title {
+            session_id: "s1".to_string(),
+            title: "Fix the form".to_string(),
+        }],
+    );
+
+    assert_eq!(
+        history.store.session_title("s1").unwrap().as_deref(),
+        Some("Fix the form")
+    );
+}

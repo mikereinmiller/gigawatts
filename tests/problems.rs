@@ -412,6 +412,26 @@ fn each_special_kind_of_unreadable_line_says_what_went_wrong() {
 }
 
 #[test]
+fn an_unreadable_rename_says_the_session_keeps_its_generated_title() {
+    let mut scratch = Scratch::new();
+    scratch.append(
+        "s1.jsonl",
+        "{\"type\":\"custom-title\",\"sessionId\":\"s1\"}\n",
+    );
+
+    scratch.ingest();
+
+    let problems = scratch.problems();
+    assert_eq!(
+        (problems[0].cause.as_str(), problems[0].affects.as_str()),
+        (
+            "Rename lines that don't parse (1 in 1 file)",
+            "session titles: renamed sessions show the generated title instead"
+        )
+    );
+}
+
+#[test]
 fn reading_a_file_again_from_the_start_counts_its_unrecognized_lines_once() {
     let mut scratch = Scratch::new();
     scratch.append("s1.jsonl", UNRECOGNIZED);
@@ -719,7 +739,8 @@ fn upgrading_to_problems_reports_lines_already_read_and_drops_gaps_on_no_cost() 
     );
     scratch.ingest();
     scratch.execute(
-        "ALTER TABLE not_in_transcript DROP COLUMN cwd_label;
+        "ALTER TABLE sessions DROP COLUMN title_is_custom;
+         ALTER TABLE not_in_transcript DROP COLUMN cwd_label;
          ALTER TABLE not_in_transcript DROP COLUMN branch_label;
          DROP TABLE limit_fetches;
          DROP TABLE limit_readings;

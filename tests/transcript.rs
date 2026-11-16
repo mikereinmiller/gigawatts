@@ -220,6 +220,19 @@ fn reads_the_session_title() {
 }
 
 #[test]
+fn reads_the_title_its_user_gave_the_session() {
+    let line = r#"{"type":"custom-title","sessionId":"s1","customTitle":"Login page"}"#;
+
+    assert_eq!(
+        parse_line(line),
+        Some(Line::CustomTitle {
+            session_id: "s1".to_string(),
+            title: "Login page".to_string()
+        })
+    );
+}
+
+#[test]
 fn a_request_whose_content_is_text_has_no_tools() {
     let line = r#"{"type":"assistant","sessionId":"s1","requestId":"r1","message":{"model":"claude-opus-5-5","content":"plain text","usage":{"input_tokens":2,"output_tokens":10}}}"#;
     let Some(Line::Request(request)) = parse_line(line) else {

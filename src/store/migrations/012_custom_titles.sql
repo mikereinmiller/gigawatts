@@ -1,0 +1,1 @@
+ALTER TABLE sessions ADD COLUMN title_is_custom INTEGER NOT NULL DEFAULT 0;

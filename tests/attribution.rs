@@ -841,7 +841,8 @@ fn a_folder_that_counted_as_itself_is_resolved_again_after_upgrading() {
     rusqlite::Connection::open(scratch.dir.path().join("history.sqlite3"))
         .unwrap()
         .execute_batch(
-            "ALTER TABLE not_in_transcript DROP COLUMN cwd_label;
+            "ALTER TABLE sessions DROP COLUMN title_is_custom;
+             ALTER TABLE not_in_transcript DROP COLUMN cwd_label;
              ALTER TABLE not_in_transcript DROP COLUMN branch_label;
              PRAGMA user_version = 9;",
         )
@@ -1003,7 +1004,8 @@ fn upgrading_places_existing_unlogged_usage_under_its_folder_and_branch() {
     rusqlite::Connection::open(scratch.dir.path().join("history.sqlite3"))
         .unwrap()
         .execute_batch(
-            "ALTER TABLE not_in_transcript DROP COLUMN cwd_label;
+            "ALTER TABLE sessions DROP COLUMN title_is_custom;
+             ALTER TABLE not_in_transcript DROP COLUMN cwd_label;
              ALTER TABLE not_in_transcript DROP COLUMN branch_label;
              PRAGMA user_version = 10;",
         )

@@ -108,6 +108,10 @@ pub enum Line {
         session_id: String,
         title: String,
     },
+    CustomTitle {
+        session_id: String,
+        title: String,
+    },
     Unrecognized {
         kind: String,
         timestamp: Option<String>,
@@ -131,6 +135,8 @@ struct RawLine<'a> {
     model_usage: Option<HashMap<Cow<'a, str>, RawModelUsage>>,
     #[serde(borrow)]
     ai_title: Option<Cow<'a, str>>,
+    #[serde(borrow)]
+    custom_title: Option<Cow<'a, str>>,
     #[serde(borrow)]
     timestamp: Option<Cow<'a, str>>,
     #[serde(borrow)]
@@ -296,10 +302,13 @@ struct RawModelUsage {
 const SYNTHETIC_MODEL: &str = "<synthetic>";
 
 /// Raise it whenever `parse_line` reads lines it used to reject, so every stored transcript is read again.
-pub const READER_VERSION: u32 = 1;
+pub const READER_VERSION: u32 = 2;
 
 pub fn is_candidate(line: &str) -> bool {
-    line.contains("\"usage\"") || line.contains("\"cost-state\"") || line.contains("\"ai-title\"")
+    line.contains("\"usage\"")
+        || line.contains("\"cost-state\"")
+        || line.contains("\"ai-title\"")
+        || line.contains("\"custom-title\"")
 }
 
 pub fn parse_line(line: &str) -> Option<Line> {
@@ -323,6 +332,7 @@ pub fn parse_line(line: &str) -> Option<Line> {
         "assistant" => request_from(raw),
         "cost-state" => cost_state_from(raw),
         "ai-title" => title_from(raw),
+        "custom-title" => custom_title_from(raw),
         _ if carries_usage(&raw) => return Some(unrecognized),
         _ => return None,
     };
@@ -403,6 +413,13 @@ fn title_from(raw: RawLine) -> Option<Line> {
     Some(Line::Title {
         session_id: raw.session_id?.into_owned(),
         title: raw.ai_title?.into_owned(),
+    })
+}
+
+fn custom_title_from(raw: RawLine) -> Option<Line> {
+    Some(Line::CustomTitle {
+        session_id: raw.session_id?.into_owned(),
+        title: raw.custom_title?.into_owned(),
     })
 }
 
@@ -512,7 +529,7 @@ impl Corpus {
                     self.cost_states.insert(state.session_id.clone(), state);
                 }
             }
-            Line::Title { .. } => {}
+            Line::Title { .. } | Line::CustomTitle { .. } => {}
             Line::Unrecognized { kind, .. } => *self.unrecognized.entry(kind).or_default() += 1,
         }
     }

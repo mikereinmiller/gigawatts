@@ -615,3 +615,80 @@ fn upgrading_to_attribution_labels_head_from_a_gone_transcript_detached() {
         .unwrap();
     assert_eq!(branches, vec!["detached".to_string()]);
 }
+
+fn title_line(kind: &str, field: &str, title: &str) -> String {
+    format!(r#"{{"type":"{kind}","sessionId":"s1","{field}":"{title}"}}"#) + "\n"
+}
+
+fn ai_title(title: &str) -> String {
+    title_line("ai-title", "aiTitle", title)
+}
+
+fn custom_title(title: &str) -> String {
+    title_line("custom-title", "customTitle", title)
+}
+
+fn append(transcript: &Path, text: &str) {
+    OpenOptions::new()
+        .append(true)
+        .open(transcript)
+        .unwrap()
+        .write_all(text.as_bytes())
+        .unwrap();
+}
+
+#[test]
+fn a_session_renamed_by_its_user_is_titled_with_that_name() {
+    let mut scratch = scratch();
+    fs::write(
+        scratch.projects.join("p").join("s1.jsonl"),
+        request_line("r1", 10) + &custom_title("Login page"),
+    )
+    .unwrap();
+
+    ingest(&mut scratch.store, &scratch.projects);
+
+    assert_eq!(
+        scratch.store.session_title("s1").unwrap().as_deref(),
+        Some("Login page")
+    );
+}
+
+#[test]
+fn the_latest_rename_is_the_title() {
+    let mut scratch = scratch();
+    fs::write(
+        scratch.projects.join("p").join("s1.jsonl"),
+        request_line("r1", 10) + &custom_title("Login page") + &custom_title("Signup page"),
+    )
+    .unwrap();
+
+    ingest(&mut scratch.store, &scratch.projects);
+
+    assert_eq!(
+        scratch.store.session_title("s1").unwrap().as_deref(),
+        Some("Signup page")
+    );
+}
+
+#[test]
+fn a_rename_wins_over_the_generated_title_whichever_comes_first() {
+    for (first, later) in [
+        (custom_title("Login page"), ai_title("Fix the form")),
+        (ai_title("Fix the form"), custom_title("Login page")),
+    ] {
+        let mut scratch = scratch();
+        let transcript = scratch.projects.join("p").join("s1.jsonl");
+        fs::write(&transcript, request_line("r1", 10) + &first).unwrap();
+        ingest(&mut scratch.store, &scratch.projects);
+        append(&transcript, &later);
+
+        ingest(&mut scratch.store, &scratch.projects);
+
+        assert_eq!(
+            scratch.store.session_title("s1").unwrap().as_deref(),
+            Some("Login page"),
+            "{first}{later}"
+        );
+    }
+}
