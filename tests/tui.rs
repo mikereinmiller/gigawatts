@@ -1099,7 +1099,7 @@ fn the_first_launch_records_the_accounts_it_finds_without_announcing_them() {
 }
 
 #[test]
-fn a_usual_from_fewer_than_twenty_days_says_so_on_its_own_line() {
+fn a_usual_from_fewer_than_twenty_days_shows_no_caveat() {
     let mut early = personal();
     early.pace.usual_days = 4;
 
@@ -1109,10 +1109,7 @@ fn a_usual_from_fewer_than_twenty_days_says_so_on_its_own_line() {
         shown.contains("2.0× your usual of $7.10 by 09:20 "),
         "{shown}"
     );
-    assert!(
-        shown.contains("usual is provisional: 4 of 20 days so far"),
-        "{shown}"
-    );
+    assert!(!shown.contains("provisional"), "{shown}");
 }
 
 #[test]
@@ -3184,7 +3181,7 @@ fn stacked_today_has_its_own_header_and_starts_at_the_left_edge() {
     let lines: Vec<&str> = shown.lines().collect();
     let header = lines
         .iter()
-        .position(|line| line.contains("│ Today · usual from 8 of 20 days "))
+        .position(|line| line.contains("│ Today  "))
         .unwrap_or_else(|| panic!("{shown}"));
 
     assert!(lines[header + 1].contains("│ $14.20 · 2.0×"), "{shown}");
@@ -3198,7 +3195,7 @@ fn stacked_today_has_its_own_header_and_starts_at_the_left_edge() {
             .any(|line| line.contains("│ Today  ")),
         "{shown}"
     );
-    assert!(!shown.contains("usual is provisional"), "{shown}");
+    assert!(!shown.contains("provisional"), "{shown}");
 }
 
 #[test]

@@ -4,7 +4,6 @@ use crate::contract::{
     PacedLimit,
 };
 use crate::limits::{age, limit_name, percent};
-use crate::pace::USUAL_DAYS;
 
 pub(crate) const MAY_MISS_OUTSIDE_USE_MS: i64 = 60 * 60_000;
 
@@ -131,15 +130,8 @@ pub(crate) fn against_usual(pace: &DollarPace) -> String {
     let Some(usual_usd) = pace.usual_usd else {
         return ", no usual yet".to_string();
     };
-    let mut text = match pace.times_usual() {
+    match pace.times_usual() {
         Some(times) => format!(", {times:.1}× your usual by {}", pace.clock),
         None => format!(", usual by {} is ${usual_usd:.2}", pace.clock),
-    };
-    if pace.usual_days < USUAL_DAYS {
-        text.push_str(&format!(
-            " (provisional, {} of {USUAL_DAYS} days)",
-            pace.usual_days
-        ));
     }
-    text
 }

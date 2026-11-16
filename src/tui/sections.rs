@@ -9,7 +9,6 @@ use crate::contract::{
     ProblemKind,
 };
 use crate::limits::{age, credits_used, limit_name, percent, unusual_severity};
-use crate::pace::USUAL_DAYS;
 use crate::status::{MAY_MISS_OUTSIDE_USE_MS, has_reset, pace_phrase, recent_suffix, resets_ms};
 
 use super::HISTORY_MIN_HEIGHT;
@@ -735,11 +734,7 @@ pub(crate) fn today_lines(
 ) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
     if stacked {
-        let header = match usual_days_so_far(&account.pace) {
-            Some(days) => format!("Today · usual from {days} of {USUAL_DAYS} days"),
-            None => "Today".to_string(),
-        };
-        lines.push(Line::styled(header, MUTED));
+        lines.push(Line::styled("Today", MUTED));
     }
     let mut spans = vec![Span::styled(
         format!("${:.2}", account.cost_usd),
@@ -748,9 +743,6 @@ pub(crate) fn today_lines(
     spans.push(Span::styled(" · ", MUTED));
     spans.extend(against_usual(&account.pace));
     lines.push(Line::from(spans));
-    if !stacked && let Some(provisional) = provisional_usual(&account.pace) {
-        lines.push(Line::styled(provisional, MUTED));
-    }
     for text in spend_markers(account, problems) {
         lines.extend(wrapped(&text, width, PROBLEM));
     }
@@ -775,9 +767,6 @@ pub(crate) fn today_panel(
     }
     lines.push(Line::default());
     lines.push(Line::from(against_usual(&account.pace)));
-    if let Some(provisional) = provisional_usual(&account.pace) {
-        lines.push(Line::styled(provisional, MUTED));
-    }
     for text in spend_markers(account, problems) {
         lines.extend(wrapped(&text, width, PROBLEM));
     }
@@ -786,15 +775,6 @@ pub(crate) fn today_panel(
         lines.extend(daily_chart(&account.pace, budget, width, emphasis));
     }
     lines
-}
-
-fn usual_days_so_far(pace: &DollarPace) -> Option<u32> {
-    (pace.usual_usd.is_some() && pace.usual_days < USUAL_DAYS).then_some(pace.usual_days)
-}
-
-fn provisional_usual(pace: &DollarPace) -> Option<String> {
-    usual_days_so_far(pace)
-        .map(|days| format!("usual is provisional: {days} of {USUAL_DAYS} days so far"))
 }
 
 fn daily_chart(

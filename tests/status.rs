@@ -340,7 +340,7 @@ fn an_account_without_readings_still_shows_today_against_a_young_usual() {
 
     assert_eq!(
         line,
-        "personal: no limit readings yet · today $3.00, 1.5× your usual by 12:10 (provisional, 4 of 20 days)"
+        "personal: no limit readings yet · today $3.00, 1.5× your usual by 12:10"
     );
 }
 
