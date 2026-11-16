@@ -1,8 +1,8 @@
 # Gigawatts project overview
 
-Gigawatts is a local usage monitor for Claude Code. It shows how much of your usage limits you've used, what your work cost, and where it went, from a terminal window or the menu bar. It spends no Claude tokens, needs no changes to Claude Code's settings, and never handles your login.
+Gigawatts is a local usage monitor for Claude Code. It shows how much of your usage limits you've used, what your work cost, and where it went, from a terminal window or a page in your browser. It spends no Claude tokens, needs no changes to Claude Code's settings, and never handles your login.
 
-Status: version 1 shaped. Slice 1 (`gigawatts check-costs`) is built.
+Status: versions 1 and 1.1 are built. A beta for coworkers is next.
 
 ## Goals
 
@@ -17,7 +17,7 @@ Status: version 1 shaped. Slice 1 (`gigawatts check-costs`) is built.
 - **Monitoring other people.** Gigawatts shows one person their own usage. Team dashboards are what Anthropic's admin console is for.
 - **Exact billing.** It reports the figures Claude Code records and labels anything it estimates. Anthropic's bill is the authority.
 - **A server.** Nothing runs outside the user's own machines.
-- **Calling a model.** Gigawatts never sends anything to Claude. Judgment about the numbers comes from the insights skill, which runs only when you ask Claude for it.
+- **Calling a model.** Gigawatts never sends anything to Claude. Judgment about the numbers comes from asking an agent to read `gigawatts data --json`, which happens only when you ask.
 
 ## Principles
 
@@ -26,14 +26,14 @@ Status: version 1 shaped. Slice 1 (`gigawatts check-costs`) is built.
 3. **Every number shows its source and age.** For example: "32% weekly, from Claude Code, 4 min ago" or "$14.20 today, estimated."
 4. **Event-driven.** It reacts to file changes and sets no polling timers while Claude Code is idle.
 5. **Degrade instead of breaking.** Every source is undocumented or can change. When one changes, Gigawatts marks the numbers it affects and keeps showing the rest.
-6. **Numbers stay local.** The database holds counts, costs, models, repos, branches, times, and session titles. It never stores prompts, responses, tool inputs, file contents, or commands. Gigawatts never sends your data anywhere. The one network request planned, a daily download of Anthropic's public pricing page, is deferred to Later and could be turned off.
+6. **Numbers stay local.** The database holds counts, costs, models, repos, branches, times, and session titles. It never stores prompts, responses, tool inputs, file contents, or commands. Gigawatts never sends your data anywhere. The one network request, a download of Anthropic's public pricing page when a price looks out of date (beta), can be turned off.
 
 ## Stages
 
 - **Version 1.** The engine and the terminal view, working correctly on macOS and Omarchy Linux, for one user (the author) on two machines.
-- **Version 1.1.** Forecasts, the HTML report page, and the insights skill.
-- **Version 2.** The macOS menu bar and notifications.
-- **Later.** Packaging for other people, the Omarchy bar widget, syncing across machines, Windows, and the status line integration if a use case appears.
+- **Version 1.1.** Forecasts, the alert light, and the HTML report page.
+- **Beta.** Ready for coworkers to install, a Herdr pane, prices that update themselves, spend used elsewhere, and report themes.
+- **Later.** The macOS menu bar, and packaging for people outside the beta.
 
 ## How the numbers work
 
@@ -71,8 +71,8 @@ Claude Code keeps desktop and Cowork transcripts indefinitely unless `desktopSes
 | Transcripts, `~/.claude/projects/**/*.jsonl` | Per request: tokens by type (input, output, thinking, cache reads, 5-minute and 1-hour cache writes, web searches), model and requested model, effort, speed, `inference_geo`, `attributionSkill`, `attributionAgent`, working directory, git branch, time, and `requestId`. Per session: `cost-state` records with the cost per model (written when the session ends), durations, lines changed, the session title (`ai-title`), and tools used | Partly. [Location and retention](https://code.claude.com/docs/en/claude-directory) are documented, the line format isn't | Primary source for cost, tokens, and history |
 | `.claude.json`, `cachedUsageUtilization` | A generic `limits` list (kind, scope, percent, severity, reset time), credits in `spend` (older `extra_usage` as a fallback), a weekly breakdown by surface, the `accountUuid` (but not the `organizationUuid`, so readings are assigned to an account through its directory's `oauthAccount`), and when it was fetched (`fetchedAtMs`). Claude Code doesn't refresh it during ordinary use | No | Read at each full scan. A newer `get_usage` reading takes precedence. On its own it can be days old |
 | `get_usage` control request through an unmodified `claude -p` | Fresh limits and credits, refreshing `cachedUsageUtilization`. Without `skip_behaviors`, also the `behaviors` section that `/usage` shows as "What's contributed to your usage": behavior shares, top agents and skills, and recommendations. Costs no tokens | No (the SDK names it `usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET`) | Limits refresh every 10 minutes per active account, and when you look (see [Stale data and errors](#stale-data-and-errors)). `behaviors` fetched at most once an hour per active account. Measured on Claude Code 2.1.314: 1.1–1.9 s and 258–305 MB peak per run, released when the process exits |
-| Anthropic's pricing page as Markdown, `https://platform.claude.com/docs/en/about-claude/pricing.md` | Per-token prices by model and token type, plus pricing rules (long prompts on Haiku 5.5, US-only inference at 1.1×, fast mode) | Yes, it's Anthropic's public docs | Prices copied by hand into the built-in table. A daily download is Later. See [Cost](#cost) |
-| Status line JSON | Live `rate_limits` on every Claude Code event | [Yes](https://code.claude.com/docs/en/statusline) | Possible later enhancement, not scheduled. It would be installed and removed with one command, wrap the user's existing status line script, and record what it receives, so limits stay current to the second while a session runs, at no cost |
+| Anthropic's pricing page as Markdown, `https://platform.claude.com/docs/en/about-claude/pricing.md` | Per-token prices by model and token type, plus pricing rules (long prompts on Haiku 5.5, US-only inference at 1.1×, fast mode) | Yes, it's Anthropic's public docs | Prices copied by hand into the built-in table, and downloaded when a price looks out of date (beta). See [Cost](#cost) |
+| Status line JSON | Live `rate_limits` on every Claude Code event | [Yes](https://code.claude.com/docs/en/statusline) | Not planned. Limits refresh every 10 minutes while you work, and the forecast's 30-minute rate catches bursts |
 
 Sources considered and rejected:
 
@@ -99,13 +99,13 @@ An account is one Claude Code config directory (`~/.claude`, or wherever `CLAUDE
 Claude Code's files ──▶ engine ──▶ SQLite history ──▶ snapshot + gigawatts data ──▶ views
   transcripts            readers     (private)          (view contract)               terminal
   .claude.json           cost model                                                   report page (1.1)
-  claude -p get_usage    rollups                                                      insights skill (1.1)
-                                                                                      macOS menu bar (2)
+  claude -p get_usage    rollups                                                      Herdr pane (beta)
+                                                                                      macOS menu bar (later)
 ```
 
 - **Engine (Rust).** Always its own background process, and the only writer to the database while it runs. Commands that rewrite history, like `forget`, stop it, write, and start it again, and `gigawatts ingest` writes directly only when no engine runs. A lock file stops a second engine from starting. Opening the terminal view starts the engine if it isn't running, and `gigawatts service install` adds a systemd user unit on Linux or a launchd agent on macOS so it also starts at login (`gigawatts service uninstall` removes it). Once started, it runs until the machine restarts or `gigawatts stop`. Closing the view never stops it. While Claude Code is idle it sleeps with zero wakeups.
 - **Upgrades.** The engine writes its version into the snapshot. A newer view that finds an older engine stops it and starts its own, which runs any database migrations. If the engine is newer than the view, the view says to reopen it. Restarting is always safe, because read positions are saved in the same transaction as the data.
-- **View contract.** The database is private to the engine. Every consumer reads only two things: the snapshot, a JSON file the engine rewrites after each batch of changes with every "now" number per tracked account, and `gigawatts data --json`, which answers history queries by range and grouping. The terminal view calls the same Rust code in-process, and the skill and menu bar run the command. So every number has one implementation, and the database layout can change freely between releases. The report page is the one exception: the engine serves it `/api/*` routes that query the database through the same Rust code. Those routes are private to the page, aren't covered by `schema_version` or `gigawatts schema`, and can change in any release, so no other view, herdr mod included, reads them. The engine rewrites the snapshot only after a batch or scan, so its `today` is the local date it was written. A reader on a later date treats every account as having no requests or spend yet today.
+- **View contract.** The database is private to the engine. Every consumer reads only two things: the snapshot, a JSON file the engine rewrites after each batch of changes with every "now" number per tracked account, and `gigawatts data --json`, which answers history queries by range and grouping. The terminal view calls the same Rust code in-process, and the Herdr pane and menu bar run the command. So every number has one implementation, and the database layout can change freely between releases. The report page is the one exception: the engine serves it `/api/*` routes that query the database through the same Rust code. Those routes are private to the page, aren't covered by `schema_version` or `gigawatts schema`, and can change in any release, so no other view, herdr mod included, reads them. The engine rewrites the snapshot only after a batch or scan, so its `today` is the local date it was written. A reader on a later date treats every account as having no requests or spend yet today.
 - **Schema versioning.** Every snapshot and data response carries an integer `schema_version`. Adding a field doesn't change it, and consumers ignore fields they don't know. Removing or renaming a field, or changing what one means, raises it. `gigawatts schema` prints a JSON Schema generated from the Rust types with `schemars`.
 - **Views.** Each platform gets the view that fits it. Views hold no logic.
 
@@ -166,7 +166,7 @@ Claude Code records a dollar cost per session and model, and only when the sessi
 
 On a subscription, these dollars are what the usage would cost at API prices, not what you're charged.
 
-The price table comes from two layers. A built-in table is copied by hand from Anthropic's pricing page, with the date and link. Overrides in `config.toml` win over it, and `gigawatts doctor` names any model without a price. Until a model has a price, the cost Claude Code recorded for it counts as unlogged usage, so totals still match. When either layer changes, stored history is repriced on the next ingest. The pricing rules are prose on the page and change rarely, so they live in code. A daily download of `pricing.md` as a third layer is in Later, gated on open question 2.
+The price table comes from two layers. A built-in table is copied by hand from Anthropic's pricing page, with the date and link. Overrides in `config.toml` win over it, and `gigawatts doctor` names any model without a price. Until a model has a price, the cost Claude Code recorded for it counts as unlogged usage, so totals still match. When either layer changes, stored history is repriced on the next ingest. The pricing rules are prose on the page and change rarely, so they live in code. In the beta, a third layer comes from `pricing.md`, downloaded when the engine sees a price problem (see [Features](#features)).
 
 ## Pace
 
@@ -220,9 +220,9 @@ Settings live in `~/.config/gigawatts/config.toml` on both platforms, and data (
 | Price overrides, per model | None |
 | Account switch, per config directory | None. A time and the earlier account ID; requests and `cachedUsageUtilization` readings before it belong to that account |
 
-## Insights skill (version 1.1)
+## Asking an agent
 
-An [Agent Skill](https://agentskills.io/specification) in the Gigawatts repo, so it works in Claude Code and other agents that load the format. It reads `gigawatts data --json` and turns the numbers into answers and suggestions: where the spend went, what changed over time, and whether a change helped, each with the numbers behind it and the specific setting or file to change. Gigawatts calculates, and the skill interprets. It builds on Anthropic's own advice from `behaviors` rather than repeating it, and can add its findings to the 1.1 report page. What it does when invoked gets designed in 1.1, around the gaps version 1 leaves, with history to compare. `/spend` keeps working until then. An MCP server isn't planned.
+There is no insights skill. Gigawatts calculates, and any agent interprets: it reads `gigawatts data --json`, with `gigawatts schema` for what each field means, and answers questions like where last week's spend went. What's worth changing depends on each person's repos and habits, which the agent sees and Gigawatts doesn't. The README shows how to ask. An MCP server isn't planned.
 
 ## Views
 
@@ -231,9 +231,8 @@ An [Agent Skill](https://agentskills.io/specification) in the Gigawatts repo, so
 | Terminal: full view, one-line summary, and `gigawatts data` | All | Rust, [`ratatui`](https://ratatui.rs) 0.30, redrawn when data changes and once a minute while open | Version 1 |
 | Floating terminal window on a key binding | Omarchy | The terminal view | Version 1, no extra code |
 | HTML report page | All | A page the engine serves on 127.0.0.1 only, current on every reload, with an Export button that saves a summary as Markdown or PDF | Version 1.1 |
-| Menu bar with a popover and charts | macOS | SwiftUI, reading the view contract. No Rust bindings | Version 2 |
-| Bar widget with a popup | Omarchy | A QML plugin in `~/.config/omarchy/plugins/<id>/`, the same plugin format Omarchy's own widgets use | Later |
-| Tray icon | Windows | To be decided. Rust `tray-icon` is the likely candidate | Later |
+| Herdr pane | All | A Herdr app mod shipped from this repo with a recipe for building your own, reading `gigawatts status --json` | Beta |
+| Menu bar with a popover and charts | macOS | SwiftUI, reading the view contract. No Rust bindings | Later |
 
 Why SwiftUI for the macOS view, and the alternatives considered:
 
@@ -242,11 +241,9 @@ Why SwiftUI for the macOS view, and the alternatives considered:
 - **Rust `tray-icon`** shows only a text menu, which can't hold the charts.
 - **`objc2`** (AppKit from Rust) means hand-drawn charts in unsafe code, and the library is mostly one maintainer's work.
 
-## Menu bar (version 2)
+## Menu bar (later)
 
-The menu bar icon and panel and notifications are version 2. The Back to the Future voice under Themes is already built into the terminal view.
-
-### Menu bar icon and panel
+The menu bar comes after the Herdr pane, if at all.
 
 - **The icon is a ring gauge** that fills toward whichever limit is closest. It's monochrome while normal (a template icon on macOS, tinted by the system), turns amber at 70% and red at 90%, and shows a dashed outline when the data is stale. It changes in 10% steps with a small buffer before changing back, so it never flickers, and it's never animated.
 - **One number sits beside the icon** where the platform allows text. The headline is a setting. The default shows the closest limit's percentage, falling back to today's dollars when every limit is under 50%.
@@ -254,16 +251,11 @@ The menu bar icon and panel and notifications are version 2. The Back to the Fut
 - **Wording names the limit, the number, and the reset time,** for example "5-hour limit at 91%, resets in 1h 20m".
 - **Accounts** use the same rules as the terminal view: follow the most recent account by default, pin one, or show all side by side, with today's spend added up as in the terminal view.
 
-### Notifications
-
-- At 80% and 95% of a limit, once per window per account. Thresholds are settings, and notifications can be turned off.
-- A reset notice, sent only if you actually hit that limit.
-- Every notification names its account, for example "Personal: 5-hour limit at 91%".
-
-### Themes
+## Themes
 
 - **The Back to the Future voice is built in.** There are no other voices and no theme setting. The terminal view's alert light reads "ϟ 1.21 gigawatts! Session full in ~1h 20m" when a limit is on course to hit 100% before it resets, and "ϟ 1.21 gigawatts! Session back in 2h 40m" once it has.
 - **A joke never hides a number.** "ϟ 1.21 gigawatts!" always comes with the limit and its countdown, as in "Session full in ~1h 20m".
+- **The report page has color themes (beta):** Auto, Light, Dark, Gruvbox, Tokyo Night, Catppuccin, and Nord, remembered in the browser. A theme changes backgrounds, text, gridlines, and the accent; chart series and status colors keep the validated palette.
 
 ## Features
 
@@ -284,22 +276,19 @@ Version 1.1:
 - A forecast of when you'll hit a limit compared with when it resets, built on the pace and limit readings version 1 records. Built in 0.1.13 as a straight-line projection of the current window; from 0.1.16 it takes the earlier of that and the last 30 minutes' rate.
 - A red alert light at the right end of the terminal view's title row when any account's limit is on course to fill before it resets, or is already full. Built in 0.1.16.
 - The HTML report page.
-- The insights skill.
 
-Version 2:
+Beta, for coworkers:
 
-- The macOS menu bar view.
-- Notifications at limit thresholds, when a window resets, and when a session spends far above your normal rate.
+- Install and update with one command, `mise run install`, an MIT license, and a README. The repo stays private until the author opens it.
+- A Herdr pane, built on a new `gigawatts status --json` that carries the alert light's alerts.
+- Prices that update themselves. When the engine sees a model with no price or a finished session whose cost disagrees with Claude Code's, it downloads `pricing.md`, at most once a day while the problem lasts, updates changed prices, and reprices history. A failed download, an unreadable page, or an implausible price keeps the current prices and raises a problem. A setting turns it off.
+- Spend used elsewhere. For a credits-only account, Anthropic's month-to-date credits minus this machine's spend, as "$494 of $2,200 ($84 elsewhere)" with a second shade in the bar. For a subscription, an estimate from limit rises while this machine made no requests, shipped only if a week of real data from two machines shows it lands close.
+- Color themes for the report page.
 
 Later:
 
-- Packaging for other people: a Homebrew tap, prebuilt binaries, and install docs.
-- The Omarchy bar widget.
-- Combined totals across your machines, by syncing daily rollups through a shared folder.
-- The Windows view.
-- A one-time import of earlier `/spend` history (`~/.claude/spend/`), so months whose transcripts Claude Code already deleted still appear.
-- The status line integration, for limits that are current to the second, if a use case appears.
-- The daily `pricing.md` download, once open question 2 is settled in its favor. It would read the page's model pricing table, map names like "Claude Opus 5.5" to IDs like `claude-opus-5-5`, keep the last good copy when the table can't be read or a price looks implausible, and sit between the built-in table and the overrides.
+- The macOS menu bar view.
+- Packaging for people outside the beta: a Homebrew tap and prebuilt binaries.
 
 ## Existing tools and the gaps Gigawatts fills
 
@@ -322,8 +311,8 @@ Gigawatts targets what none of them do well: history that outlives log deletion,
 
 ## Distribution
 
-- **Version 1.** Clone the repo and run `cargo install --path .`, with Rust installed through mise. Updating is `git pull` and the same command, and the view restarts an older engine on its own. `gigawatts service install` sets up the login service.
-- **Later, for other people.** A Homebrew tap built with [`cargo-dist`](https://github.com/axodotdev/cargo-dist), keeping the same service commands.
+- **Beta.** Clone the repo and run `mise run install`, which builds and installs the binary, stops the running engine, and starts the new one. Updating is `git pull` and the same command. `gigawatts service install` sets up the login service. A rebuilt binary keeps its old engine running unless the version changed, so every behavior change bumps the patch version.
+- **Later, for people outside the beta.** A Homebrew tap built with [`cargo-dist`](https://github.com/axodotdev/cargo-dist), keeping the same service commands.
 - **macOS view.** A signed and notarized cask. That needs an Apple Developer ID ($99 a year), and Homebrew 5 disables casks that fail Gatekeeper. `cargo-dist` doesn't notarize, so CI runs `notarytool` itself.
 - **Command.** The binary is `gigawatts`, so it can't collide with other tools. Users can add their own short alias such as `gw`.
 - **Name.** Gigawatts uses no Anthropic or Claude Code names or logos in its product name, per the legal page. "A usage monitor for Claude Code" in a description is allowed.
@@ -332,14 +321,14 @@ Gigawatts targets what none of them do well: history that outlives log deletion,
 
 - **Undocumented formats.** Transcripts, `cachedUsageUtilization`, and `get_usage` can change in any Claude Code release. Each source sits behind its own reader with fixture tests, and `gigawatts doctor` reports what stopped making sense.
 - **`get_usage` rate limits.** It likely hits the same rate-limited endpoint other tools fight. Refreshes stay infrequent, back off on failure, and fall back to the cached copy.
-- **The built-in price table goes stale.** It is copied by hand, so a new model or price change leaves it behind. `gigawatts doctor` names any model without a price, and the check against Claude Code's totals flags a wrong price as an "adjusted" session, or as a price gap when the price comes out above Claude Code's record even with spend missing from the transcript.
+- **The built-in price table goes stale.** It is copied by hand, so a new model or price change leaves it behind. In the beta the engine downloads the pricing page when it sees either. `gigawatts doctor` names any model without a price, and the check against Claude Code's totals flags a wrong price as an "adjusted" session, or as a price gap when the price comes out above Claude Code's record even with spend missing from the transcript.
 - **Swift adds a second language.** The view is kept thin so the Swift code stays small.
 
 ## Open questions
 
 1. **Whether per-request costs match Claude Code's totals.** Settled 2026-11-02 by `gigawatts check-costs` on the work Mac: every session and model whose transcript tokens equal Claude Code's matches (67 of 67). The rest differ because Claude Code bills requests it never writes to the transcript, about 14% of spend, which [Cost](#cost) now stores as its own row.
-2. **Whether Anthropic's docs terms allow automated downloads of `pricing.md`.** Gates the daily download in Later. Anthropic's consumer terms ban scripted access to "Services" including "associated ... websites", while `robots.txt` and `llms.txt` invite readers. Until it's settled, the built-in table and overrides are the only sources.
+2. **Whether Anthropic's docs terms allow automated downloads of `pricing.md`.** Settled 2026-11-16: download only when the engine sees a price problem, at most once a day, with a setting to turn it off. Anthropic's consumer terms ban scripted access to "Services" including "associated ... websites", while `robots.txt` and `llms.txt` invite readers; a rare request for a page published as Markdown for AI tools is an accepted risk.
 3. **The work Mac's headline numbers.** Settled 2026-11-02: the enterprise account reports monthly credits only (`spend` and `extra_usage`), with no 5-hour or weekly windows and no reset time.
-4. **Repo hosting and license.** Personal account or employer org. An employer IP policy may decide this. Blocks only a release to other people.
-5. **Whether Anthropic is comfortable with scheduled `get_usage` calls.** It runs Claude Code unmodified with the user's own login, which the policy page allows, but nothing public addresses running it on a schedule. Blocks only a release to other people.
-6. **The Windows view technology.** Decided when Windows work starts.
+4. **Repo hosting and license.** Settled 2026-11-16: the author's personal GitHub account, MIT license. It's a personal project the employer has no claim on. The repo stays private until the author opens it.
+5. **Whether Anthropic is comfortable with scheduled `get_usage` calls.** It runs Claude Code unmodified with the user's own login, which the policy page allows, but nothing public addresses running it on a schedule. Still open; the coworker beta goes ahead, and the README says Gigawatts relies on an undocumented Claude Code request.
+6. **The Windows view technology.** Dropped 2026-11-16 with the Windows view.
