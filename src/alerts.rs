@@ -2,6 +2,8 @@ use crate::contract::{AccountToday, Alert, AlertState};
 use crate::limits::short_limit_name;
 use crate::status::{MAY_MISS_OUTSIDE_USE_MS, has_reset, resets_ms};
 
+const FILLING_ALERT_WITHIN_MS: i64 = 24 * 60 * 60_000;
+
 pub fn alerts(accounts: &[AccountToday], now_ms: i64) -> Vec<Alert> {
     let mut found = Vec::new();
     for account in accounts {
@@ -20,6 +22,7 @@ pub fn alerts(accounts: &[AccountToday], now_ms: i64) -> Vec<Alert> {
             } else {
                 shown
                     .forecast
+                    .filter(|forecast| forecast.full_at_ms - now_ms <= FILLING_ALERT_WITHIN_MS)
                     .map(|forecast| (AlertState::Filling, forecast.full_at_ms.max(now_ms)))
             };
             if let Some((state, at_ms)) = trouble {

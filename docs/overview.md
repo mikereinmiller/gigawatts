@@ -253,7 +253,7 @@ The menu bar comes after a Herdr pane built on `gigawatts status --json`, if at 
 
 ## Themes
 
-- **The Back to the Future voice is built in.** There are no other voices and no theme setting. The terminal view's alert light reads "ϟ 1.21 gigawatts! Session full in ~1h 20m" when a limit is on course to hit 100% before it resets, and "ϟ 1.21 gigawatts! Session back in 2h 40m" once it has.
+- **The Back to the Future voice is built in.** There are no other voices and no theme setting. The terminal view's alert light reads "ϟ 1.21 gigawatts! Session full in ~1h 20m" when a limit is on course to hit 100% before it resets and within the next 24 hours, and "ϟ 1.21 gigawatts! Session back in 2h 40m" once it has.
 - **A joke never hides a number.** "ϟ 1.21 gigawatts!" always comes with the limit and its countdown, as in "Session full in ~1h 20m".
 - **The report page has color themes (beta):** Auto, Light, Dark, Gruvbox, Tokyo Night, Catppuccin, and Nord, remembered in the browser. A theme changes backgrounds, text, gridlines, and the accent; chart series and status colors keep the validated palette.
 
@@ -274,7 +274,7 @@ Version 1, the engine and terminal view, working correctly on macOS and Omarchy 
 Version 1.1:
 
 - A forecast of when you'll hit a limit compared with when it resets, built on the pace and limit readings version 1 records. Built in 0.1.13 as a straight-line projection of the current window; from 0.1.16 it takes the earlier of that and the last 30 minutes' rate. From 0.1.25 the straight-line projection waits until use runs more than 5 points ahead of the share of the window gone, the same band pace calls even, unless the limit is within 5 points of full, since Anthropic reports whole percents and a limit level with the clock flickered in and out of a forecast.
-- A red alert light at the right end of the terminal view's title row when any account's limit is on course to fill before it resets, or is already full. Built in 0.1.16.
+- A red alert light at the right end of the terminal view's title row when any account's limit is on course to fill before it resets, or is already full. Built in 0.1.16. From 0.1.25 a fill more than 24 hours out shows only under its limit, not in the light.
 - The HTML report page.
 
 Beta, for coworkers:

@@ -26,7 +26,7 @@ Calling `gigawatts status --json` once a minute is fine. Each call only reads th
 `alerts` lists limits that need attention, already ranked worst first, and is empty when nothing does. Show the first one and count the rest:
 
 - `state: "full"`: the limit is at 100%. `at_ms` is when it resets. The terminal view says "Session back in 2h 40m".
-- `state: "filling"`: the limit is on course to reach 100% before it resets. `at_ms` is when it's forecast to, or the snapshot's `written_at_ms` when that time has already passed, meaning any minute now. The terminal view says "Session full in ~1h 20m", rounded to 10 minutes because it's a forecast.
+- `state: "filling"`: the limit is on course to reach 100% before it resets, within the next 24 hours. A fill further out shows only as the limit's `forecast`. `at_ms` is when it's forecast to, or the snapshot's `written_at_ms` when that time has already passed, meaning any minute now. The terminal view says "Session full in ~1h 20m", rounded to 10 minutes because it's a forecast.
 
 Count down from your own clock to `at_ms`, so the countdown stays right between calls. Once `at_ms` passes before your next call, hide a `full` alert, since its limit has reset, and show a `filling` one as any minute now. Name the account (`account_label`) when the alert isn't for the account you're showing.
 

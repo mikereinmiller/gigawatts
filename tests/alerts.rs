@@ -186,3 +186,21 @@ fn a_forecast_that_fell_due_since_the_reading_counts_as_filling_now() {
     assert_eq!(found[0].state, AlertState::Filling);
     assert_eq!(found[0].at_ms, NOW_MS);
 }
+
+#[test]
+fn a_limit_forecast_to_fill_more_than_a_day_out_raises_no_alert() {
+    let accounts = vec![account(
+        "a/o",
+        "personal",
+        3 * 60_000,
+        vec![
+            filling("weekly_all", 24 * 60 + 10),
+            filling("session", 24 * 60),
+        ],
+    )];
+
+    let found = alerts(&accounts, NOW_MS);
+
+    assert_eq!(found.len(), 1);
+    assert_eq!(found[0].limit, "Session");
+}

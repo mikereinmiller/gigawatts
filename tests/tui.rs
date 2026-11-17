@@ -3654,7 +3654,7 @@ fn the_full_in_countdown_rounds_to_10_minutes_and_to_the_hour_from_a_day() {
         (84, "full in ~1h 20m "),
         (85, "full in ~1h 30m "),
         (23 * 60 + 59, "full in ~1d 0h "),
-        (28 * 60 + 40, "full in ~1d 5h "),
+        (24 * 60, "full in ~1d 0h "),
     ] {
         let app = open(snapshot(vec![filling_in(minutes)]), None);
 
