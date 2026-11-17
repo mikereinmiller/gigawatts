@@ -503,7 +503,40 @@ fn doctor_exits_zero_when_nothing_is_wrong() {
     let output = gigawatts(home.path(), &["doctor"]);
 
     assert_eq!(output.status.code(), Some(0), "{output:?}");
-    assert_eq!(String::from_utf8_lossy(&output.stdout), "No problems.\n");
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "No problems.\n\nPrices: the built-in table, copied 2026-11-11 from https://platform.claude.com/docs/en/about-claude/pricing.md.\n"
+    );
+}
+
+#[test]
+fn doctor_names_the_models_priced_from_the_downloaded_page_and_when() {
+    let home = home_with(&request("r1", "claude-opus-5-5", 1_000, 100));
+    assert_eq!(gigawatts(home.path(), &["ingest"]).status.code(), Some(0));
+    let mut store =
+        Store::open(&home.path().join(".local/share/gigawatts/history.sqlite3")).unwrap();
+    let prices = *PriceTable::built_in().model("claude-opus-5-5").unwrap();
+    let fetched_at_ms = 1_767_873_600_000;
+    store
+        .save_downloaded_prices(&gigawatts::store::DownloadedPrices {
+            fetched_at_ms,
+            models: [
+                ("claude-opus-5-6".to_string(), prices),
+                ("claude-opus-5-5".to_string(), prices),
+            ]
+            .into(),
+        })
+        .unwrap();
+    let fetched = store.local_datetime(fetched_at_ms).unwrap().unwrap();
+
+    let output = gigawatts(home.path(), &["doctor"]);
+
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        format!(
+            "No problems.\n\nPrices: the built-in table, copied 2026-11-11, with claude-opus-5-5 and claude-opus-5-6 from https://platform.claude.com/docs/en/about-claude/pricing.md, downloaded {fetched}.\n"
+        )
+    );
 }
 
 #[test]

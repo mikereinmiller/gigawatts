@@ -11,6 +11,7 @@ use gigawatts::contract::{AccountToday, DataResponse, GroupBy, LimitsResponse, R
 use gigawatts::data::Days;
 use gigawatts::engine;
 use gigawatts::pace;
+use gigawatts::price_updates;
 use gigawatts::problems;
 use gigawatts::scrub::scrub_sessions;
 use gigawatts::service::{Manager, Service};
@@ -574,6 +575,10 @@ fn doctor() -> ExitCode {
         Ok(mut problems) => {
             problems.extend(engine::running_problems(&paths()));
             print!("{}", problems::render(&problems));
+            match price_updates::describe(&store, &config) {
+                Ok(prices) => println!("\n{prices}"),
+                Err(error) => eprintln!("gigawatts: can't read where prices come from: {error}"),
+            }
             if problems.is_empty() {
                 ExitCode::SUCCESS
             } else {

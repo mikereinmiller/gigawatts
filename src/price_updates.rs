@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::process::Command;
 
 use crate::config::Config;
-use crate::pricing::{FastPrices, ModelPrices, PriceTable, Prices, TABLE_SOURCE};
+use crate::pricing::{FastPrices, ModelPrices, PriceTable, Prices, TABLE_DATE, TABLE_SOURCE};
 use crate::store::{self, DownloadedPrices, PriceUpdate, Store};
 
 pub const DAY_MS: i64 = 24 * 60 * 60 * 1000;
@@ -107,6 +107,36 @@ fn forget_failure(store: &mut Store, last: Option<PriceUpdate>) -> store::Result
         }),
         None => Ok(()),
     }
+}
+
+pub fn describe(store: &Store, config: &Config) -> store::Result<String> {
+    let built_in = format!("Prices: the built-in table, copied {TABLE_DATE}");
+    let mut line = match store.downloaded_prices()? {
+        None => format!("{built_in} from {TABLE_SOURCE}."),
+        Some(downloaded) => {
+            let fetched = store
+                .local_datetime(downloaded.fetched_at_ms)?
+                .unwrap_or_default();
+            let mut models: Vec<&str> = downloaded.models.keys().map(String::as_str).collect();
+            models.sort();
+            match models.split_last() {
+                None => {
+                    format!("{built_in} from {TABLE_SOURCE}, unchanged when downloaded {fetched}.")
+                }
+                Some((last, [])) => {
+                    format!("{built_in}, with {last} from {TABLE_SOURCE}, downloaded {fetched}.")
+                }
+                Some((last, rest)) => format!(
+                    "{built_in}, with {} and {last} from {TABLE_SOURCE}, downloaded {fetched}.",
+                    rest.join(", ")
+                ),
+            }
+        }
+    };
+    if !config.price_updates() {
+        line.push_str(" Downloads are off: `price_updates = false`.");
+    }
+    Ok(line)
 }
 
 fn fetch(
