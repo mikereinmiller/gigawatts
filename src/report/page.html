@@ -4,6 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Gigawatts report</title>
+<script>
+try {
+  const theme = localStorage.getItem('gigawatts-theme');
+  if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
+} catch {}
+</script>
 <style>
 :root {
   color-scheme: light;
@@ -26,7 +32,7 @@
   --shadow: 0 1px 2px rgb(0 0 0 / 0.04);
 }
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     color-scheme: dark;
     --page: #0d0d0d;
     --surface: #1a1a19;
@@ -44,6 +50,24 @@
     --other: #5a5a56;
     --shadow: none;
   }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d;
+  --surface: #1a1a19;
+  --raised: #2a2a28;
+  --hover: #222221;
+  --ink: #f0efec;
+  --ink-2: #c3c2b7;
+  --muted: #8f8d86;
+  --grid: #2c2c2a;
+  --axis: #3d3d3a;
+  --ring: rgba(255, 255, 255, 0.09);
+  --accent: #3987e5;
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+  --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767;
+  --other: #5a5a56;
+  --shadow: none;
 }
 :root {
   --text-xs: 12px; --text-sm: 13px; --text-md: 14px; --text-lg: 16px; --text-xl: 20px; --text-2xl: 28px; --text-3xl: 36px;
@@ -98,6 +122,7 @@ h3 { font-size: var(--text-xs); line-height: 1.33; margin: 0 0 var(--space-3); f
 .popover.end { left: auto; right: 0; transform-origin: top right; min-width: 300px; }
 .range-popover { width: 320px; }
 #account-menu { min-width: 300px; }
+#theme-menu { min-width: 220px; }
 .item { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: center; gap: var(--space-2); width: 100%; min-height: 36px; padding: 6px 10px 6px var(--space-2); border: 0; border-radius: 8px; background: none; text-align: left; }
 .item .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .item small { color: var(--muted); font-size: var(--text-xs); font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -282,7 +307,7 @@ tbody tr.loading td { color: var(--muted); font-size: var(--text-sm); height: 36
   main { padding: var(--space-5) var(--space-4) var(--space-12); }
 }
 @media print {
-  :root {
+  :root:not([data-theme]), :root[data-theme] {
     color-scheme: light;
     --page: #ffffff; --surface: #ffffff; --raised: #f0efec; --hover: #f3f2ef;
     --ink: #0b0b0b; --ink-2: #52514e; --muted: #7d7b75; --grid: #e8e7e1; --axis: #c3c2b7;
@@ -356,6 +381,10 @@ tbody tr.loading td { color: var(--muted); font-size: var(--text-sm); height: 36
       </div>
     </div>
     <div class="scope" id="scope" aria-label="Focused on"></div>
+  </div>
+  <div class="menu">
+    <button class="trigger" id="theme-button" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="Theme"></button>
+    <div class="popover end" id="theme-menu" role="menu" aria-label="Theme"></div>
   </div>
   <div class="menu">
     <button class="trigger" id="export" type="button" aria-haspopup="menu" aria-expanded="false"></button>
@@ -664,6 +693,9 @@ const ICONS = {
   calendar: 'M3.5 4.5h9a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1zM2.5 7.5h11M5.5 2.5v3M10.5 2.5v3',
   stack: 'M8 2.5l5.5 3L8 8.5l-5.5-3zM2.5 8.5L8 11.5l5.5-3M2.5 11L8 14l5.5-3',
   download: 'M8 2.5v8M4.5 7.5L8 11l3.5-3.5M3 13.5h10',
+  auto: 'M8 2.5a5.5 5.5 0 1 0 0 11a5.5 5.5 0 1 0 0-11zM8 2.5v11',
+  light: 'M8 5.5a2.5 2.5 0 1 0 0 5a2.5 2.5 0 1 0 0-5zM8 1.5V3M8 13v1.5M1.5 8H3M13 8h1.5M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M3.4 12.6l1.1-1.1M11.5 4.5l1.1-1.1',
+  dark: 'M13 9.5A5.5 5.5 0 1 1 6.5 3a4.5 4.5 0 0 0 6.5 6.5z',
 };
 
 function icon(name, className = '') {
@@ -2182,6 +2214,38 @@ backdrop.addEventListener('click', closePanel);
 document.addEventListener('keydown', event => {
   if (event.key === 'Escape') { closePanel(); closeMenu(); }
 });
+
+// Theme
+
+const THEMES = [['auto', 'Auto', 'Follows your system'], ['light', 'Light'], ['dark', 'Dark']];
+const THEME_KEY = 'gigawatts-theme';
+const themeButton = document.getElementById('theme-button');
+const themeMenu = document.getElementById('theme-menu');
+
+function drawTheme() {
+  const current = document.documentElement.dataset.theme ?? 'auto';
+  const [, name] = THEMES.find(([value]) => value === current);
+  themeButton.replaceChildren(icon(current), element('span', name, 'value'), icon('caret', 'caret'));
+  themeMenu.replaceChildren(...THEMES.map(([value, label, meta]) => menuItem({
+    label,
+    meta,
+    checked: value === current,
+    onPick: () => pickTheme(value),
+  })));
+}
+
+function pickTheme(value) {
+  if (value === 'auto') delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = value;
+  try {
+    if (value === 'auto') localStorage.removeItem(THEME_KEY);
+    else localStorage.setItem(THEME_KEY, value);
+  } catch {}
+  drawTheme();
+}
+
+drawTheme();
+setupPopover(themeButton, themeMenu);
 
 // Export
 

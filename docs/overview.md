@@ -258,7 +258,7 @@ The menu bar comes after a Herdr pane built on `gigawatts status --json`, if at 
 
 - **The Back to the Future voice is built in.** There are no other voices and no theme setting. The terminal view's alert light reads "ϟ 1.21 gigawatts! Session full in ~1h 20m" when a limit is on course to hit 100% before it resets and within the next 24 hours, and "ϟ 1.21 gigawatts! Session back in 2h 40m" once it has.
 - **A joke never hides a number.** "ϟ 1.21 gigawatts!" always comes with the limit and its countdown, as in "Session full in ~1h 20m".
-- **The report page has color themes (beta):** Auto, Light, Dark, Gruvbox, Tokyo Night, Catppuccin, and Nord, remembered in the browser. A theme changes backgrounds, text, gridlines, and the accent; chart series and status colors keep the validated palette.
+- **The report page has a theme picker (beta):** Auto, Light, and Dark, remembered in the browser. Auto follows the OS.
 
 ## Features
 
@@ -286,11 +286,12 @@ Beta, for coworkers:
 - Data for integrations: `gigawatts status --json` with the alert light's alerts, a description of every field in `gigawatts schema`, and `docs/integrations.md`. A Herdr pane gets built outside this repo from them. Built in 0.1.17.
 - Prices that update themselves. When the engine sees a model with no price or a finished session whose cost disagrees with Claude Code's, it downloads `pricing.md`, at most once a day while the problem lasts, updates changed prices, and reprices history. A failed download, an unreadable page, or an implausible price keeps the current prices and raises a problem. A setting turns it off. Built in 0.1.26.
 - Spend used elsewhere. For a credits-only account, Anthropic's month-to-date credits minus this machine's spend, as "$494 of $2,200 ($84 elsewhere)" with a second shade in the bar, left out under $5 or under 1% of the credits used. For a subscription, an estimate on the session and weekly limits, as "~13% elsewhere" with a second shade in the bar: the limit's percent minus this machine's spend in the window, converted at this machine's dollars per point (its highest daily rate over the last 28 days among days whose rises within a window add up to 5 points or more). Shown only once the limit is at 10% and the estimate at 3 points, since it can be off by 2 to 3 points.
-- Color themes for the report page.
+- A theme picker for the report page: Auto, Light, and Dark.
 
 Later:
 
 - The macOS menu bar view.
+- Named report themes, such as Gruvbox or Nord, each with its own validated series colors.
 - Packaging for people outside the beta: a Homebrew tap and prebuilt binaries.
 
 ## Existing tools and the gaps Gigawatts fills
