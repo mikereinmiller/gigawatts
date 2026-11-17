@@ -15,7 +15,6 @@ const SESSION_ROWS: u16 = 4;
 const RULE_ROWS: u16 = 1;
 const BORDER_ROWS: u16 = 2;
 const BORDER_AND_PADDING_COLUMNS: u16 = 4;
-const SUMMARY_ROWS: u16 = 1;
 const DIVIDER: &str = " │ ";
 const TWO_COLUMNS_FROM: u16 = 72;
 const THREE_COLUMNS_FROM: u16 = 146;
@@ -85,13 +84,10 @@ impl Plan<'_> {
     }
 
     fn height(&self) -> u16 {
-        if self.is_empty() {
+        if self.shown.is_empty() {
             return BORDER_ROWS + self.gap + 1;
         }
-        BORDER_ROWS
-            + self.gap
-            + rows_height(self.rows())
-            + u16::from(self.has_summary()) * SUMMARY_ROWS
+        BORDER_ROWS + self.gap + rows_height(self.rows())
     }
 }
 
@@ -99,8 +95,8 @@ fn rows_height(rows: u16) -> u16 {
     rows * SESSION_ROWS + rows.saturating_sub(1) * RULE_ROWS
 }
 
-fn rows_that_fit(room: u16, gap: u16, summary: bool) -> usize {
-    let room = room.saturating_sub(BORDER_ROWS + gap + u16::from(summary) * SUMMARY_ROWS);
+fn rows_that_fit(room: u16, gap: u16) -> usize {
+    let room = room.saturating_sub(BORDER_ROWS + gap);
     ((room + RULE_ROWS) / (SESSION_ROWS + RULE_ROWS)).max(1) as usize
 }
 
@@ -113,9 +109,7 @@ fn plan<'a>(running: &Running<'a>, width: u16, room: u16, roomy: bool) -> Plan<'
         .copied()
         .partition(|session| !is_background(session.spend));
     titled.sort_by(by_cost_today);
-    let everything_fits =
-        rows_that_fit(room, gap, false) * columns >= titled.len() && background.is_empty();
-    let rows = rows_that_fit(room, gap, !everything_fits);
+    let rows = rows_that_fit(room, gap);
     let slots = (rows * columns).min(titled.len());
     let mut shown = titled[..slots].to_vec();
     let mut hidden = titled[slots..].to_vec();
@@ -182,13 +176,16 @@ pub(crate) fn height(running: &Running, width: u16, room: u16, roomy: bool) -> u
 pub(crate) fn draw(frame: &mut Frame, area: Rect, running: &Running, now_ms: i64, roomy: bool) {
     let plan = plan(running, area.width, area.height, roomy);
     let mut lines = card_lines(&plan, running, area.width, now_ms);
+    let mut block = titled_section(title(running));
     if plan.has_summary() {
-        lines.push(summary(&plan.hidden, &plan.background));
+        let summary = summary(&plan.hidden, &plan.background);
+        if plan.shown.is_empty() {
+            lines.push(summary);
+        } else {
+            block = block.title_bottom(in_border(summary));
+        }
     }
-    frame.render_widget(
-        Paragraph::new(lines).block(titled_section(title(running))),
-        area,
-    );
+    frame.render_widget(Paragraph::new(lines).block(block), area);
 }
 
 pub(crate) fn draw_list(
@@ -200,7 +197,7 @@ pub(crate) fn draw_list(
     first_row: &Cell<usize>,
 ) {
     let plan = every_session(running, area.width, roomy);
-    let visible_rows = rows_that_fit(area.height, plan.gap, false);
+    let visible_rows = rows_that_fit(area.height, plan.gap);
     let last_first_row = (plan.rows() as usize).saturating_sub(visible_rows);
     first_row.set(first_row.get().min(last_first_row));
     let skipped = first_row.get() as u16 * (SESSION_ROWS + RULE_ROWS);
@@ -375,6 +372,13 @@ fn driver(session: &SessionSpend, room: usize) -> Vec<Span<'static>> {
     ]
 }
 
+fn in_border(line: Line<'static>) -> Line<'static> {
+    let mut spans = vec![Span::raw(" ")];
+    spans.extend(line.spans);
+    spans.push(Span::raw(" "));
+    Line::from(spans)
+}
+
 fn summary(hidden: &[Owned], background: &[Owned]) -> Line<'static> {
     let today = |sessions: &[Owned]| -> f64 {
         sessions.iter().map(|session| session.spend.today_usd).sum()
@@ -398,7 +402,7 @@ fn summary(hidden: &[Owned], background: &[Owned]) -> Line<'static> {
         }
     }
     if !background.is_empty() {
-        if !spans.is_empty() {
+        if !hidden.is_empty() {
             spans.push(Span::styled("   ", MUTED));
         }
         spans.push(Span::styled(

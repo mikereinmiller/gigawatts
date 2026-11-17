@@ -2730,6 +2730,20 @@ fn a_background_run_spending_fast_gets_its_own_card() {
 }
 
 #[test]
+fn background_runs_alone_line_up_with_the_rest_of_the_panel() {
+    let mut account = personal();
+    let mut background = card_session("624c5b71-0000", 0.3, 0.1);
+    background.label = background.session.clone();
+    background.repo = "temporary".to_string();
+    account.active_sessions = vec![background];
+    let app = open(snapshot(vec![account]), None);
+
+    let shown = screen(&app, 100, 34);
+
+    assert!(shown.contains("│ 1 background run"), "{shown}");
+}
+
+#[test]
 fn a_session_with_nothing_new_for_five_minutes_says_it_is_idle() {
     let mut account = personal();
     account.active_sessions[1].last_active_ms = NOW_MS - 9 * 60_000;
@@ -3862,6 +3876,27 @@ fn a_credit_limit_at_100_percent_with_no_reset_lights_nothing() {
         "{}",
         title_row(&app, 100)
     );
+}
+
+#[test]
+fn the_line_that_adds_up_the_rest_sits_in_the_bottom_border_so_a_second_row_of_cards_fits() {
+    let mut account = personal();
+    account.cost_usd = 40.0;
+    account.active_sessions = vec![
+        card_session("Session A", 9.0, 0.5),
+        card_session("Session B", 8.0, 0.5),
+        card_session("Session C", 7.0, 0.5),
+        card_session("Session D", 6.0, 0.5),
+        card_session("Session E", 0.5, 0.5),
+    ];
+    let app = open(snapshot(vec![account]), None);
+
+    let shown = screen(&app, 100, 36);
+
+    for card in ["Session A", "Session B", "Session C", "Session D"] {
+        assert!(shown.contains(&format!("│ {card} ")), "{shown}");
+    }
+    assert!(shown.contains("╰ + 1 more · $0.50 today ─"), "{shown}");
 }
 
 #[test]
