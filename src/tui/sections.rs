@@ -5,8 +5,8 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Clear, Padding, Paragraph};
 
 use crate::contract::{
-    AccountLimits, AccountToday, Credits, DollarPace, LimitPace, LimitSource, PaceBasis, PaceState,
-    PacedLimit, Problem, ProblemKind,
+    AccountLimits, AccountToday, Credits, DollarPace, LimitSource, PaceState, PacedLimit, Problem,
+    ProblemKind,
 };
 use crate::limits::{age, limit_name, percent, unusual_severity};
 use crate::status::{MAY_MISS_OUTSIDE_USE_MS, has_reset, resets_ms};
@@ -646,27 +646,11 @@ fn elsewhere_points(shown: &PacedLimit) -> Option<String> {
 
 fn detail_after_credits(shown: &PacedLimit, now_ms: i64, local_minute: LocalMinute) -> Vec<String> {
     let mut parts: Vec<String> = elsewhere_points(shown).into_iter().collect();
-    if let Some(over) = shown.pace.as_ref().and_then(over_pace) {
-        parts.push(over.to_string());
-    }
     if let Some(resets_ms) = resets_ms(shown) {
         parts.push(resets(resets_ms, now_ms, local_minute));
     }
     parts.extend(unusual_severity(&shown.limit));
     parts
-}
-
-const OVER_EVEN_PACE: &str = "over pace";
-const OVER_USUAL_PACE: &str = "over your usual pace";
-
-fn over_pace(pace: &LimitPace) -> Option<&'static str> {
-    if pace.state != PaceState::Over {
-        return None;
-    }
-    Some(match pace.basis {
-        PaceBasis::Even => OVER_EVEN_PACE,
-        PaceBasis::Usual => OVER_USUAL_PACE,
-    })
 }
 
 fn detail_spans(
@@ -675,10 +659,7 @@ fn detail_spans(
     style: Style,
     stale: bool,
 ) -> Vec<Span<'static>> {
-    let warnings = forecast
-        .into_iter()
-        .chain([OVER_USUAL_PACE, OVER_EVEN_PACE])
-        .filter(|phrase| !phrase.is_empty());
+    let warnings = forecast.into_iter().filter(|phrase| !phrase.is_empty());
     let mut spans = Vec::new();
     let mut rest = text;
     for phrase in warnings {

@@ -395,7 +395,7 @@ fn a_limit_anthropic_marks_with_a_severity_shows_it() {
     let shown = screen(&app, 120, 24);
 
     assert!(
-        shown.contains("│                     over your usual pace · resets in 2d 17h · warning "),
+        shown.contains("│                     resets in 2d 17h · warning "),
         "{shown}"
     );
     assert!(!shown.contains("normal"), "{shown}");
@@ -873,7 +873,7 @@ fn the_header_says_how_long_ago_the_engine_last_wrote_and_nothing_when_unknown()
 }
 
 #[test]
-fn each_limit_counts_down_to_its_reset_and_names_its_pace_only_when_over() {
+fn each_limit_counts_down_to_its_reset_and_leaves_its_pace_to_the_color() {
     let app = open(snapshot(vec![personal()]), None);
 
     let shown = screen(&app, 120, 24);
@@ -883,27 +883,25 @@ fn each_limit_counts_down_to_its_reset_and_names_its_pace_only_when_over() {
         "{shown}"
     );
     assert!(
-        shown.contains("│                     over your usual pace · resets in 2d 17h "),
+        shown.contains("│                     resets in 2d 17h "),
         "{shown}"
     );
-    assert!(!shown.contains("even pace"), "{shown}");
+    assert!(!shown.contains("pace"), "{shown}");
     assert!(!shown.contains("expected"), "{shown}");
 }
 
 #[test]
-fn a_limit_over_even_pace_says_over_pace_in_the_over_color() {
+fn a_limit_over_even_pace_shows_it_only_in_the_over_color() {
     let mut account = personal();
     account.limits.as_mut().unwrap().limits[0].pace = Some(pace(PaceState::Over, PaceBasis::Even));
     let app = open(snapshot(vec![account]), None);
 
     let shown = screen(&app, 150, 40);
 
-    assert!(
-        shown.contains("│ over pace · resets in 2h 40m at 12:00 "),
-        "{shown}"
-    );
+    assert!(shown.contains("│ resets in 2h 40m at 12:00 "), "{shown}");
+    assert!(!shown.contains("over pace"), "{shown}");
     assert_eq!(
-        cell_at(&app, 150, 40, "over pace · resets").fg,
+        cell_at(&app, 150, 40, "5% ").fg,
         ratatui::style::Color::LightRed
     );
     assert_eq!(
@@ -985,7 +983,7 @@ fn a_forecast_under_a_roomy_bar_shares_the_reset_line() {
 
     let line = line_with(&shown, "100% in 1h 20m at 10:40");
     assert!(
-        line.contains("100% in 1h 20m at 10:40 · over pace · resets in 2h 40m at 12:00"),
+        line.contains("100% in 1h 20m at 10:40 · resets in 2h 40m at 12:00"),
         "{shown}"
     );
     assert_eq!(
@@ -993,8 +991,8 @@ fn a_forecast_under_a_roomy_bar_shares_the_reset_line() {
         ratatui::style::Color::LightRed
     );
     assert_eq!(
-        cell_at(&app, 120, 60, "over pace · resets").fg,
-        ratatui::style::Color::LightRed
+        cell_at(&app, 120, 60, "resets in 2h 40m").fg,
+        ratatui::style::Color::DarkGray
     );
 }
 
@@ -1014,7 +1012,7 @@ fn a_reset_with_no_room_beside_the_forecast_goes_on_the_next_line() {
     let shown = screen(&app, 150, 60);
 
     assert!(
-        shown.contains("│ 100% in 1h 20m at 10:40 · over pace           │"),
+        shown.contains("│ 100% in 1h 20m at 10:40                       │"),
         "{shown}"
     );
     assert!(
