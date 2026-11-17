@@ -148,7 +148,14 @@ pub fn build(
                     pace: limit_pace,
                     forecast,
                     limit,
+                    this_machine_usd: None,
+                    elsewhere_usd: None,
                 });
+            }
+            if limits.iter().all(|shown| shown.limit.kind == "credits") {
+                for shown in &mut limits {
+                    split_out_elsewhere(store, &stored, reading.fetched_at_ms, shown)?;
+                }
             }
             account.limits = Some(AccountLimits {
                 source: reading.source,
@@ -171,6 +178,33 @@ pub fn build(
         .concat(),
         alerts,
     })
+}
+
+const ELSEWHERE_MIN_USD: f64 = 5.0;
+const ELSEWHERE_MIN_SHARE: f64 = 0.01;
+
+fn split_out_elsewhere(
+    store: &Store,
+    account: &Account,
+    fetched_at_ms: i64,
+    shown: &mut PacedLimit,
+) -> Result<(), data::Error> {
+    let (Some(credits), Some(pace)) = (shown.limit.credits.as_ref(), shown.pace.as_ref()) else {
+        return Ok(());
+    };
+    if credits.currency != "USD" {
+        return Ok(());
+    }
+    let Some(this_machine) = store.spend_between(account, pace.window_start_ms, fetched_at_ms)?
+    else {
+        return Ok(());
+    };
+    let elsewhere = credits.used - this_machine;
+    shown.this_machine_usd = Some(this_machine);
+    shown.elsewhere_usd = (elsewhere >= ELSEWHERE_MIN_USD
+        && elsewhere >= credits.used * ELSEWHERE_MIN_SHARE)
+        .then_some(elsewhere);
+    Ok(())
 }
 
 fn no_pace() -> DollarPace {

@@ -328,6 +328,48 @@ impl Store {
             .map(|(_, account)| account.clone()))
     }
 
+    pub fn spend_between(
+        &self,
+        account: &Account,
+        from_ms: i64,
+        until_ms: i64,
+    ) -> Result<Option<f64>> {
+        let Some(account_id) = self.account_row_id(account)? else {
+            return Ok(Some(0.0));
+        };
+        Ok(self
+            .connection
+            .prepare_cached(
+                "SELECT CASE
+                     WHEN coalesce((SELECT value FROM store_settings WHERE key = 'requests_kept_from'), '')
+                          > date(?2 / 1000, 'unixepoch', 'localtime') THEN NULL
+                     WHEN EXISTS (
+                         SELECT 1 FROM requests INDEXED BY requests_by_day
+                         JOIN sessions ON sessions.id = requests.session_id
+                         WHERE requests.day BETWEEN date(?2 / 1000, 'unixepoch', 'localtime')
+                                                AND date(?3 / 1000, 'unixepoch', 'localtime')
+                           AND requests.time_ms >= ?2 AND requests.time_ms <= ?3
+                           AND requests.account_id = ?1
+                           AND requests.cost_usd IS NULL AND sessions.cost_status IS NULL) THEN NULL
+                     ELSE (SELECT coalesce(sum(cost_usd), 0) FROM requests INDEXED BY requests_by_day
+                           WHERE day BETWEEN date(?2 / 1000, 'unixepoch', 'localtime')
+                                         AND date(?3 / 1000, 'unixepoch', 'localtime')
+                             AND time_ms >= ?2 AND time_ms <= ?3 AND account_id = ?1)
+                        + (SELECT coalesce(sum(missing.cost_usd), 0) FROM not_in_transcript AS missing
+                           JOIN sessions ON sessions.id = missing.session_id
+                           WHERE missing.day BETWEEN date(?2 / 1000, 'unixepoch', 'localtime')
+                                                 AND date(?3 / 1000, 'unixepoch', 'localtime')
+                             AND sessions.account_id = ?1
+                             AND coalesce(
+                                     (SELECT max(time_ms) FROM requests
+                                      WHERE requests.session_id = missing.session_id),
+                                     sessions.start_time_ms)
+                                 BETWEEN ?2 AND ?3)
+                 END",
+            )?
+            .query_row(params![account_id, from_ms, until_ms], |row| row.get(0))?)
+    }
+
     fn account_row_id(&self, account: &Account) -> Result<Option<i64>> {
         Ok(self
             .connection

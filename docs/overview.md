@@ -285,7 +285,7 @@ Beta, for coworkers:
 - Install and update with one command, `mise run install`, an MIT license, and a README. The repo stays private until the author opens it.
 - Data for integrations: `gigawatts status --json` with the alert light's alerts, a description of every field in `gigawatts schema`, and `docs/integrations.md`. A Herdr pane gets built outside this repo from them. Built in 0.1.17.
 - Prices that update themselves. When the engine sees a model with no price or a finished session whose cost disagrees with Claude Code's, it downloads `pricing.md`, at most once a day while the problem lasts, updates changed prices, and reprices history. A failed download, an unreadable page, or an implausible price keeps the current prices and raises a problem. A setting turns it off. Built in 0.1.26.
-- Spend used elsewhere. For a credits-only account, Anthropic's month-to-date credits minus this machine's spend, as "$494 of $2,200 ($84 elsewhere)" with a second shade in the bar. For a subscription, an estimate from limit rises while this machine made no requests, shipped only if a week of real data from two machines shows it lands close.
+- Spend used elsewhere. For a credits-only account, Anthropic's month-to-date credits minus this machine's spend, as "$494 of $2,200 ($84 elsewhere)" with a second shade in the bar, left out under $5 or under 1% of the credits used. For a subscription, an estimate from limit rises while this machine made no requests, shipped only if a week of real data from two machines shows it lands close.
 - Color themes for the report page.
 
 Later:

@@ -48,6 +48,8 @@ fn timed(
         },
         pace: Some(pace),
         forecast: None,
+        this_machine_usd: None,
+        elsewhere_usd: None,
     }
 }
 
@@ -185,6 +187,8 @@ fn work() -> AccountToday {
                     provisional: true,
                 }),
                 forecast: None,
+                this_machine_usd: None,
+                elsewhere_usd: None,
             }],
         }),
     }
@@ -4129,4 +4133,71 @@ fn the_combined_total_shows_only_when_the_tab_row_has_room_for_all_of_it() {
         (shown_at[0]..=150).collect::<Vec<_>>(),
         "{shown_at:?}"
     );
+}
+
+fn used_elsewhere(limit: &mut PacedLimit) {
+    limit.limit.credits.as_mut().unwrap().used = 494.0;
+    limit.limit.percent = 494.0 / 2200.0 * 100.0;
+    limit.this_machine_usd = Some(410.0);
+    limit.elsewhere_usd = Some(84.0);
+}
+
+#[test]
+fn credits_used_elsewhere_follow_the_cap_in_the_money_line() {
+    let shown = work_credits_screen(80, used_elsewhere);
+
+    assert!(
+        shown.contains("│                     $494.00 of $2,200 ($84 elsewhere) · $1,706 left"),
+        "{shown}"
+    );
+}
+
+#[test]
+fn a_lone_credit_account_shows_what_was_used_elsewhere_at_80_columns() {
+    let mut account = work();
+    used_elsewhere(&mut account.limits.as_mut().unwrap().limits[0]);
+    let app = open(snapshot(vec![account]), Some(WORK.to_string()));
+    let shown = screen(&app, 80, 40);
+
+    assert!(
+        shown.contains(
+            "│                     $494.00 of $2,200 ($84 elsewhere) · resets in 21d 14h "
+        ),
+        "{shown}"
+    );
+}
+
+#[test]
+fn credits_with_nothing_used_elsewhere_say_nothing_about_it() {
+    let shown = work_credits_screen(80, |limit| {
+        limit.this_machine_usd = Some(437.6);
+    });
+
+    assert!(!shown.contains("elsewhere"), "{shown}");
+}
+
+#[test]
+fn the_credit_bar_shades_the_part_used_elsewhere_at_the_end_of_what_is_filled() {
+    let mut account = work();
+    used_elsewhere(&mut account.limits.as_mut().unwrap().limits[0]);
+    account.limits.as_mut().unwrap().fetched_at_ms = NOW_MS;
+    let mut app = open(snapshot(vec![personal(), account]), None);
+    app.handle(KeyCode::Char('3').into());
+
+    let cells = bar_cells(&app, 80, 40, "Credits ");
+    let shades: Vec<(bool, bool)> = cells
+        .iter()
+        .map(|cell| {
+            (
+                cell.fg == ratatui::style::Color::LightGreen,
+                cell.modifier.contains(Modifier::DIM),
+            )
+        })
+        .collect();
+
+    assert_eq!(cells.len(), 34, "{cells:?}");
+    let filled = shades.iter().filter(|(filled, _)| *filled).count();
+    let elsewhere: Vec<usize> = (0..cells.len()).filter(|i| shades[*i].1).collect();
+    assert_eq!(filled, 8, "{shades:?}");
+    assert_eq!(elsewhere, vec![7], "{shades:?}");
 }

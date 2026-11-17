@@ -214,6 +214,8 @@ fn the_snapshot_carries_each_tracked_accounts_spend_today_and_the_engines_proble
                                 provisional: false,
                             }),
                             forecast: None,
+                            this_machine_usd: None,
+                            elsewhere_usd: None,
                         }],
                     }),
                 },
@@ -555,4 +557,257 @@ fn spend_today_counts_as_estimated_until_every_session_today_is_checked_against_
 
     assert!(!checked.accounts[0].cost_estimated);
     assert!(with_open.accounts[0].cost_estimated);
+}
+
+const CREDIT_PERIOD_START_MS: i64 = 1_793_491_200_000;
+const CREDITS_FETCHED_AT_MS: i64 = CREDIT_PERIOD_START_MS + 3 * 24 * 3_600_000;
+
+fn credits_limit(used: f64) -> Limit {
+    Limit {
+        kind: "credits".to_string(),
+        group: None,
+        scope: None,
+        percent: used / 2200.0 * 100.0,
+        severity: None,
+        resets_at: None,
+        active: false,
+        credits: Some(gigawatts::contract::Credits {
+            used,
+            limit: Some(2200.0),
+            currency: "USD".to_string(),
+        }),
+    }
+}
+
+fn credits_snapshot(lines: &[String], limits: Vec<Limit>, keep_from: Option<&str>) -> PacedLimit {
+    credits_snapshot_of_sessions(&[("s1", lines.concat())], limits, keep_from)
+}
+
+fn credits_snapshot_of_sessions(
+    sessions: &[(&str, String)],
+    limits: Vec<Limit>,
+    keep_from: Option<&str>,
+) -> PacedLimit {
+    let dir = tempfile::tempdir().unwrap();
+    let mut store = Store::open(&dir.path().join("history.sqlite3")).unwrap();
+    let projects = dir.path().join("projects");
+    fs::create_dir_all(&projects).unwrap();
+    for (session, lines) in sessions {
+        fs::write(projects.join(format!("{session}.jsonl")), lines).unwrap();
+    }
+    ingest(&mut store, &projects, &PriceTable::built_in(), ACCOUNT);
+    if let Some(day) = keep_from {
+        store.expire_requests(1, day).unwrap();
+    }
+    store
+        .record_limits(
+            &ACCOUNT.parse().unwrap(),
+            &LimitsReading {
+                fetched_at_ms: CREDITS_FETCHED_AT_MS,
+                source: LimitSource::GetUsage,
+                limits,
+            },
+        )
+        .unwrap();
+    let config = Config::parse("", dir.path()).unwrap();
+    let built = snapshot::build(&store, &config, CREDITS_FETCHED_AT_MS + 3_600_000, &[]).unwrap();
+    built.accounts[0].limits.as_ref().unwrap().limits[0].clone()
+}
+
+fn requests_around_the_credit_period() -> Vec<String> {
+    [
+        ("before-period", CREDIT_PERIOD_START_MS - 3_600_000),
+        ("early", CREDIT_PERIOD_START_MS + 3_600_000),
+        ("late", CREDITS_FETCHED_AT_MS - 60_000),
+        ("after-reading", CREDITS_FETCHED_AT_MS + 60_000),
+    ]
+    .into_iter()
+    .map(|(id, ms)| request_line(id, &utc_text(ms)))
+    .collect()
+}
+
+fn assert_near(actual: Option<f64>, expected: f64) {
+    let actual = actual.unwrap_or_else(|| panic!("expected {expected}, got null"));
+    assert!((actual - expected).abs() < 1e-9, "{actual} != {expected}");
+}
+
+#[test]
+fn credits_used_beyond_this_machines_spend_in_the_period_count_as_used_elsewhere() {
+    let shown = credits_snapshot(
+        &requests_around_the_credit_period(),
+        vec![credits_limit(84.028)],
+        None,
+    );
+
+    assert_near(shown.this_machine_usd, 0.028);
+    assert_near(shown.elsewhere_usd, 84.0);
+}
+
+#[test]
+fn credits_used_elsewhere_under_five_dollars_are_left_out() {
+    let shown = credits_snapshot(
+        &requests_around_the_credit_period(),
+        vec![credits_limit(4.928)],
+        None,
+    );
+
+    assert_near(shown.this_machine_usd, 0.028);
+    assert_eq!(shown.elsewhere_usd, None);
+}
+
+#[test]
+fn credits_used_elsewhere_under_one_percent_of_the_credits_used_are_left_out() {
+    let big = request_line("big", &utc_text(CREDIT_PERIOD_START_MS + 3_600_000))
+        .replace("\"output_tokens\":500", "\"output_tokens\":30000000");
+    let shown = credits_snapshot(&[big], vec![credits_limit(605.004)], None);
+
+    assert_near(shown.this_machine_usd, 600.004);
+    assert_eq!(shown.elsewhere_usd, None);
+}
+
+#[test]
+fn an_account_with_session_limits_gets_no_elsewhere_split_on_its_credits() {
+    let session = Limit {
+        kind: "session".to_string(),
+        group: None,
+        scope: None,
+        percent: 10.0,
+        severity: None,
+        resets_at: Some(utc_text(CREDITS_FETCHED_AT_MS + 3_600_000)),
+        active: true,
+        credits: None,
+    };
+    let shown = credits_snapshot(
+        &requests_around_the_credit_period(),
+        vec![credits_limit(84.028), session],
+        None,
+    );
+
+    assert_eq!((shown.this_machine_usd, shown.elsewhere_usd), (None, None));
+}
+
+#[test]
+fn credits_get_no_elsewhere_split_once_request_detail_no_longer_reaches_the_periods_start() {
+    let shown = credits_snapshot(
+        &requests_around_the_credit_period(),
+        vec![credits_limit(84.028)],
+        Some("2026-11-03"),
+    );
+
+    assert_eq!((shown.this_machine_usd, shown.elsewhere_usd), (None, None));
+}
+
+fn session_with_unlogged_spend(
+    session: &str,
+    requests_at_ms: [i64; 2],
+    extra_input: u64,
+) -> String {
+    let requests: String = requests_at_ms
+        .iter()
+        .enumerate()
+        .map(|(n, ms)| {
+            request_line(&format!("{session}-{n}"), &utc_text(*ms))
+                .replace("\"s1\"", &format!("\"{session}\""))
+        })
+        .collect();
+    let cost = 0.028 + extra_input as f64 * 4.0 / 1e6;
+    let cost_state = serde_json::json!({
+        "type": "cost-state",
+        "sessionId": session,
+        "totalCostUSD": cost,
+        "modelUsage": {
+            "claude-opus-5-5": {
+                "inputTokens": 2_000 + extra_input,
+                "outputTokens": 1_000,
+                "cacheReadInputTokens": 0,
+                "cacheCreationInputTokens": 0,
+                "webSearchRequests": 0,
+                "costUSD": cost
+            }
+        }
+    });
+    requests + &cost_state.to_string() + "\n"
+}
+
+fn cost_state_only(session: &str, start_ms: i64) -> String {
+    serde_json::json!({
+        "type": "cost-state",
+        "sessionId": session,
+        "totalCostUSD": 0.4,
+        "startTime": start_ms,
+        "modelUsage": {
+            "claude-opus-5-5": {
+                "inputTokens": 100_000,
+                "outputTokens": 0,
+                "cacheReadInputTokens": 0,
+                "cacheCreationInputTokens": 0,
+                "webSearchRequests": 0,
+                "costUSD": 0.4
+            }
+        }
+    })
+    .to_string()
+        + "\n"
+}
+
+#[test]
+fn spend_missing_from_transcripts_counts_only_for_sessions_that_ended_inside_the_period() {
+    let hour_ms = 3_600_000;
+    let sessions = [
+        (
+            "inside",
+            session_with_unlogged_spend(
+                "inside",
+                [
+                    CREDIT_PERIOD_START_MS + hour_ms,
+                    CREDIT_PERIOD_START_MS + 2 * hour_ms,
+                ],
+                50_000,
+            ),
+        ),
+        (
+            "before",
+            session_with_unlogged_spend(
+                "before",
+                [
+                    CREDIT_PERIOD_START_MS - 2 * hour_ms,
+                    CREDIT_PERIOD_START_MS - 60_000,
+                ],
+                75_000,
+            ),
+        ),
+        (
+            "after",
+            session_with_unlogged_spend(
+                "after",
+                [
+                    CREDITS_FETCHED_AT_MS - hour_ms,
+                    CREDITS_FETCHED_AT_MS + 60_000,
+                ],
+                125_000,
+            ),
+        ),
+        (
+            "no-requests",
+            cost_state_only("no-requests", CREDIT_PERIOD_START_MS + 3 * hour_ms),
+        ),
+    ];
+
+    let shown = credits_snapshot_of_sessions(&sessions, vec![credits_limit(84.642)], None);
+
+    assert_near(shown.this_machine_usd, 0.642);
+    assert_near(shown.elsewhere_usd, 84.0);
+}
+
+#[test]
+fn credits_get_no_elsewhere_split_while_an_open_session_has_spend_with_no_price() {
+    let mut lines = requests_around_the_credit_period();
+    lines.push(
+        request_line("unpriced", &utc_text(CREDIT_PERIOD_START_MS + 7_200_000))
+            .replace("claude-opus-5-5", "claude-opus-9-9"),
+    );
+
+    let shown = credits_snapshot(&lines, vec![credits_limit(84.028)], None);
+
+    assert_eq!((shown.this_machine_usd, shown.elsewhere_usd), (None, None));
 }

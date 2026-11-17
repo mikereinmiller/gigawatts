@@ -8,7 +8,7 @@ expression: first
 "╭ Limits · from cachedUsageUtilization, read 2 hours ago ──────────────────────╮"
 "│ Read over an hour ago, so it may not include use outside Claude Code.        │"
 "│ Credits             ▇▇▇▇▇▇▇▇▇▇▂▂▂▇▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂   20% │"
-"│                     437.60 of 2200.00 USD · resets in 21d 14h                │"
+"│                     $437.60 of $2,200 · resets in 21d 14h                    │"
 "╰──────────────────────────────────────────────────────────────────────────────╯"
 "╭ Today ───────────────────────────────────────────────────────────────────────╮"
 "│ $0.40 · no usual yet                                                         │"

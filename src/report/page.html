@@ -150,6 +150,7 @@ h3 { font-size: var(--text-xs); line-height: 1.33; margin: 0 0 var(--space-3); f
 .status-line.critical { --dot: var(--critical); }
 .meter { --fill: var(--accent); position: relative; height: 8px; border-radius: 4px; background: color-mix(in srgb, var(--fill) 20%, var(--surface)); overflow: hidden; }
 .meter > span { display: block; height: 100%; min-width: 8px; border-radius: 4px; background: var(--fill); }
+.meter > b { position: absolute; top: 0; bottom: 0; border-radius: 0 4px 4px 0; background: color-mix(in srgb, var(--fill) 50%, var(--surface)); }
 .meter > i { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--ink); opacity: 0.75; }
 .meter.warning { --fill: var(--warning); }
 .meter.critical { --fill: var(--critical); }
@@ -938,7 +939,7 @@ function tile(label, value, subs, options = {}) {
   valueRow.append(element('span', value, 'value'));
   if (options.spark) valueRow.append(options.spark);
   box.append(valueRow);
-  if (options.meter !== undefined) box.append(meter(options.meter, options.expected));
+  if (options.meter !== undefined) box.append(meter(options.meter, options.expected, options.elsewhere));
   for (const sub of subs.filter(Boolean)) {
     const [text, className] = Array.isArray(sub) ? sub : [sub, ''];
     box.append(element('span', text, 'sub ' + className));
@@ -946,7 +947,7 @@ function tile(label, value, subs, options = {}) {
   return box;
 }
 
-function meter(fraction, expected) {
+function meter(fraction, expected, elsewhere) {
   const level = fraction >= 0.9 ? 'critical' : fraction >= 0.75 ? 'warning' : '';
   const bar = element('div', undefined, 'meter ' + level);
   bar.setAttribute('role', 'meter');
@@ -954,6 +955,12 @@ function meter(fraction, expected) {
   const fill = element('span');
   fill.style.width = Math.min(100, fraction * 100) + '%';
   bar.append(fill);
+  if (elsewhere) {
+    const shade = element('b');
+    shade.style.left = Math.min(100, (fraction - elsewhere) * 100) + '%';
+    shade.style.width = Math.min(100, elsewhere * 100) + '%';
+    bar.append(shade);
+  }
   if (expected !== undefined) {
     const mark = element('i');
     mark.style.left = `calc(${Math.min(100, expected * 100)}% - 1px)`;
@@ -1197,10 +1204,11 @@ function spendTile(view) {
 function creditsTile(credits) {
   const {limit, limits, used, cap, left, runOutMs, resetMs, runsOutFirst} = credits;
   const subs = [`${dollars(left, 0)} left of ${dollars(cap, 0)}`];
+  if (limit.elsewhere_usd) subs.push(`${dollars(limit.elsewhere_usd, 0)} used elsewhere`);
   if (runOutMs) subs.push(runsOutFirst ? [`Runs out about ${longDate(runOutMs)}`, 'status-line warning'] : `Lasts past the reset, ${longDate(resetMs ?? runOutMs)}`);
   if (limit.pace) subs.push([`Mark shows even pace (${percent(limit.pace.expected_percent)})`, 'faint']);
   subs.push([`From ${limitAge(limits)}`, 'faint']);
-  return tile('Credits used', dollars(used, 0), subs, {meter: used / cap, expected: limit.pace ? limit.pace.expected_percent / 100 : undefined});
+  return tile('Credits used', dollars(used, 0), subs, {meter: used / cap, expected: limit.pace ? limit.pace.expected_percent / 100 : undefined, elsewhere: limit.elsewhere_usd ? limit.elsewhere_usd / cap : undefined});
 }
 
 function weekdayTile(credits, view) {

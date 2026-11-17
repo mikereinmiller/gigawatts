@@ -5,10 +5,10 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Clear, Padding, Paragraph};
 
 use crate::contract::{
-    AccountLimits, AccountToday, DollarPace, LimitPace, LimitSource, PaceBasis, PaceState,
+    AccountLimits, AccountToday, Credits, DollarPace, LimitPace, LimitSource, PaceBasis, PaceState,
     PacedLimit, Problem, ProblemKind,
 };
-use crate::limits::{age, credits_used, limit_name, percent, unusual_severity};
+use crate::limits::{age, limit_name, percent, unusual_severity};
 use crate::status::{MAY_MISS_OUTSIDE_USE_MS, has_reset, recent_suffix, resets_ms};
 
 use super::HISTORY_MIN_HEIGHT;
@@ -579,6 +579,18 @@ fn pace_color(shown: &PacedLimit) -> Color {
 fn bar(shown: &PacedLimit, width: usize, color: Color, stale: bool) -> Vec<Span<'static>> {
     let track = if stale { STALE_TRACK } else { BAR };
     let filled = cells(shown.limit.percent, width);
+    let elsewhere_from = shown
+        .elsewhere_usd
+        .zip(
+            shown
+                .limit
+                .credits
+                .as_ref()
+                .and_then(|credits| credits.limit),
+        )
+        .map_or(filled, |(elsewhere, cap)| {
+            filled.saturating_sub(cells(elsewhere / cap * 100.0, width))
+        });
     let expected = shown
         .pace
         .as_ref()
@@ -587,8 +599,10 @@ fn bar(shown: &PacedLimit, width: usize, color: Color, stale: bool) -> Vec<Span<
     for index in 0..width {
         let (symbol, style) = if Some(index) == expected {
             (BAR, Style::new().add_modifier(Modifier::BOLD))
-        } else if index < filled {
+        } else if index < elsewhere_from {
             (BAR, Style::new().fg(color))
+        } else if index < filled {
+            (BAR, Style::new().fg(color).add_modifier(Modifier::DIM))
         } else {
             (track, MUTED)
         };
@@ -605,9 +619,22 @@ fn detail(shown: &PacedLimit, now_ms: i64, local_minute: LocalMinute) -> Vec<Str
     if has_reset(shown, now_ms) {
         return vec!["reset since this reading".to_string()];
     }
-    let mut parts: Vec<String> = credits_used(&shown.limit).into_iter().collect();
+    let mut parts: Vec<String> = shown
+        .limit
+        .credits
+        .as_ref()
+        .map(|credits| credits_spent(shown, credits))
+        .into_iter()
+        .collect();
     parts.extend(detail_after_credits(shown, now_ms, local_minute));
     parts
+}
+
+fn elsewhere(shown: &PacedLimit) -> String {
+    shown
+        .elsewhere_usd
+        .map(|elsewhere| format!(" ({} elsewhere)", money(elsewhere, "USD", false)))
+        .unwrap_or_default()
 }
 
 fn detail_after_credits(shown: &PacedLimit, now_ms: i64, local_minute: LocalMinute) -> Vec<String> {
@@ -677,21 +704,29 @@ fn credit_budget(shown: &PacedLimit, now_ms: i64) -> Vec<String> {
     };
     let currency = &credits.currency;
     let Some(cap) = credits.limit else {
-        return vec![format!("{} used", money(credits.used, currency, true))];
+        return vec![credits_spent(shown, credits)];
     };
     let left = (cap - credits.used).max(0.0);
     let mut parts = vec![
-        format!(
-            "{} of {}",
-            money(credits.used, currency, true),
-            money(cap, currency, false)
-        ),
+        credits_spent(shown, credits),
         format!("{} left", money(left, currency, false)),
     ];
     if let Some((per_day, _)) = credits_per_day(shown, now_ms) {
         parts.push(format!("{} a day to last", money(per_day, currency, false)));
     }
     parts
+}
+
+fn credits_spent(shown: &PacedLimit, credits: &Credits) -> String {
+    let used = money(credits.used, &credits.currency, true);
+    match credits.limit {
+        Some(cap) => format!(
+            "{used} of {}{}",
+            money(cap, &credits.currency, false),
+            elsewhere(shown)
+        ),
+        None => format!("{used} used{}", elsewhere(shown)),
+    }
 }
 
 fn money(amount: f64, currency: &str, cents: bool) -> String {

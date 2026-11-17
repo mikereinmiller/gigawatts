@@ -451,6 +451,12 @@ pub struct PacedLimit {
     /// When the limit reaches 100% before it resets, or null when it isn't on course to. The average rate since the window started forecasts only once use runs more than 5 points ahead of the share of the window gone, or is within 5 points of full.
     #[serde(default)]
     pub forecast: Option<LimitForecast>,
+    /// For the credit limit of an account with no session or weekly limits, this machine's spend in US dollars from the start of the credit period until the reading was fetched. Null for every other limit, for credits in another currency, when this machine no longer keeps request detail back to the period's start, while some of this machine's spend in the period has no price, and when the reading is from before the current credit period.
+    #[serde(default)]
+    pub this_machine_usd: Option<f64>,
+    /// The credits used minus `this_machine_usd`: what other machines and claude.ai used this credit period, in US dollars. Null when `this_machine_usd` is, or when the difference is under $5 or under 1% of the credits used.
+    #[serde(default)]
+    pub elsewhere_usd: Option<f64>,
 }
 
 /// When a limit is on course to reach 100% before its reset.

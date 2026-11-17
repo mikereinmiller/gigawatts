@@ -30,6 +30,10 @@ Calling `gigawatts status --json` once a minute is fine. Each call only reads th
 
 Count down from your own clock to `at_ms`, so the countdown stays right between calls. Once `at_ms` passes before your next call, hide a `full` alert, since its limit has reset, and show a `filling` one as any minute now. Name the account (`account_label`) when the alert isn't for the account you're showing.
 
+## Showing credits used elsewhere
+
+On an account whose only limit is credits, that limit's `elsewhere_usd` is what other machines and claude.ai used this credit period: the credits Anthropic counts minus this machine's spend. It's null when the difference is too small to matter, when Gigawatts can't work out this machine's share (then `this_machine_usd` is null too), and on accounts with session or weekly limits. The terminal view puts it after the cap, as "$494.00 of $2,200 ($84 elsewhere)".
+
 ## Freshness and gaps
 
 - `today` is the local date the snapshot counts as today. `status --json` always builds it for the current date.

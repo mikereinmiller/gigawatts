@@ -31,6 +31,8 @@ fn timed(kind: &str, percent: f64, resets_at: &str, pace: Option<LimitPace>) -> 
         },
         pace,
         forecast: None,
+        this_machine_usd: None,
+        elsewhere_usd: None,
     }
 }
 
@@ -278,6 +280,8 @@ fn a_credit_forecast_on_the_default_reset_has_no_caveat() {
                 full_at_ms: NOW_MS + 40 * 60_000,
                 basis: ForecastBasis::Window,
             }),
+            this_machine_usd: None,
+            elsewhere_usd: None,
         }],
     };
 
@@ -315,6 +319,8 @@ fn monthly_credits_on_the_default_reset_show_their_pace_and_window_end() {
             },
             pace: pace(PaceState::Under, PaceBasis::Even, true),
             forecast: None,
+            this_machine_usd: None,
+            elsewhere_usd: None,
         }],
     };
 
@@ -410,6 +416,8 @@ fn when_every_limit_reset_since_the_reading_the_line_says_so() {
                 },
                 pace: None,
                 forecast: None,
+                this_machine_usd: None,
+                elsewhere_usd: None,
             },
         ],
     };
