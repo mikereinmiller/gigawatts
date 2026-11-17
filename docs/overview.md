@@ -274,7 +274,7 @@ Version 1, the engine and terminal view, working correctly on macOS and Omarchy 
 Version 1.1:
 
 - A forecast of when you'll hit a limit compared with when it resets, built on the pace and limit readings version 1 records. Built in 0.1.13 as a straight-line projection of the current window; from 0.1.16 it takes the earlier of that and the last 30 minutes' rate. From 0.1.25 the straight-line projection waits until use runs more than 5 points ahead of the share of the window gone, the same band pace calls even, unless the limit is within 5 points of full, since Anthropic reports whole percents and a limit level with the clock flickered in and out of a forecast.
-- A red alert light at the right end of the terminal view's title row when any account's limit is on course to fill before it resets, or is already full. Built in 0.1.16. From 0.1.25 a fill more than 24 hours out shows only under its limit, not in the light.
+- A red alert light at the right end of the terminal view's title row when any account's limit is on course to fill before it resets, or is already full. Built in 0.1.16. From 0.1.25 it is a light red badge, and a fill more than 24 hours out shows only under its limit, not in the light.
 - The HTML report page.
 
 Beta, for coworkers:

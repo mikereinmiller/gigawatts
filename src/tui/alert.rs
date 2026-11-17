@@ -2,10 +2,10 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::Span;
 
 use super::sections::duration;
+use super::style::OVER;
 use crate::contract::{Alert, AlertState};
 
 const QUOTE: &str = "1.21 gigawatts! ";
-const RED: Color = Color::Red;
 
 pub(crate) struct Light {
     pub(crate) with_quote: bool,
@@ -43,15 +43,15 @@ pub(crate) fn light(
         text.push_str(&format!(" +{}", alerts.len() - 1));
     }
     vec![
-        Span::styled("▐", Style::new().fg(RED)),
+        Span::styled("▐", Style::new().fg(OVER)),
         Span::styled(
             format!(" {text} "),
             Style::new()
-                .bg(RED)
+                .bg(OVER)
                 .fg(Color::Black)
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::styled("▌", Style::new().fg(RED)),
+        Span::styled("▌", Style::new().fg(OVER)),
     ]
 }
 

@@ -3613,7 +3613,7 @@ fn work_credits_filling_in(minutes: i64) -> AccountToday {
 }
 
 #[test]
-fn a_limit_on_course_to_fill_lights_a_red_alert_at_the_end_of_the_title_row() {
+fn a_limit_on_course_to_fill_lights_a_light_red_badge_at_the_end_of_the_title_row() {
     let app = open(snapshot(vec![filling_fast()]), None);
 
     let title = title_row(&app, 100);
@@ -3623,9 +3623,12 @@ fn a_limit_on_course_to_fill_lights_a_red_alert_at_the_end_of_the_title_row() {
         "{title}"
     );
     let cell = cell_at(&app, 100, 24, "ϟ 1.21");
-    assert_eq!(cell.bg, ratatui::style::Color::Red);
+    assert_eq!(cell.bg, ratatui::style::Color::LightRed);
     assert_eq!(cell.fg, ratatui::style::Color::Black);
-    assert_eq!(cell_at(&app, 100, 24, "▐ ϟ").fg, ratatui::style::Color::Red);
+    assert_eq!(
+        cell_at(&app, 100, 24, "▐ ϟ").fg,
+        ratatui::style::Color::LightRed
+    );
 }
 
 #[test]
