@@ -361,39 +361,28 @@ impl App {
             height: body.height.saturating_sub(1),
             ..body
         };
-        let top_height = self.top_height(body, now_ms, local_minute, with_sessions);
+        let beside = |gap: bool| {
+            if sessions_beside {
+                sessions::two_rows_height(&self.running(), sections::limits_width(body.width), gap)
+            } else {
+                0
+            }
+        };
+        let top_height = self.top_height(body, now_ms, local_minute, with_sessions, beside(false));
+        let below_tabs_top = self.top_height(
+            below_tabs,
+            now_ms,
+            local_minute,
+            with_sessions,
+            beside(false),
+        );
         let spare_row = below_tabs.height >= top_height + HISTORY_MIN_HEIGHT
-            && self.top_height(below_tabs, now_ms, local_minute, with_sessions) == top_height;
+            && below_tabs_top == top_height
+            && !self.sessions_need_the_spare_row(below_tabs, now_ms, local_minute, beside);
         let body = if spare_row { below_tabs } else { body };
         let compact = body.height < top_height + HISTORY_MIN_HEIGHT;
         self.compact.set(compact);
-        let roomy = match (self.stacked, self.shown()) {
-            (false, Some(account)) => {
-                !compact
-                    && sections::roomy(
-                        account,
-                        &self.snapshot.problems,
-                        now_ms,
-                        local_minute,
-                        body.width,
-                        body.height,
-                        !sessions_beside && !sessions_open,
-                    )
-            }
-            (true, Some(_)) => {
-                !compact
-                    && every::fit(
-                        &self.snapshot,
-                        now_ms,
-                        local_minute,
-                        body.width,
-                        body.height,
-                        !sessions_beside && !sessions_open,
-                    )
-                    .roomy
-            }
-            _ => false,
-        };
+        let roomy = self.roomy(body, compact, now_ms, local_minute, with_sessions);
         let sessions_beside = sessions_beside && !compact;
         let (overview, bottom_row) = match (compact, self.history_shown || sessions_open) {
             (false, _) => {
@@ -413,6 +402,7 @@ impl App {
                 now_ms,
                 local_minute,
                 !sessions_beside && !sessions_open,
+                beside(false),
             );
         }
         if let (true, Some(rest)) = (sessions_open, bottom_row) {
@@ -474,12 +464,68 @@ impl App {
         palette::apply(frame.buffer_mut(), self.palette.as_ref());
     }
 
+    fn roomy(
+        &self,
+        body: Rect,
+        compact: bool,
+        now_ms: i64,
+        local_minute: &dyn Fn(i64) -> String,
+        with_sessions: bool,
+    ) -> bool {
+        if compact {
+            return false;
+        }
+        match (self.stacked, self.shown()) {
+            (false, Some(account)) => sections::roomy(
+                account,
+                &self.snapshot.problems,
+                now_ms,
+                local_minute,
+                body.width,
+                body.height,
+                with_sessions,
+            ),
+            (true, Some(_)) => {
+                every::fit(
+                    &self.snapshot,
+                    now_ms,
+                    local_minute,
+                    body.width,
+                    body.height,
+                    with_sessions,
+                )
+                .roomy
+            }
+            _ => false,
+        }
+    }
+
+    fn sessions_need_the_spare_row(
+        &self,
+        below_tabs: Rect,
+        now_ms: i64,
+        local_minute: &dyn Fn(i64) -> String,
+        beside: impl Fn(bool) -> u16,
+    ) -> bool {
+        if beside(false) == 0 {
+            return false;
+        }
+        let untrimmed = self.top_height(below_tabs, now_ms, local_minute, false, 0);
+        let compact = below_tabs.height < untrimmed + HISTORY_MIN_HEIGHT;
+        let roomy = self.roomy(below_tabs, compact, now_ms, local_minute, false);
+        let short = beside(roomy).saturating_sub(below_tabs.height.saturating_sub(untrimmed));
+        let pane_top_rows = if self.stacked && roomy { 2 } else { 0 };
+        let blank_rows = 1 + u16::from(roomy) + pane_top_rows;
+        (1..=blank_rows).contains(&short)
+    }
+
     fn top_height(
         &self,
         body: Rect,
         now_ms: i64,
         local_minute: &dyn Fn(i64) -> String,
         with_sessions: bool,
+        beside: u16,
     ) -> u16 {
         match (self.stacked, self.shown()) {
             (_, None) => 1,
@@ -490,6 +536,7 @@ impl App {
                 body.width,
                 body.height,
                 with_sessions,
+                beside,
             ),
             (false, Some(account)) => sections::one_account_height(
                 account,
@@ -503,6 +550,7 @@ impl App {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn draw_overview(
         &self,
         frame: &mut Frame,
@@ -511,6 +559,7 @@ impl App {
         now_ms: i64,
         local_minute: &dyn Fn(i64) -> String,
         with_sessions: bool,
+        beside: u16,
     ) {
         match (self.stacked, self.shown()) {
             (_, None) => frame.render_widget(
@@ -527,6 +576,7 @@ impl App {
                 now_ms,
                 local_minute,
                 with_sessions,
+                beside,
             ),
             (false, Some(account)) => sections::one_account(
                 frame,

@@ -3899,6 +3899,189 @@ fn the_line_that_adds_up_the_rest_sits_in_the_bottom_border_so_a_second_row_of_c
     assert!(shown.contains("╰ + 1 more · $0.50 today ─"), "{shown}");
 }
 
+fn four_sessions_on_the_all_tab() -> App {
+    let mut first = personal();
+    first.active_sessions = vec![
+        card_session("Session A", 9.0, 0.5),
+        card_session("Session B", 8.0, 0.5),
+        card_session("Session C", 7.0, 0.5),
+        card_session("Session D", 6.0, 0.5),
+    ];
+    let mut side = personal();
+    side.account = Some(NEW.to_string());
+    side.account_label = "side".to_string();
+    side.active_sessions = Vec::new();
+    let mut app = with_spending(open(snapshot(vec![first, work(), side]), None));
+    app.handle(KeyCode::Char('4').into());
+    answer(&mut app);
+    app
+}
+
+fn blank_inside(line: &str) -> bool {
+    line.trim_matches(|c| c == '"' || c == ' ').is_empty()
+}
+
+#[test]
+fn blank_rows_give_way_one_at_a_time_so_a_second_row_of_session_cards_fits() {
+    let app = four_sessions_on_the_all_tab();
+    let pane_top = |lines: &[&str], title: &str| {
+        let at = lines.iter().position(|line| line.contains(title)).unwrap();
+        lines[at + 1].starts_with("\"│      ")
+            && lines[at + 1][..80]
+                .trim_matches(|c| c == '"' || c == '│' || c == ' ')
+                .is_empty()
+    };
+
+    for (height, under_tabs, running_gap, limits_gap, today_gap) in [
+        (44, true, true, true, true),
+        (43, false, true, true, true),
+        (42, false, false, true, true),
+        (41, false, false, false, true),
+        (40, false, false, false, false),
+    ] {
+        let shown = screen(&app, 212, height);
+        let lines: Vec<&str> = shown.lines().collect();
+
+        assert!(shown.contains("Session D"), "{height}: {shown}");
+        assert_eq!(blank_inside(lines[2]), under_tabs, "{height}: {shown}");
+        assert_eq!(
+            pane_top(&lines, "╭ Running now"),
+            running_gap,
+            "{height}: {shown}"
+        );
+        assert_eq!(
+            pane_top(&lines, "╭ personal · limits"),
+            limits_gap,
+            "{height}: {shown}"
+        );
+        assert_eq!(
+            pane_top(&lines, "╭ personal · today"),
+            today_gap,
+            "{height}: {shown}"
+        );
+    }
+    assert!(!screen(&app, 212, 39).contains("Session D"));
+}
+
+#[test]
+fn the_row_under_the_tabs_stays_unless_giving_it_up_wins_a_second_row_of_cards() {
+    let mut accounts = Vec::new();
+    for n in 0..4 {
+        let mut account = personal();
+        account.account = Some(format!("account-{n}"));
+        account.account_label = format!("account {n}");
+        account.active_sessions = Vec::new();
+        accounts.push(account);
+    }
+    accounts[0].active_sessions = vec![
+        card_session("Session A", 9.0, 0.5),
+        card_session("Session B", 8.0, 0.5),
+        card_session("Session C", 7.0, 0.5),
+        card_session("Session D", 6.0, 0.5),
+    ];
+    let mut app = with_spending(open(snapshot(accounts), None));
+    app.handle(KeyCode::Char('5').into());
+    answer(&mut app);
+    let first_box_row = |shown: &str| shown.lines().position(|line| line.contains('╭')).unwrap();
+
+    for (height, row_under_tabs, second_row_of_cards) in
+        [(51, true, false), (52, false, true), (53, true, true)]
+    {
+        let shown = screen(&app, 212, height);
+
+        assert_eq!(
+            first_box_row(&shown) == 4,
+            row_under_tabs,
+            "{height}: {shown}"
+        );
+        assert_eq!(
+            shown.contains("Session D"),
+            second_row_of_cards,
+            "{height}: {shown}"
+        );
+    }
+}
+
+#[test]
+fn on_one_account_the_row_under_the_tabs_then_the_running_gap_give_way_for_a_second_row() {
+    let mut account = personal();
+    account.active_sessions = vec![
+        card_session("Session A", 9.0, 0.5),
+        card_session("Session B", 8.0, 0.5),
+        card_session("Session C", 7.0, 0.5),
+        card_session("Session D", 6.0, 0.5),
+    ];
+    let app = with_spending(open(snapshot(vec![account]), None));
+
+    for (height, row_under_tabs, running_gap, second_row_of_cards) in [
+        (36, true, true, true),
+        (35, false, true, true),
+        (34, false, false, true),
+        (33, true, true, false),
+    ] {
+        let shown = screen(&app, 200, height);
+        let lines: Vec<&str> = shown.lines().collect();
+        let running = lines
+            .iter()
+            .position(|line| line.contains("╭ Running"))
+            .unwrap();
+
+        assert_eq!(blank_inside(lines[2]), row_under_tabs, "{height}: {shown}");
+        assert_eq!(
+            lines[running + 1]
+                .chars()
+                .skip(2)
+                .take(40)
+                .all(|c| c == ' '),
+            running_gap,
+            "{height}: {shown}"
+        );
+        assert_eq!(
+            shown.contains("Session D"),
+            second_row_of_cards,
+            "{height}: {shown}"
+        );
+    }
+}
+
+#[test]
+fn under_180_columns_the_running_gap_gives_way_for_a_second_row_too() {
+    let mut account = personal();
+    account.active_sessions = vec![
+        card_session("Session A", 9.0, 0.5),
+        card_session("Session B", 8.0, 0.5),
+        card_session("Session C", 7.0, 0.5),
+        card_session("Session D", 6.0, 0.5),
+    ];
+    let app = with_spending(open(snapshot(vec![account]), None));
+
+    for (height, running_gap, second_row_of_cards) in
+        [(44, true, true), (43, false, true), (42, true, false)]
+    {
+        let shown = screen(&app, 120, height);
+        let lines: Vec<&str> = shown.lines().collect();
+        let running = lines
+            .iter()
+            .position(|line| line.contains("╭ Running"))
+            .unwrap();
+
+        assert_eq!(
+            lines[running + 1]
+                .chars()
+                .skip(2)
+                .take(40)
+                .all(|c| c == ' '),
+            running_gap,
+            "{height}: {shown}"
+        );
+        assert_eq!(
+            shown.contains("Session D"),
+            second_row_of_cards,
+            "{height}: {shown}"
+        );
+    }
+}
+
 #[test]
 fn a_filling_credit_limit_leads_the_line_under_its_bar_with_the_countdown() {
     let app = open(snapshot(vec![work_credits_filling_in(120)]), None);

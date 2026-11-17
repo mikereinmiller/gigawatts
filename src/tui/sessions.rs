@@ -102,13 +102,13 @@ fn rows_that_fit(room: u16, gap: u16) -> usize {
 
 fn plan<'a>(running: &Running<'a>, width: u16, room: u16, roomy: bool) -> Plan<'a> {
     let columns = columns(inner_width(width));
-    let gap = u16::from(roomy);
     let (mut titled, background): (Vec<Owned>, Vec<Owned>) = running
         .sessions
         .iter()
         .copied()
         .partition(|session| !is_background(session.spend));
     titled.sort_by(by_cost_today);
+    let gap = gap(roomy, room, titled.len().div_ceil(columns));
     let rows = rows_that_fit(room, gap);
     let slots = (rows * columns).min(titled.len());
     let mut shown = titled[..slots].to_vec();
@@ -121,6 +121,14 @@ fn plan<'a>(running: &Running<'a>, width: u16, room: u16, roomy: bool) -> Plan<'
         hidden,
         background,
     }
+}
+
+fn gap(roomy: bool, room: u16, rows_wanted: usize) -> u16 {
+    let with_gap = rows_that_fit(room, 1);
+    if roomy && rows_wanted > with_gap && rows_that_fit(room, 0) > with_gap {
+        return 0;
+    }
+    u16::from(roomy)
 }
 
 fn by_cost_today(a: &Owned, b: &Owned) -> std::cmp::Ordering {
@@ -167,6 +175,12 @@ fn is_background(session: &SessionSpend) -> bool {
 
 pub(crate) fn min_height(running: &Running, width: u16, roomy: bool) -> u16 {
     plan(running, width, 0, roomy).height()
+}
+
+pub(crate) fn two_rows_height(running: &Running, width: u16, roomy: bool) -> u16 {
+    let mut plan = plan(running, width, u16::MAX, roomy);
+    plan.shown.truncate(2 * plan.columns);
+    plan.height()
 }
 
 pub(crate) fn height(running: &Running, width: u16, room: u16, roomy: bool) -> u16 {

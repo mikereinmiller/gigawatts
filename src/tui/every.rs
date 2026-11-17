@@ -18,6 +18,7 @@ const THREE_COLUMNS_FROM: u16 = 150;
 const BORDER_ROWS: usize = 2;
 const BORDER_AND_PADDING_COLUMNS: u16 = 4;
 const COMPACT_TOP_GAP: u16 = 1;
+const PANE_TOP_GAPS: u16 = 2;
 
 pub(crate) struct Fit {
     pub(crate) roomy: bool,
@@ -98,10 +99,11 @@ pub(crate) fn height(
     width: u16,
     height: u16,
     with_sessions: bool,
+    beside: u16,
 ) -> u16 {
     let fit = fit(snapshot, now_ms, local_minute, width, height, with_sessions);
     let overview = match roomy(snapshot, now_ms, local_minute, width) {
-        Some(overview) if fit.roomy => overview.height(),
+        Some(overview) if fit.roomy => make_room(overview, height, beside).height(),
         _ => {
             compact_height(snapshot, now_ms, width)
                 + compact_spacing(snapshot, now_ms, width, height, fit.with_sessions)
@@ -126,6 +128,7 @@ pub(crate) fn draw(
     now_ms: i64,
     local_minute: LocalMinute,
     with_sessions: bool,
+    beside: u16,
 ) {
     let fit = fit(
         snapshot,
@@ -136,7 +139,7 @@ pub(crate) fn draw(
         with_sessions,
     );
     let rest = match roomy(snapshot, now_ms, local_minute, area.width) {
-        Some(overview) if fit.roomy => draw_roomy(frame, area, overview),
+        Some(overview) if fit.roomy => draw_roomy(frame, area, make_room(overview, room, beside)),
         _ => draw_compact(
             frame,
             area,
@@ -209,6 +212,20 @@ fn roomy(
         })
         .collect();
     Some(Overview { columns })
+}
+
+fn make_room(mut overview: Overview, height: u16, beside: u16) -> Overview {
+    let short = (overview.height() + beside).saturating_sub(height);
+    if short == 0 || short > PANE_TOP_GAPS {
+        return overview;
+    }
+    for column in &mut overview.columns {
+        column.limits.lines.remove(0);
+        if short == PANE_TOP_GAPS {
+            column.today.lines.remove(0);
+        }
+    }
+    overview
 }
 
 fn padded(lines: Vec<Line<'static>>) -> Vec<Line<'static>> {
