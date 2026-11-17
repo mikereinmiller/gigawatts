@@ -999,7 +999,7 @@ fn a_forecast_under_a_roomy_bar_shares_the_reset_line() {
 }
 
 #[test]
-fn a_forecast_too_wide_for_its_pane_stays_red_on_every_line() {
+fn a_reset_with_no_room_beside_the_forecast_goes_on_the_next_line() {
     let mut first = filling_fast();
     first.limits.as_mut().unwrap().limits[0].forecast = Some(LimitForecast {
         full_at_ms: NOW_MS + 80 * 60_000,
@@ -1014,21 +1014,21 @@ fn a_forecast_too_wide_for_its_pane_stays_red_on_every_line() {
     let shown = screen(&app, 150, 60);
 
     assert!(
-        shown.contains("│ 100% in 1h 20m at 10:40 at the last 30m's"),
+        shown.contains("│ 100% in 1h 20m at 10:40 · over pace           │"),
+        "{shown}"
+    );
+    assert!(
+        shown.contains("│ resets in 2h 40m at 12:00                     │"),
         "{shown}"
     );
     assert_eq!(
         cell_at(&app, 150, 60, "100% in").fg,
         ratatui::style::Color::LightRed
     );
-    assert_eq!(
-        cell_at(&app, 150, 60, "pace      ").fg,
-        ratatui::style::Color::LightRed
-    );
 }
 
 #[test]
-fn a_forecast_from_the_last_30_minutes_says_so_on_the_bar() {
+fn a_forecast_from_the_last_30_minutes_reads_like_any_other() {
     let mut account = filling_fast();
     account.limits.as_mut().unwrap().limits[0].forecast = Some(LimitForecast {
         full_at_ms: NOW_MS + 80 * 60_000,
@@ -1038,10 +1038,8 @@ fn a_forecast_from_the_last_30_minutes_says_so_on_the_bar() {
 
     let shown = screen(&app, 120, 24);
 
-    assert!(
-        shown.contains("100% in 1h 20m at 10:40 at the last 30m's pace"),
-        "{shown}"
-    );
+    assert!(shown.contains("100% in 1h 20m at 10:40"), "{shown}");
+    assert!(!shown.contains("30m"), "{shown}");
 }
 
 #[test]

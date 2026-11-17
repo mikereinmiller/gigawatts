@@ -9,7 +9,7 @@ use crate::contract::{
     PacedLimit, Problem, ProblemKind,
 };
 use crate::limits::{age, limit_name, percent, unusual_severity};
-use crate::status::{MAY_MISS_OUTSIDE_USE_MS, has_reset, recent_suffix, resets_ms};
+use crate::status::{MAY_MISS_OUTSIDE_USE_MS, has_reset, resets_ms};
 
 use super::HISTORY_MIN_HEIGHT;
 use super::digits;
@@ -405,10 +405,7 @@ fn limit_row(
         ]),
         Line::from(bar(shown, width, color, stale)),
     ];
-    let mut forecast = forecast(shown, now_ms, local_minute);
-    if let Some(too_wide) = forecast.take_if(|forecast| forecast.chars().count() > width) {
-        lines.extend(wrapped(&too_wide, width as u16, forecast_style(stale)));
-    }
+    let forecast = forecast(shown, now_ms, local_minute);
     let mut budget = credit_budget(shown, now_ms);
     let mut details = if budget.is_empty() {
         detail(shown, now_ms, local_minute)
@@ -790,7 +787,7 @@ fn forecast(shown: &PacedLimit, now_ms: i64, local_minute: LocalMinute) -> Optio
     } else {
         format!("by {clock}")
     };
-    Some(format!("100% {when}{}", recent_suffix(&forecast)))
+    Some(format!("100% {when}"))
 }
 
 fn resets(resets_ms: i64, now_ms: i64, local_minute: LocalMinute) -> String {

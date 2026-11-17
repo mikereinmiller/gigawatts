@@ -99,7 +99,7 @@ fn forecast_phrase(shown: &PacedLimit, local_minute: &dyn Fn(i64) -> String) -> 
     ))
 }
 
-pub(crate) fn recent_suffix(forecast: &LimitForecast) -> &'static str {
+fn recent_suffix(forecast: &LimitForecast) -> &'static str {
     match forecast.basis {
         ForecastBasis::Window => "",
         ForecastBasis::Recent => " at the last 30m's pace",
