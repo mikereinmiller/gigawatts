@@ -389,7 +389,7 @@ fn a_limit_anthropic_marks_with_a_severity_shows_it() {
     let shown = screen(&app, 120, 24);
 
     assert!(
-        shown.contains("│                     over your usual pace · 50% expected · resets in 2d 17h · warning "),
+        shown.contains("│                     over your usual pace · resets in 2d 17h · warning "),
         "{shown}"
     );
     assert!(!shown.contains("normal"), "{shown}");
@@ -870,20 +870,42 @@ fn the_header_says_how_long_ago_the_engine_last_wrote_and_nothing_when_unknown()
 }
 
 #[test]
-fn each_limit_shows_the_expected_percentage_and_a_countdown_to_its_reset() {
+fn each_limit_counts_down_to_its_reset_and_names_its_pace_only_when_over() {
     let app = open(snapshot(vec![personal()]), None);
 
     let shown = screen(&app, 120, 24);
 
     assert!(
-        shown.contains("│                     on even pace · 50% expected · resets in 2h 40m"),
+        shown.contains("│                     resets in 2h 40m "),
         "{shown}"
     );
     assert!(
-        shown.contains(
-            "│                     over your usual pace · 50% expected · resets in 2d 17h"
-        ),
+        shown.contains("│                     over your usual pace · resets in 2d 17h "),
         "{shown}"
+    );
+    assert!(!shown.contains("even pace"), "{shown}");
+    assert!(!shown.contains("expected"), "{shown}");
+}
+
+#[test]
+fn a_limit_over_even_pace_says_over_pace_in_the_over_color() {
+    let mut account = personal();
+    account.limits.as_mut().unwrap().limits[0].pace = Some(pace(PaceState::Over, PaceBasis::Even));
+    let app = open(snapshot(vec![account]), None);
+
+    let shown = screen(&app, 150, 40);
+
+    assert!(
+        shown.contains("│ over pace · resets in 2h 40m at 12:00 "),
+        "{shown}"
+    );
+    assert_eq!(
+        cell_at(&app, 150, 40, "over pace · resets").fg,
+        ratatui::style::Color::LightRed
+    );
+    assert_eq!(
+        cell_at(&app, 150, 40, "resets in 2h 40m at 12:00").fg,
+        ratatui::style::Color::DarkGray
     );
 }
 
@@ -949,6 +971,57 @@ fn a_limit_on_course_to_fill_before_its_reset_says_when_in_the_over_pace_color()
         ratatui::style::Color::LightRed
     );
     insta::assert_snapshot!(screen(&app, 80, 24));
+}
+
+#[test]
+fn a_forecast_under_a_roomy_bar_shares_the_reset_line() {
+    let mut app = open(snapshot(vec![filling_fast(), work()]), None);
+    app.handle(KeyCode::Char('3').into());
+
+    let shown = screen(&app, 120, 60);
+
+    let line = line_with(&shown, "100% in 1h 20m at 10:40");
+    assert!(
+        line.contains("100% in 1h 20m at 10:40 · over pace · resets in 2h 40m at 12:00"),
+        "{shown}"
+    );
+    assert_eq!(
+        cell_at(&app, 120, 60, "100% in").fg,
+        ratatui::style::Color::LightRed
+    );
+    assert_eq!(
+        cell_at(&app, 120, 60, "over pace · resets").fg,
+        ratatui::style::Color::LightRed
+    );
+}
+
+#[test]
+fn a_forecast_too_wide_for_its_pane_stays_red_on_every_line() {
+    let mut first = filling_fast();
+    first.limits.as_mut().unwrap().limits[0].forecast = Some(LimitForecast {
+        full_at_ms: NOW_MS + 80 * 60_000,
+        basis: ForecastBasis::Recent,
+    });
+    let mut side = personal();
+    side.account = Some(NEW.to_string());
+    side.account_label = "side".to_string();
+    let mut app = open(snapshot(vec![first, work(), side]), None);
+    app.handle(KeyCode::Char('4').into());
+
+    let shown = screen(&app, 150, 60);
+
+    assert!(
+        shown.contains("│ 100% in 1h 20m at 10:40 at the last 30m's"),
+        "{shown}"
+    );
+    assert_eq!(
+        cell_at(&app, 150, 60, "100% in").fg,
+        ratatui::style::Color::LightRed
+    );
+    assert_eq!(
+        cell_at(&app, 150, 60, "pace      ").fg,
+        ratatui::style::Color::LightRed
+    );
 }
 
 #[test]
@@ -1902,10 +1975,6 @@ fn a_percentage_that_rounds_to_a_whole_number_shows_no_decimal() {
     let screen = screen(&app, 120, 24);
 
     assert!(screen.contains("   12% │"), "{screen}");
-    assert!(
-        screen.contains("│                     over your usual pace · 35% expected"),
-        "{screen}"
-    );
 }
 
 #[test]
@@ -1945,7 +2014,7 @@ fn each_limit_gets_a_name_row_a_full_width_thick_bar_and_its_details_below() {
 
     assert!(bar_cells >= 60, "{shown}");
     assert!(
-        lines[name_row + 2].contains("on even pace · 50% expected · resets in 2h 40m at 12:00"),
+        lines[name_row + 2].contains("│ resets in 2h 40m at 12:00 "),
         "{shown}"
     );
 }
@@ -2239,7 +2308,7 @@ fn with_the_terminals_colors_known_every_muted_part_shares_one_soft_shade() {
 
     let track = cell_at(&app, 150, 40, "▇ │ │");
     let border = cell_at(&app, 150, 40, "╭ Limits");
-    let details = cell_at(&app, 150, 40, "on even pace · 50% expected");
+    let details = cell_at(&app, 150, 40, "resets in 2h 40m at 12:00");
     let label = cell_at(&app, 150, 40, "Last 19 workdays");
 
     assert_eq!(track.fg, muted);
@@ -2253,7 +2322,7 @@ fn without_the_terminals_colors_muted_parts_fall_back_to_dark_gray() {
     let app = open(snapshot(vec![personal()]), None);
 
     let track = cell_at(&app, 150, 40, "▇ │ │");
-    let details = cell_at(&app, 150, 40, "on even pace · 50% expected");
+    let details = cell_at(&app, 150, 40, "resets in 2h 40m at 12:00");
 
     assert_eq!(track.fg, ratatui::style::Color::DarkGray);
     assert_eq!(details.fg, ratatui::style::Color::DarkGray);
@@ -2974,7 +3043,7 @@ fn with_room_each_accounts_limits_sit_side_by_side_where_limits_and_today_split(
         "{every}"
     );
     assert!(lines[heading + 2].contains("│ Session "), "{every}");
-    assert!(every.contains("on even pace · 50% expected"), "{every}");
+    assert!(every.contains("│ resets in 2h 40m at 12:00"), "{every}");
 }
 
 #[test]
@@ -3034,7 +3103,7 @@ fn a_limit_detail_longer_than_its_pane_wraps_instead_of_being_cut() {
     );
     assert!(shown.contains("│ $82 a day to last "), "{shown}");
     assert!(
-        shown.contains("│ under even pace · 26% expected          │"),
+        shown.contains("│ resets in 21d 14h                       │"),
         "{shown}"
     );
     assert!(
@@ -3075,7 +3144,7 @@ fn line_with<'a>(shown: &'a str, text: &str) -> &'a str {
 
 #[test]
 fn stacked_limits_show_their_reset_beside_a_bar_of_at_most_60_cells() {
-    let shown = three_accounts_screen(150, 50);
+    let shown = three_accounts_screen(150, 47);
     let session = line_with(&shown, "Session ");
 
     assert!(session.contains("5%  resets 2h 40m"), "{shown}");
@@ -3085,7 +3154,7 @@ fn stacked_limits_show_their_reset_beside_a_bar_of_at_most_60_cells() {
 
 #[test]
 fn stacked_bars_draw_a_full_height_track_unless_the_reading_is_stale() {
-    let shown = three_accounts_screen(150, 50);
+    let shown = three_accounts_screen(150, 47);
     let fresh = line_with(&shown, "Session ");
     let stale = line_with(&shown, "Credits ");
 
@@ -3127,7 +3196,7 @@ fn a_stacked_limit_too_narrow_for_its_status_puts_it_on_the_next_row() {
 
 #[test]
 fn stacked_accounts_get_a_blank_row_between_them_when_the_window_has_room() {
-    let roomy = three_accounts_screen(150, 50);
+    let roomy = three_accounts_screen(149, 50);
     let tight = three_accounts_screen(80, 40);
     let gap_before = |shown: &str, label: &str| {
         let lines: Vec<&str> = shown.lines().collect();
@@ -3158,7 +3227,7 @@ fn stacked_accounts_too_tall_for_the_window_cut_the_last_box_not_the_first() {
 
 #[test]
 fn stacked_limit_bars_leave_a_gap_above_so_bars_on_next_rows_stay_apart() {
-    let stacked = three_accounts_screen(150, 50);
+    let stacked = three_accounts_screen(150, 47);
     let one = screen(&open(snapshot(vec![personal()]), None), 80, 24);
 
     for name in [
@@ -3190,7 +3259,7 @@ fn with_a_filling_limit_screen(width: u16, height: u16) -> String {
 
 #[test]
 fn stacked_limits_with_room_add_their_forecast_to_the_reset_in_parentheses() {
-    let shown = with_a_filling_limit_screen(170, 49);
+    let shown = with_a_filling_limit_screen(170, 46);
     let side: String = shown
         .lines()
         .skip_while(|line| !line.contains("╭ side "))
@@ -3218,7 +3287,7 @@ fn stacked_limits_without_room_put_their_forecast_on_the_next_row() {
 #[test]
 fn stacked_credits_put_their_budget_on_its_own_row_at_any_width() {
     for width in [80, 170] {
-        let shown = with_a_filling_limit_screen(width, 49);
+        let shown = with_a_filling_limit_screen(width, 46);
 
         assert!(
             line_with(&shown, "Credits ")
@@ -3796,5 +3865,23 @@ fn a_credit_limit_at_100_percent_with_no_reset_lights_nothing() {
         !title_row(&app, 100).contains("ϟ"),
         "{}",
         title_row(&app, 100)
+    );
+}
+
+#[test]
+fn a_filling_credit_limit_leads_the_line_under_its_bar_with_the_countdown() {
+    let app = open(snapshot(vec![work_credits_filling_in(120)]), None);
+    let shown = screen(&app, 100, 40);
+    let lines: Vec<&str> = shown.lines().collect();
+    let name = lines
+        .iter()
+        .position(|line| line.contains("│ Credits "))
+        .unwrap_or_else(|| panic!("{shown}"));
+
+    assert!(
+        lines[name + 2]
+            .trim_start_matches(['"', '│', ' '])
+            .starts_with("100% in 2h 0m"),
+        "{shown}"
     );
 }

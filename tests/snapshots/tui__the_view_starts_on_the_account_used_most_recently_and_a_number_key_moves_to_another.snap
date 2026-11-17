@@ -4,11 +4,11 @@ expression: first
 ---
 " Gigawatts                                                                      "
 "  1 personal   2 work   3 all                                                   "
+"                                                                                "
 "╭ Limits · from cachedUsageUtilization, read 2 hours ago ──────────────────────╮"
 "│ Read over an hour ago, so it may not include use outside Claude Code.        │"
 "│ Credits             ▇▇▇▇▇▇▇▇▇▇▂▂▂▇▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂   20% │"
-"│                     437.60 of 2200.00 USD · under even pace · 26% expected   │"
-"│                     resets in 21d 14h                                        │"
+"│                     437.60 of 2200.00 USD · resets in 21d 14h                │"
 "╰──────────────────────────────────────────────────────────────────────────────╯"
 "╭ Today ───────────────────────────────────────────────────────────────────────╮"
 "│ $0.40 · no usual yet                                                         │"

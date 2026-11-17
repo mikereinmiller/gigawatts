@@ -5,11 +5,11 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Clear, Padding, Paragraph};
 
 use crate::contract::{
-    AccountLimits, AccountToday, DollarPace, LimitSource, PaceState, PacedLimit, Problem,
-    ProblemKind,
+    AccountLimits, AccountToday, DollarPace, LimitPace, LimitSource, PaceBasis, PaceState,
+    PacedLimit, Problem, ProblemKind,
 };
 use crate::limits::{age, credits_used, limit_name, percent, unusual_severity};
-use crate::status::{MAY_MISS_OUTSIDE_USE_MS, has_reset, pace_phrase, recent_suffix, resets_ms};
+use crate::status::{MAY_MISS_OUTSIDE_USE_MS, has_reset, recent_suffix, resets_ms};
 
 use super::HISTORY_MIN_HEIGHT;
 use super::digits;
@@ -405,20 +405,34 @@ fn limit_row(
         ]),
         Line::from(bar(shown, width, color, stale)),
     ];
-    if let Some(forecast) = forecast(shown, now_ms, local_minute) {
-        lines.extend(wrapped(&forecast, width as u16, forecast_style(stale)));
+    let mut forecast = forecast(shown, now_ms, local_minute);
+    if let Some(too_wide) = forecast.take_if(|forecast| forecast.chars().count() > width) {
+        lines.extend(wrapped(&too_wide, width as u16, forecast_style(stale)));
     }
-    let budget = credit_budget(shown, now_ms);
-    let details = if budget.is_empty() {
+    let mut budget = credit_budget(shown, now_ms);
+    let mut details = if budget.is_empty() {
         detail(shown, now_ms, local_minute)
     } else {
         detail_after_credits(shown, now_ms, local_minute)
     };
+    let first_line = if budget.is_empty() {
+        &mut details
+    } else {
+        &mut budget
+    };
+    first_line.splice(0..0, forecast.iter().cloned());
     for packed in pack(&budget, width)
         .into_iter()
         .chain(pack(&details, width))
     {
-        lines.extend(wrapped(&packed, width as u16, MUTED));
+        for line in wrapped(&packed, width as u16, MUTED) {
+            lines.push(Line::from(detail_spans(
+                &line.to_string(),
+                forecast.as_deref(),
+                MUTED,
+                stale,
+            )));
+        }
     }
     lines
 }
@@ -492,7 +506,7 @@ fn named_limit_row(
                 }
                 for part in parts {
                     spans.push(Span::styled(SEPARATOR, style));
-                    spans.push(Span::styled(part.clone(), style));
+                    spans.extend(detail_spans(part, None, style, stale));
                 }
             }
             lines.push(Line::from(spans));
@@ -521,10 +535,9 @@ fn named_limit_row(
         ]));
     }
     for packed in pack(parts, (width as usize).saturating_sub(NAME_WIDTH)) {
-        lines.push(Line::from(vec![
-            Span::raw(" ".repeat(NAME_WIDTH)),
-            Span::styled(packed, style),
-        ]));
+        let mut spans = vec![Span::raw(" ".repeat(NAME_WIDTH))];
+        spans.extend(detail_spans(&packed, None, style, stale));
+        lines.push(Line::from(spans));
     }
     lines
 }
@@ -599,15 +612,53 @@ fn detail(shown: &PacedLimit, now_ms: i64, local_minute: LocalMinute) -> Vec<Str
 
 fn detail_after_credits(shown: &PacedLimit, now_ms: i64, local_minute: LocalMinute) -> Vec<String> {
     let mut parts = Vec::new();
-    if let Some(pace) = &shown.pace {
-        parts.push(pace_phrase(pace));
-        parts.push(format!("{}% expected", percent(pace.expected_percent)));
+    if let Some(over) = shown.pace.as_ref().and_then(over_pace) {
+        parts.push(over.to_string());
     }
     if let Some(resets_ms) = resets_ms(shown) {
         parts.push(resets(resets_ms, now_ms, local_minute));
     }
     parts.extend(unusual_severity(&shown.limit));
     parts
+}
+
+const OVER_EVEN_PACE: &str = "over pace";
+const OVER_USUAL_PACE: &str = "over your usual pace";
+
+fn over_pace(pace: &LimitPace) -> Option<&'static str> {
+    if pace.state != PaceState::Over {
+        return None;
+    }
+    Some(match pace.basis {
+        PaceBasis::Even => OVER_EVEN_PACE,
+        PaceBasis::Usual => OVER_USUAL_PACE,
+    })
+}
+
+fn detail_spans(
+    text: &str,
+    forecast: Option<&str>,
+    style: Style,
+    stale: bool,
+) -> Vec<Span<'static>> {
+    let warnings = forecast
+        .into_iter()
+        .chain([OVER_USUAL_PACE, OVER_EVEN_PACE])
+        .filter(|phrase| !phrase.is_empty());
+    let mut spans = Vec::new();
+    let mut rest = text;
+    for phrase in warnings {
+        let Some(at) = rest.find(phrase) else {
+            continue;
+        };
+        if at > 0 {
+            spans.push(Span::styled(rest[..at].to_string(), style));
+        }
+        spans.push(Span::styled(phrase.to_string(), forecast_style(stale)));
+        rest = &rest[at + phrase.len()..];
+    }
+    spans.push(Span::styled(rest.to_string(), style));
+    spans
 }
 
 fn status(shown: &PacedLimit, now_ms: i64) -> Option<String> {
