@@ -24,6 +24,7 @@ fn limit(kind: &str, scope: Option<&str>, percent: f64) -> PacedLimit {
         forecast: None,
         this_machine_usd: None,
         elsewhere_usd: None,
+        elsewhere_percent: None,
     }
 }
 

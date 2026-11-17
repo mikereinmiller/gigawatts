@@ -23,7 +23,7 @@ mod retention;
 mod sessions;
 mod totals;
 
-pub use limits::{LimitPoint, LimitsReading, UsageAdvice};
+pub use limits::{LimitPoint, LimitRise, LimitsReading, UsageAdvice};
 pub use pace::{ClockSpend, CostFlags};
 pub use prices::{DownloadedPrices, PriceUpdate};
 pub use problems::{ModelSighting, PriceGap, UnrecognizedKind};

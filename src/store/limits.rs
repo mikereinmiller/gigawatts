@@ -12,6 +12,14 @@ pub struct UsageAdvice {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct LimitRise {
+    pub day: String,
+    pub from_ms: i64,
+    pub to_ms: i64,
+    pub points: f64,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct LimitsReading {
     pub fetched_at_ms: i64,
     pub source: LimitSource,
@@ -186,6 +194,52 @@ impl Store {
                     fetched_at_ms: row.get(2)?,
                     percent: row.get(3)?,
                     resets_at: row.get(4)?,
+                })
+            },
+        )?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
+    pub fn limit_rises(
+        &self,
+        account: &Account,
+        kind: &str,
+        since_ms: i64,
+    ) -> Result<Vec<LimitRise>> {
+        let mut statement = self.connection.prepare_cached(
+            "WITH series AS (
+                 SELECT readings.fetched_at_ms, readings.percent,
+                        lag(readings.fetched_at_ms) OVER earlier AS previous_at_ms,
+                        lag(readings.percent) OVER earlier AS previous_percent,
+                        lag(readings.resets_at) OVER earlier AS previous_resets_at
+                 FROM limit_readings AS readings
+                 JOIN accounts ON accounts.id = readings.account_id
+                 WHERE accounts.account_uuid = ?1 AND accounts.organization_uuid = ?2
+                   AND readings.kind = ?3 AND readings.scope = ''
+                   AND readings.fetched_at_ms >= ?4
+                 WINDOW earlier AS (ORDER BY readings.fetched_at_ms)
+             )
+             SELECT date(fetched_at_ms / 1000, 'unixepoch', 'localtime'),
+                    previous_at_ms, fetched_at_ms, percent - previous_percent
+             FROM series
+             WHERE previous_at_ms IS NOT NULL
+               AND percent >= previous_percent
+               AND coalesce(unixepoch(previous_resets_at, 'subsec') * 1000 > fetched_at_ms, 1)
+             ORDER BY fetched_at_ms",
+        )?;
+        let rows = statement.query_map(
+            params![
+                account.account_uuid,
+                account.organization_uuid,
+                kind,
+                since_ms
+            ],
+            |row| {
+                Ok(LimitRise {
+                    day: row.get(0)?,
+                    from_ms: row.get(1)?,
+                    to_ms: row.get(2)?,
+                    points: row.get(3)?,
                 })
             },
         )?;

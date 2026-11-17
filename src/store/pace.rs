@@ -370,6 +370,42 @@ impl Store {
             .query_row(params![account_id, from_ms, until_ms], |row| row.get(0))?)
     }
 
+    pub fn spend_times(
+        &self,
+        account: &Account,
+        from_ms: i64,
+        until_ms: i64,
+    ) -> Result<Vec<(i64, f64)>> {
+        let Some(account_id) = self.account_row_id(account)? else {
+            return Ok(Vec::new());
+        };
+        let mut statement = self.connection.prepare_cached(
+            "SELECT spent_at_ms, cost_usd FROM (
+                 SELECT time_ms AS spent_at_ms, cost_usd FROM requests INDEXED BY requests_by_day
+                 WHERE day BETWEEN date(?2 / 1000, 'unixepoch', 'localtime')
+                               AND date(?3 / 1000, 'unixepoch', 'localtime')
+                   AND account_id = ?1 AND cost_usd IS NOT NULL
+                 UNION ALL
+                 SELECT coalesce(
+                            (SELECT max(time_ms) FROM requests
+                             WHERE requests.session_id = missing.session_id),
+                            sessions.start_time_ms),
+                        missing.cost_usd
+                 FROM not_in_transcript AS missing
+                 JOIN sessions ON sessions.id = missing.session_id
+                 WHERE missing.day BETWEEN date(?2 / 1000, 'unixepoch', 'localtime')
+                                       AND date(?3 / 1000, 'unixepoch', 'localtime')
+                   AND sessions.account_id = ?1
+             )
+             WHERE spent_at_ms >= ?2 AND spent_at_ms <= ?3
+             ORDER BY spent_at_ms",
+        )?;
+        let rows = statement.query_map(params![account_id, from_ms, until_ms], |row| {
+            Ok((row.get(0)?, row.get(1)?))
+        })?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
     fn account_row_id(&self, account: &Account) -> Result<Option<i64>> {
         Ok(self
             .connection

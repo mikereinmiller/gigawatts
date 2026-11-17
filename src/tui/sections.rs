@@ -579,18 +579,9 @@ fn pace_color(shown: &PacedLimit) -> Color {
 fn bar(shown: &PacedLimit, width: usize, color: Color, stale: bool) -> Vec<Span<'static>> {
     let track = if stale { STALE_TRACK } else { BAR };
     let filled = cells(shown.limit.percent, width);
-    let elsewhere_from = shown
-        .elsewhere_usd
-        .zip(
-            shown
-                .limit
-                .credits
-                .as_ref()
-                .and_then(|credits| credits.limit),
-        )
-        .map_or(filled, |(elsewhere, cap)| {
-            filled.saturating_sub(cells(elsewhere / cap * 100.0, width))
-        });
+    let elsewhere_from = elsewhere_share(shown).map_or(filled, |elsewhere| {
+        filled.saturating_sub(cells(elsewhere, width))
+    });
     let expected = shown
         .pace
         .as_ref()
@@ -609,6 +600,19 @@ fn bar(shown: &PacedLimit, width: usize, color: Color, stale: bool) -> Vec<Span<
         spans.push(Span::styled(symbol, style));
     }
     spans
+}
+
+fn elsewhere_share(shown: &PacedLimit) -> Option<f64> {
+    let credits_cap = shown
+        .limit
+        .credits
+        .as_ref()
+        .and_then(|credits| credits.limit);
+    shown
+        .elsewhere_usd
+        .zip(credits_cap)
+        .map(|(elsewhere, cap)| elsewhere / cap * 100.0)
+        .or(shown.elsewhere_percent)
 }
 
 fn cells(percent: f64, width: usize) -> usize {
@@ -637,8 +641,14 @@ fn elsewhere(shown: &PacedLimit) -> String {
         .unwrap_or_default()
 }
 
+fn elsewhere_points(shown: &PacedLimit) -> Option<String> {
+    shown
+        .elsewhere_percent
+        .map(|points| format!("~{points:.0}% elsewhere"))
+}
+
 fn detail_after_credits(shown: &PacedLimit, now_ms: i64, local_minute: LocalMinute) -> Vec<String> {
-    let mut parts = Vec::new();
+    let mut parts: Vec<String> = elsewhere_points(shown).into_iter().collect();
     if let Some(over) = shown.pace.as_ref().and_then(over_pace) {
         parts.push(over.to_string());
     }
@@ -754,7 +764,10 @@ fn flags(shown: &PacedLimit, now_ms: i64) -> Vec<String> {
     if has_reset(shown, now_ms) {
         return Vec::new();
     }
-    unusual_severity(&shown.limit).into_iter().collect()
+    elsewhere_points(shown)
+        .into_iter()
+        .chain(unusual_severity(&shown.limit))
+        .collect()
 }
 
 fn forecast_style(stale: bool) -> Style {

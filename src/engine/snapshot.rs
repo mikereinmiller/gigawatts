@@ -150,11 +150,25 @@ pub fn build(
                     limit,
                     this_machine_usd: None,
                     elsewhere_usd: None,
+                    elsewhere_percent: None,
                 });
             }
             if limits.iter().all(|shown| shown.limit.kind == "credits") {
                 for shown in &mut limits {
                     split_out_elsewhere(store, &stored, reading.fetched_at_ms, shown)?;
+                }
+            } else if limits.iter().any(estimable) {
+                let rates = pace::usd_per_point(store, &stored, now_ms)?;
+                for shown in limits.iter_mut().filter(|shown| estimable(shown)) {
+                    if let Some(rate) = rates.get(shown.limit.kind.as_str()) {
+                        estimate_elsewhere_percent(
+                            store,
+                            &stored,
+                            reading.fetched_at_ms,
+                            *rate,
+                            shown,
+                        )?;
+                    }
                 }
             }
             account.limits = Some(AccountLimits {
@@ -204,6 +218,33 @@ fn split_out_elsewhere(
     shown.elsewhere_usd = (elsewhere >= ELSEWHERE_MIN_USD
         && elsewhere >= credits.used * ELSEWHERE_MIN_SHARE)
         .then_some(elsewhere);
+    Ok(())
+}
+
+const ESTIMATE_MIN_PERCENT: f64 = 10.0;
+const ESTIMATE_MIN_POINTS: f64 = 3.0;
+
+fn estimable(shown: &PacedLimit) -> bool {
+    pace::ESTIMATED_KINDS.contains(&shown.limit.kind.as_str())
+        && shown.limit.percent >= ESTIMATE_MIN_PERCENT
+}
+
+fn estimate_elsewhere_percent(
+    store: &Store,
+    account: &Account,
+    fetched_at_ms: i64,
+    usd_per_point: f64,
+    shown: &mut PacedLimit,
+) -> Result<(), data::Error> {
+    let Some(pace) = shown.pace.as_ref() else {
+        return Ok(());
+    };
+    let Some(this_machine) = store.spend_between(account, pace.window_start_ms, fetched_at_ms)?
+    else {
+        return Ok(());
+    };
+    let elsewhere = shown.limit.percent - this_machine / usd_per_point;
+    shown.elsewhere_percent = (elsewhere >= ESTIMATE_MIN_POINTS).then_some(elsewhere);
     Ok(())
 }
 

@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 
 use gigawatts::accounts::Attribution;
 use gigawatts::config::epoch_ms_from_text;
-use gigawatts::contract::{GroupBy, Level, ProblemKind, Range};
+use gigawatts::contract::{GroupBy, Level, Limit, LimitSource, ProblemKind, Range};
 use gigawatts::data::query;
 use gigawatts::pace;
 use gigawatts::pricing::PriceTable;
@@ -13,7 +13,7 @@ use gigawatts::sources::git::Resolver;
 use gigawatts::sources::transcript::{
     CostState, Line, ModelCost, Request, RequestDetail, SessionTotals, Tokens,
 };
-use gigawatts::store::{FilePosition, Store};
+use gigawatts::store::{FilePosition, LimitsReading, Store};
 
 const HEAVY_REQUESTS_PER_DAY: usize = 5_000;
 const SESSIONS_PER_DAY: usize = 50;
@@ -47,6 +47,10 @@ const MAX_BYTES: u64 = 110 * 1024 * 1024;
 const MAX_TODAY: Duration = Duration::from_millis(5);
 const MAX_PACE: Duration = Duration::from_millis(40);
 const MAX_YEAR: Duration = Duration::from_millis(250);
+const MAX_RATES: Duration = Duration::from_millis(80);
+const READING_EVERY_MS: i64 = 10 * 60_000;
+const SESSION_WINDOW_MS: i64 = 5 * 3_600_000;
+const RATE_DAYS: i64 = 28;
 
 struct Random(u64);
 
@@ -261,6 +265,56 @@ fn fastest_of_three(mut run: impl FnMut()) -> Duration {
         .unwrap()
 }
 
+fn record_a_reading_every_ten_minutes(store: &mut Store, account: &Account, until_ms: i64) {
+    let limit = |kind: &str, percent: f64, resets_at_ms: i64| Limit {
+        kind: kind.to_string(),
+        group: None,
+        scope: None,
+        percent,
+        severity: None,
+        resets_at: Some(utc_text(resets_at_ms)),
+        active: true,
+        credits: None,
+    };
+    let start_ms = until_ms - RATE_DAYS * 24 * 3_600_000;
+    for fetched_at_ms in (start_ms..=until_ms).step_by(READING_EVERY_MS as usize) {
+        let into_session = (fetched_at_ms - start_ms) % SESSION_WINDOW_MS;
+        let into_week = (fetched_at_ms - start_ms) % (7 * 24 * 3_600_000);
+        store
+            .record_limits(
+                account,
+                &LimitsReading {
+                    fetched_at_ms,
+                    source: LimitSource::GetUsage,
+                    limits: vec![
+                        limit(
+                            "session",
+                            (into_session / READING_EVERY_MS) as f64,
+                            fetched_at_ms - into_session + SESSION_WINDOW_MS,
+                        ),
+                        limit(
+                            "weekly_all",
+                            (into_week / 3_600_000) as f64 / 2.0,
+                            fetched_at_ms - into_week + 7 * 24 * 3_600_000,
+                        ),
+                    ],
+                },
+            )
+            .unwrap();
+    }
+}
+
+fn utc_text(ms: i64) -> String {
+    rusqlite::Connection::open_in_memory()
+        .unwrap()
+        .query_row(
+            "SELECT strftime('%Y-%m-%dT%H:%M:%SZ', ?1 / 1000, 'unixepoch')",
+            [ms],
+            |row| row.get(0),
+        )
+        .unwrap()
+}
+
 #[test]
 fn a_heavy_year_with_90_day_retention_stays_small_and_fast() {
     let dir = tempfile::tempdir().unwrap();
@@ -436,9 +490,10 @@ fn a_heavy_year_with_90_day_retention_stays_small_and_fast() {
         .unwrap()
         .query_row("PRAGMA freelist_count", [], |row| row.get(0))
         .unwrap();
-    let store = Store::open(&path).unwrap();
+    let mut store = Store::open(&path).unwrap();
 
     let bytes = database_bytes(&path);
+    record_a_reading_every_ten_minutes(&mut store, &account, last_day_afternoon);
     assert_eq!(free_pages, 0);
     let requests = store.request_count().unwrap();
     assert!(expired > 0);
@@ -482,6 +537,15 @@ fn a_heavy_year_with_90_day_retention_stays_small_and_fast() {
         pace::active_sessions(&store, Some(&account), last_day_afternoon).unwrap();
         store.cost_flags_on(Some(&account), LAST_DAY).unwrap();
     });
+    let rate = fastest_of_three(|| {
+        pace::usd_per_point(&store, &account, last_day_afternoon).unwrap();
+    });
+    assert_eq!(
+        pace::usd_per_point(&store, &account, last_day_afternoon)
+            .unwrap()
+            .len(),
+        2
+    );
     let year_by = |by: GroupBy| {
         fastest_of_three(|| {
             query(&store, Range::All, by, &[], LAST_DAY).unwrap();
@@ -519,7 +583,7 @@ fn a_heavy_year_with_90_day_retention_stays_small_and_fast() {
          by repo {year_by_repo:?}, by branch {year_by_branch:?}, drill {year_drill:?}, \
          daily series by repo {year_series:?}, biggest sessions {biggest_sessions:?}, \
          cost mix by repo {year_mix:?}, subagents by model {year_agents:?}, \
-         problems {problems:?}, pace {pace:?}",
+         problems {problems:?}, pace {pace:?}, learned rates {rate:?}",
         bytes as f64 / 1024.0 / 1024.0,
         bytes / requests
     );
@@ -536,6 +600,10 @@ fn a_heavy_year_with_90_day_retention_stays_small_and_fast() {
     assert!(
         idle_pace + last_used_idle.max(last_used_dormant).max(last_used_none) <= MAX_PACE,
         "an idle account's dollar pace took {idle_pace:?}, and finding the last used account took {last_used_idle:?}, {last_used_dormant:?} when only a dormant account is tracked, and {last_used_none:?} when none is"
+    );
+    assert!(
+        rate <= MAX_RATES,
+        "learning the session and weekly dollars per point took {rate:?}"
     );
     assert!(year <= MAX_YEAR, "the yearly report took {year:?}");
     assert!(

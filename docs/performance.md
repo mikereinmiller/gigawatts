@@ -21,6 +21,7 @@ Measured 2026-11-11 on the Mac (Apple Silicon), across six runs: four debug, two
 | 10 biggest sessions (measured 2026-11-12, one debug and one release run) | 250 ms | 102–115 ms |
 | Cost mix and session counts by repo (2026-11-12) | 250 ms | 141–173 ms |
 | Subagents by model (2026-11-12) | 250 ms | 65–72 ms |
+| Session and weekly dollars per point, from 28 days of readings every 10 minutes (2026-11-17, one debug and one release run) | 80 ms | 42–59 ms |
 
 Release builds measured the same as debug builds, because nearly all the time is spent inside SQLite.
 

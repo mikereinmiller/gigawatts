@@ -50,6 +50,7 @@ fn timed(
         forecast: None,
         this_machine_usd: None,
         elsewhere_usd: None,
+        elsewhere_percent: None,
     }
 }
 
@@ -189,6 +190,7 @@ fn work() -> AccountToday {
                 forecast: None,
                 this_machine_usd: None,
                 elsewhere_usd: None,
+                elsewhere_percent: None,
             }],
         }),
     }
@@ -4200,4 +4202,58 @@ fn the_credit_bar_shades_the_part_used_elsewhere_at_the_end_of_what_is_filled() 
     let elsewhere: Vec<usize> = (0..cells.len()).filter(|i| shades[*i].1).collect();
     assert_eq!(filled, 8, "{shades:?}");
     assert_eq!(elsewhere, vec![7], "{shades:?}");
+}
+
+fn weekly_used_elsewhere(account: &mut AccountToday) {
+    let weekly = &mut account.limits.as_mut().unwrap().limits[1];
+    weekly.limit.percent = 24.0;
+    weekly.elsewhere_percent = Some(13.2);
+}
+
+#[test]
+fn a_weekly_limit_says_about_how_much_was_used_elsewhere() {
+    let mut account = personal();
+    weekly_used_elsewhere(&mut account);
+    let app = open(snapshot(vec![account]), Some(PERSONAL.to_string()));
+    let shown = screen(&app, 80, 40);
+
+    assert!(shown.contains("~13% elsewhere"), "{shown}");
+}
+
+#[test]
+fn every_account_shows_the_weekly_estimate_at_80_columns() {
+    let mut account = personal();
+    weekly_used_elsewhere(&mut account);
+    let mut app = open(snapshot(vec![account, work()]), None);
+    app.handle(KeyCode::Char('3').into());
+    let shown = screen(&app, 80, 40);
+
+    assert!(shown.contains("~13% elsewhere"), "{shown}");
+    for line in shown.lines() {
+        assert!(line.trim_matches('"').chars().count() <= 80, "{line}");
+    }
+}
+
+#[test]
+fn a_limit_with_no_estimate_says_nothing_about_elsewhere() {
+    let app = open(snapshot(vec![personal()]), Some(PERSONAL.to_string()));
+    let shown = screen(&app, 80, 40);
+
+    assert!(!shown.contains("elsewhere"), "{shown}");
+}
+
+#[test]
+fn the_weekly_bar_shades_the_estimate_used_elsewhere_at_the_end_of_what_is_filled() {
+    let mut account = personal();
+    weekly_used_elsewhere(&mut account);
+    let mut app = open(snapshot(vec![account, work()]), None);
+    app.handle(KeyCode::Char('3').into());
+
+    let cells = bar_cells(&app, 80, 40, "Weekly, all models");
+    let dim: Vec<usize> = (0..cells.len())
+        .filter(|i| cells[*i].modifier.contains(Modifier::DIM))
+        .collect();
+
+    assert_eq!(cells.len(), 34, "{cells:?}");
+    assert_eq!(dim, vec![4, 5, 6, 7], "{cells:?}");
 }

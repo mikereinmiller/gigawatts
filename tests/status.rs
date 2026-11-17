@@ -33,6 +33,7 @@ fn timed(kind: &str, percent: f64, resets_at: &str, pace: Option<LimitPace>) -> 
         forecast: None,
         this_machine_usd: None,
         elsewhere_usd: None,
+        elsewhere_percent: None,
     }
 }
 
@@ -282,6 +283,7 @@ fn a_credit_forecast_on_the_default_reset_has_no_caveat() {
             }),
             this_machine_usd: None,
             elsewhere_usd: None,
+            elsewhere_percent: None,
         }],
     };
 
@@ -321,6 +323,7 @@ fn monthly_credits_on_the_default_reset_show_their_pace_and_window_end() {
             forecast: None,
             this_machine_usd: None,
             elsewhere_usd: None,
+            elsewhere_percent: None,
         }],
     };
 
@@ -418,6 +421,7 @@ fn when_every_limit_reset_since_the_reading_the_line_says_so() {
                 forecast: None,
                 this_machine_usd: None,
                 elsewhere_usd: None,
+                elsewhere_percent: None,
             },
         ],
     };

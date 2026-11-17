@@ -1237,9 +1237,10 @@ function limitTile({limit, limits}) {
   const headed = headedFor(limit, limits.fetched_at_ms);
   if (limit.forecast) subs.push([`100% by ${localTime(limit.forecast.full_at_ms)}${recentPace(limit.forecast)}`, 'status-line critical']);
   else if (headed !== null) subs.push(headed >= 100 ? [`Headed past 100% before the reset`, 'status-line warning'] : `Headed for about ${percent(headed)} at the reset`);
+  if (limit.elsewhere_percent) subs.push(`~${Math.round(limit.elsewhere_percent)}% used elsewhere (estimate)`);
   if (limit.resets_at) subs.push('Resets ' + localTime(Date.parse(limit.resets_at)));
   if (limit.pace) subs.push([`Mark shows even pace (${percent(limit.pace.expected_percent)}) · from ${limitAge(limits)}`, 'faint']);
-  return tile(limitName(limit), percent(limit.percent), subs, {meter: limit.percent / 100, expected: limit.pace ? limit.pace.expected_percent / 100 : undefined});
+  return tile(limitName(limit), percent(limit.percent), subs, {meter: limit.percent / 100, expected: limit.pace ? limit.pace.expected_percent / 100 : undefined, elsewhere: limit.elsewhere_percent ? limit.elsewhere_percent / 100 : undefined});
 }
 
 function todayTile(account, shareable) {

@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use crate::config::{CreditReset, days_from_civil, epoch_ms_from_text};
 use crate::contract::{
     DollarPace, ForecastBasis, Limit, LimitForecast, LimitPace, PaceBasis, PaceState, SessionSpend,
@@ -24,6 +26,63 @@ pub fn dollar_pace(
         earlier_day_totals_usd: spend.earlier_day_totals_usd.into_iter().rev().collect(),
         earlier_days: spend.earlier_days.into_iter().rev().collect(),
     })
+}
+
+const RATE_HISTORY_MS: i64 = 28 * 24 * 3_600_000;
+const RATE_MIN_POINTS: f64 = 5.0;
+
+pub const ESTIMATED_KINDS: [&str; 2] = ["session", "weekly_all"];
+
+pub fn usd_per_point(
+    store: &Store,
+    account: &Account,
+    now_ms: i64,
+) -> store::Result<BTreeMap<&'static str, f64>> {
+    let mut rises_by_kind = Vec::new();
+    for kind in ESTIMATED_KINDS {
+        rises_by_kind.push((
+            kind,
+            store.limit_rises(account, kind, now_ms - RATE_HISTORY_MS)?,
+        ));
+    }
+    let all_rises = rises_by_kind.iter().flat_map(|(_, rises)| rises);
+    let (Some(from_ms), Some(until_ms)) = (
+        all_rises.clone().map(|rise| rise.from_ms).min(),
+        all_rises.map(|rise| rise.to_ms).max(),
+    ) else {
+        return Ok(BTreeMap::new());
+    };
+    let spend = store.spend_times(account, from_ms, until_ms)?;
+    let mut spent_before = Vec::with_capacity(spend.len() + 1);
+    spent_before.push(0.0);
+    for (_, usd) in &spend {
+        spent_before.push(spent_before.last().copied().unwrap_or_default() + usd);
+    }
+    let spent_by = |ms: i64| spent_before[spend.partition_point(|(at_ms, _)| *at_ms <= ms)];
+    let mut rates = BTreeMap::new();
+    for (kind, rises) in &rises_by_kind {
+        let mut days: Vec<(&str, f64, f64)> = Vec::new();
+        for rise in rises {
+            let usd = spent_by(rise.to_ms) - spent_by(rise.from_ms);
+            match days.last_mut() {
+                Some((day, points, spent)) if *day == rise.day => {
+                    *points += rise.points;
+                    *spent += usd;
+                }
+                _ => days.push((&rise.day, rise.points, usd)),
+            }
+        }
+        let highest = days
+            .into_iter()
+            .filter(|(_, points, _)| *points >= RATE_MIN_POINTS)
+            .map(|(_, points, usd)| usd / points)
+            .filter(|rate| *rate > 0.0)
+            .reduce(f64::max);
+        if let Some(rate) = highest {
+            rates.insert(*kind, rate);
+        }
+    }
+    Ok(rates)
 }
 
 pub fn median(mut values: Vec<f64>) -> Option<f64> {

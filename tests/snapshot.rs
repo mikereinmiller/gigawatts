@@ -216,6 +216,7 @@ fn the_snapshot_carries_each_tracked_accounts_spend_today_and_the_engines_proble
                             forecast: None,
                             this_machine_usd: None,
                             elsewhere_usd: None,
+                            elsewhere_percent: None,
                         }],
                     }),
                 },
@@ -810,4 +811,171 @@ fn credits_get_no_elsewhere_split_while_an_open_session_has_spend_with_no_price(
     let shown = credits_snapshot(&lines, vec![credits_limit(84.028)], None);
 
     assert_eq!((shown.this_machine_usd, shown.elsewhere_usd), (None, None));
+}
+
+const ESTIMATE_FIRST_DAY: &str = "2026-11-08";
+
+fn request_costing(request_id: &str, at_ms: i64, usd: f64) -> String {
+    let output_tokens = ((usd - 0.004) / 0.00002).round() as u64;
+    request_line(request_id, &utc_text(at_ms)).replace(
+        "\"output_tokens\":500",
+        &format!("\"output_tokens\":{output_tokens}"),
+    )
+}
+
+fn timed_limit(kind: &str, percent: f64, resets_at_ms: i64) -> Limit {
+    Limit {
+        kind: kind.to_string(),
+        group: None,
+        scope: None,
+        percent,
+        severity: None,
+        resets_at: Some(utc_text(resets_at_ms)),
+        active: true,
+        credits: None,
+    }
+}
+
+fn estimate_snapshot(
+    kind: &str,
+    readings: &[(i64, f64, i64)],
+    spend: &[(i64, f64)],
+    now_ms: i64,
+) -> PacedLimit {
+    let dir = tempfile::tempdir().unwrap();
+    let mut store = Store::open(&dir.path().join("history.sqlite3")).unwrap();
+    let projects = dir.path().join("projects");
+    fs::create_dir_all(&projects).unwrap();
+    let lines: String = spend
+        .iter()
+        .enumerate()
+        .map(|(n, (at_ms, usd))| request_costing(&format!("r{n}"), *at_ms, *usd))
+        .collect();
+    fs::write(projects.join("s1.jsonl"), lines).unwrap();
+    ingest(&mut store, &projects, &PriceTable::built_in(), ACCOUNT);
+    for (fetched_at_ms, percent, resets_at_ms) in readings {
+        store
+            .record_limits(
+                &ACCOUNT.parse().unwrap(),
+                &LimitsReading {
+                    fetched_at_ms: *fetched_at_ms,
+                    source: LimitSource::GetUsage,
+                    limits: vec![timed_limit(kind, *percent, *resets_at_ms)],
+                },
+            )
+            .unwrap();
+    }
+    let config = Config::parse("", dir.path()).unwrap();
+    let built = snapshot::build(&store, &config, now_ms, &[]).unwrap();
+    built.accounts[0].limits.as_ref().unwrap().limits[0].clone()
+}
+
+fn weekly_estimate(days: &[(f64, f64)]) -> PacedLimit {
+    let resets_ms = local_ms(&days_before(ESTIMATE_FIRST_DAY, -5), "09:00:00");
+    let mut readings = vec![(local_ms(ESTIMATE_FIRST_DAY, "09:00:00"), 0.0, resets_ms)];
+    let mut spend = Vec::new();
+    for (index, (percent, usd)) in days.iter().enumerate() {
+        let day = days_before(ESTIMATE_FIRST_DAY, -(index as i64));
+        if *usd > 0.0 {
+            spend.push((local_ms(&day, "12:00:00"), *usd));
+        }
+        readings.push((local_ms(&day, "17:00:00"), *percent, resets_ms));
+    }
+    let last_day = days_before(ESTIMATE_FIRST_DAY, -(days.len() as i64 - 1));
+    estimate_snapshot(
+        "weekly_all",
+        &readings,
+        &spend,
+        local_ms(&last_day, "18:00:00"),
+    )
+}
+
+#[test]
+fn a_weekly_rise_beyond_this_machines_spend_at_its_learned_rate_counts_as_elsewhere() {
+    let shown = weekly_estimate(&[(10.0, 50.0), (30.0, 50.0)]);
+
+    let elsewhere = shown.elsewhere_percent.expect("an estimate");
+    assert!((elsewhere - 10.0).abs() < 1e-6, "{elsewhere}");
+}
+
+#[test]
+fn an_estimate_under_three_points_is_left_out() {
+    let shown = weekly_estimate(&[(10.0, 50.0), (30.0, 92.0)]);
+
+    assert_eq!(shown.elsewhere_percent, None);
+}
+
+#[test]
+fn a_limit_under_ten_percent_gets_no_estimate() {
+    let shown = weekly_estimate(&[(5.0, 50.0), (9.0, 0.0)]);
+
+    assert_eq!(shown.elsewhere_percent, None);
+}
+
+#[test]
+fn without_a_day_that_rose_five_points_there_is_no_rate_to_estimate_with() {
+    let shown = weekly_estimate(&[(4.0, 50.0), (8.0, 0.0), (12.0, 0.0)]);
+
+    assert_eq!(shown.elsewhere_percent, None);
+}
+
+#[test]
+fn a_session_limit_gets_an_estimate_from_the_rate_learned_on_earlier_sessions() {
+    let second_day = days_before(ESTIMATE_FIRST_DAY, -1);
+    let first_resets = local_ms(ESTIMATE_FIRST_DAY, "14:00:00");
+    let second_resets = local_ms(&second_day, "19:00:00");
+
+    let shown = estimate_snapshot(
+        "session",
+        &[
+            (local_ms(ESTIMATE_FIRST_DAY, "09:30:00"), 0.0, first_resets),
+            (local_ms(ESTIMATE_FIRST_DAY, "13:30:00"), 10.0, first_resets),
+            (local_ms(&second_day, "14:30:00"), 0.0, second_resets),
+            (local_ms(&second_day, "18:00:00"), 30.0, second_resets),
+        ],
+        &[
+            (local_ms(ESTIMATE_FIRST_DAY, "11:00:00"), 50.0),
+            (local_ms(&second_day, "16:00:00"), 50.0),
+        ],
+        local_ms(&second_day, "18:10:00"),
+    );
+
+    let elsewhere = shown.elsewhere_percent.expect("an estimate");
+    assert!((elsewhere - 20.0).abs() < 1e-6, "{elsewhere}");
+}
+
+#[test]
+fn a_rise_across_a_reset_is_not_learned_as_a_rate() {
+    let second_day = days_before(ESTIMATE_FIRST_DAY, -1);
+    let first_resets = local_ms(ESTIMATE_FIRST_DAY, "11:00:00");
+    let next_resets = local_ms(ESTIMATE_FIRST_DAY, "16:00:00");
+    let second_resets = local_ms(&second_day, "19:00:00");
+
+    let shown = estimate_snapshot(
+        "session",
+        &[
+            (local_ms(ESTIMATE_FIRST_DAY, "10:00:00"), 4.0, first_resets),
+            (local_ms(ESTIMATE_FIRST_DAY, "12:00:00"), 9.0, next_resets),
+            (local_ms(&second_day, "14:30:00"), 0.0, second_resets),
+            (local_ms(&second_day, "18:00:00"), 30.0, second_resets),
+        ],
+        &[
+            (local_ms(ESTIMATE_FIRST_DAY, "10:30:00"), 100.0),
+            (local_ms(&second_day, "16:00:00"), 3.0),
+        ],
+        local_ms(&second_day, "18:10:00"),
+    );
+
+    assert_eq!(shown.elsewhere_percent, None);
+}
+
+#[test]
+fn credits_get_no_percent_estimate() {
+    let shown = credits_snapshot(
+        &requests_around_the_credit_period(),
+        vec![credits_limit(84.028)],
+        None,
+    );
+
+    assert_eq!(shown.elsewhere_percent, None);
 }

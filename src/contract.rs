@@ -457,6 +457,9 @@ pub struct PacedLimit {
     /// The credits used minus `this_machine_usd`: what other machines and claude.ai used this credit period, in US dollars. Null when `this_machine_usd` is, or when the difference is under $5 or under 1% of the credits used.
     #[serde(default)]
     pub elsewhere_usd: Option<f64>,
+    /// For the session and weekly limits of an account that has them, an estimate of how many points of `percent` other machines and claude.ai used this window. This machine's spend in the window is converted to points at its own dollars per point, the highest daily rate over the last 28 days among local days whose rises within a window add up to 5 points or more, and subtracted from `percent`. Expect it to be off by 2 to 3 points. Null for every other limit, when no day qualifies, when `percent` is under 10 or the estimate is under 3 points, and while some of this machine's spend in the window has no price.
+    #[serde(default)]
+    pub elsewhere_percent: Option<f64>,
 }
 
 /// When a limit is on course to reach 100% before its reset.
