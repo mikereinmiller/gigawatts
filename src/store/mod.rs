@@ -16,6 +16,7 @@ use crate::sources::transcript::{CostState, Line, READER_VERSION, Request, Token
 
 mod limits;
 mod pace;
+mod prices;
 mod problems;
 mod reconcile;
 mod retention;
@@ -24,6 +25,7 @@ mod totals;
 
 pub use limits::{LimitPoint, LimitsReading, UsageAdvice};
 pub use pace::{ClockSpend, CostFlags};
+pub use prices::{DownloadedPrices, PriceUpdate};
 pub use problems::{ModelSighting, PriceGap, UnrecognizedKind};
 pub use totals::{DailyCost, Filter, SessionCount, TokenMix, TopItem};
 

@@ -26,7 +26,7 @@ Status: versions 1 and 1.1 are built. A beta for coworkers is next.
 3. **Every number shows its source and age.** For example: "32% weekly, from Claude Code, 4 min ago." Today's dollars are the exception: Gigawatts prices them itself until each session closes and Claude Code records its own cost, and they rise when Claude Code's unlogged usage arrives. That's true nearly all day, so the views don't label it.
 4. **Event-driven.** It reacts to file changes and sets no polling timers while Claude Code is idle.
 5. **Degrade instead of breaking.** Every source is undocumented or can change. When one changes, Gigawatts marks the numbers it affects and keeps showing the rest.
-6. **Numbers stay local.** The database holds counts, costs, models, repos, branches, times, and session titles. It never stores prompts, responses, tool inputs, file contents, or commands. Gigawatts never sends your data anywhere. The one network request, a download of Anthropic's public pricing page when a price looks out of date (beta), can be turned off.
+6. **Numbers stay local.** The database holds counts, costs, models, repos, branches, times, and session titles. It never stores prompts, responses, tool inputs, file contents, or commands. Gigawatts never sends your data anywhere. The one network request, a download of Anthropic's public pricing page when a price looks out of date, can be turned off with `price_updates = false`.
 
 ## Stages
 
@@ -71,7 +71,7 @@ Claude Code keeps desktop and Cowork transcripts indefinitely unless `desktopSes
 | Transcripts, `~/.claude/projects/**/*.jsonl` | Per request: tokens by type (input, output, thinking, cache reads, 5-minute and 1-hour cache writes, web searches), model and requested model, effort, speed, `inference_geo`, `attributionSkill`, `attributionAgent`, working directory, git branch, time, and `requestId`. Per session: `cost-state` records with the cost per model (written when the session ends), durations, lines changed, the session title (the user's rename in `custom-title`, which wins, or else the generated `ai-title`), and tools used | Partly. [Location and retention](https://code.claude.com/docs/en/claude-directory) are documented, the line format isn't | Primary source for cost, tokens, and history |
 | `.claude.json`, `cachedUsageUtilization` | A generic `limits` list (kind, scope, percent, severity, reset time), credits in `spend` (older `extra_usage` as a fallback), a weekly breakdown by surface, the `accountUuid` (but not the `organizationUuid`, so readings are assigned to an account through its directory's `oauthAccount`), and when it was fetched (`fetchedAtMs`). Claude Code doesn't refresh it during ordinary use | No | Read at each full scan. A newer `get_usage` reading takes precedence. On its own it can be days old |
 | `get_usage` control request through an unmodified `claude -p` | Fresh limits and credits, refreshing `cachedUsageUtilization`. Without `skip_behaviors`, also the `behaviors` section that `/usage` shows as "What's contributed to your usage": behavior shares, top agents and skills, and recommendations. Costs no tokens | No (the SDK names it `usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET`) | Limits refresh every 10 minutes per active account, and when you look (see [Stale data and errors](#stale-data-and-errors)). `behaviors` fetched at most once an hour per active account. Measured on Claude Code 2.1.314: 1.1–1.9 s and 258–305 MB peak per run, released when the process exits |
-| Anthropic's pricing page as Markdown, `https://platform.claude.com/docs/en/about-claude/pricing.md` | Per-token prices by model and token type, plus pricing rules (long prompts on Haiku 5.5, US-only inference at 1.1×, fast mode) | Yes, it's Anthropic's public docs | Prices copied by hand into the built-in table, and downloaded when a price looks out of date (beta). See [Cost](#cost) |
+| Anthropic's pricing page as Markdown, `https://platform.claude.com/docs/en/about-claude/pricing.md` | Per-token prices by model and token type, plus pricing rules (long prompts on Haiku 5.5, US-only inference at 1.1×, fast mode) | Yes, it's Anthropic's public docs | Prices copied by hand into the built-in table, and downloaded when a price looks out of date. See [Cost](#cost) |
 | Status line JSON | Live `rate_limits` on every Claude Code event | [Yes](https://code.claude.com/docs/en/statusline) | Not planned. Limits refresh every 10 minutes while you work, and the forecast's 30-minute rate catches bursts |
 
 Sources considered and rejected:
@@ -166,7 +166,9 @@ Claude Code records a dollar cost per session and model, and only when the sessi
 
 On a subscription, these dollars are what the usage would cost at API prices, not what you're charged.
 
-The price table comes from two layers. A built-in table is copied by hand from Anthropic's pricing page, with the date and link. Overrides in `config.toml` win over it, and `gigawatts doctor` names any model without a price. Until a model has a price, the cost Claude Code recorded for it counts as unlogged usage, so totals still match. When either layer changes, stored history is repriced on the next ingest. The pricing rules are prose on the page and change rarely, so they live in code. In the beta, a third layer comes from `pricing.md`, downloaded when the engine sees a price problem (see [Features](#features)).
+The price table comes from three layers. A built-in table is copied by hand from Anthropic's pricing page, with the date and link. Prices downloaded from that page win over it, and overrides in `config.toml` win over both. `gigawatts doctor` names any model without a price. Until a model has a price, the cost Claude Code recorded for it counts as unlogged usage, so totals still match. When any layer changes, stored history is repriced on the next ingest. The pricing rules are prose on the page and change rarely, so they live in code.
+
+The engine downloads `pricing.md` when it sees a model with no price or a price gap, at most once a day while either lasts, and only with `curl`. It reads the model pricing table, keeps the prices that differ from the built-in table, and reprices history. A failed download, a page whose table doesn't parse, or a price more than 5 times or less than a fifth of the current one (or, for a new model, more than 5 times the most expensive) keeps the current prices and raises a problem. `price_updates = false` turns downloads off.
 
 ## Pace
 
@@ -202,7 +204,7 @@ It shows one account at a time, starting with the one used most recently, with a
 ## Stale data and errors
 
 - **Stale limits.** Every limit shows its age. Opening the view refreshes any account whose reading is over 10 minutes old. `gigawatts status` prints the saved reading and asks the engine to refresh in the background, at most once per 10 minutes. A reading over an hour old is greyed out with "may not include use outside Claude Code," since chat and cloud sessions only show up through limits.
-- **Problems.** Each affected number carries a short marker, like "limits: refresh failing since 2 PM" or "cost leaves out claude-opus-5-6 until its session ends: no price." The footer shows when anything is wrong, and `gigawatts doctor` lists each problem with its cause and what to do. Watched problems include unrecognized transcript lines, unknown models, price gaps ("adjusted" sessions, plus a price that comes out above Claude Code's record even with spend missing from the transcript), failing refreshes, folders the engine can't watch, transcripts or logins it can't read, and a daily cleanup of old request detail that fails.
+- **Problems.** Each affected number carries a short marker, like "limits: refresh failing since 2 PM" or "cost leaves out claude-opus-5-6 until its session ends: no price." The footer shows when anything is wrong, and `gigawatts doctor` lists each problem with its cause and what to do. Watched problems include unrecognized transcript lines, unknown models, price gaps ("adjusted" sessions, plus a price that comes out above Claude Code's record even with spend missing from the transcript), failing refreshes, a failing price download, folders the engine can't watch, transcripts or logins it can't read, and a daily cleanup of old request detail that fails.
 
 ## Settings
 
@@ -218,6 +220,7 @@ Settings live in `~/.config/gigawatts/config.toml` on both platforms, and data (
 | Store session titles, per account | On. Turning it off offers to delete stored titles |
 | Credit reset, per account | Midnight UTC on the 1st |
 | Price overrides, per model | None |
+| Price downloads | On. `price_updates = false` turns them off |
 | Account switch, per config directory | None. A time and the earlier account ID; requests and `cachedUsageUtilization` readings before it belong to that account |
 
 ## Asking an agent
@@ -281,7 +284,7 @@ Beta, for coworkers:
 
 - Install and update with one command, `mise run install`, an MIT license, and a README. The repo stays private until the author opens it.
 - Data for integrations: `gigawatts status --json` with the alert light's alerts, a description of every field in `gigawatts schema`, and `docs/integrations.md`. A Herdr pane gets built outside this repo from them. Built in 0.1.17.
-- Prices that update themselves. When the engine sees a model with no price or a finished session whose cost disagrees with Claude Code's, it downloads `pricing.md`, at most once a day while the problem lasts, updates changed prices, and reprices history. A failed download, an unreadable page, or an implausible price keeps the current prices and raises a problem. A setting turns it off.
+- Prices that update themselves. When the engine sees a model with no price or a finished session whose cost disagrees with Claude Code's, it downloads `pricing.md`, at most once a day while the problem lasts, updates changed prices, and reprices history. A failed download, an unreadable page, or an implausible price keeps the current prices and raises a problem. A setting turns it off. Built in 0.1.26.
 - Spend used elsewhere. For a credits-only account, Anthropic's month-to-date credits minus this machine's spend, as "$494 of $2,200 ($84 elsewhere)" with a second shade in the bar. For a subscription, an estimate from limit rises while this machine made no requests, shipped only if a week of real data from two machines shows it lands close.
 - Color themes for the report page.
 
@@ -321,7 +324,7 @@ Gigawatts targets what none of them do well: history that outlives log deletion,
 
 - **Undocumented formats.** Transcripts, `cachedUsageUtilization`, and `get_usage` can change in any Claude Code release. Each source sits behind its own reader with fixture tests, and `gigawatts doctor` reports what stopped making sense.
 - **`get_usage` rate limits.** It likely hits the same rate-limited endpoint other tools fight. Refreshes stay infrequent, back off on failure, and fall back to the cached copy.
-- **The built-in price table goes stale.** It is copied by hand, so a new model or price change leaves it behind. In the beta the engine downloads the pricing page when it sees either. `gigawatts doctor` names any model without a price, and the check against Claude Code's totals flags a wrong price as an "adjusted" session, or as a price gap when the price comes out above Claude Code's record even with spend missing from the transcript.
+- **The built-in price table goes stale.** It is copied by hand, so a new model or price change leaves it behind. The engine downloads the pricing page when it sees either. `gigawatts doctor` names any model without a price, and the check against Claude Code's totals flags a wrong price as an "adjusted" session, or as a price gap when the price comes out above Claude Code's record even with spend missing from the transcript.
 - **Swift adds a second language.** The view is kept thin so the Swift code stays small.
 
 ## Open questions

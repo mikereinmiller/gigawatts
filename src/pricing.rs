@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use serde::{Deserialize, Serialize};
+
 use crate::sources::transcript::{Request, Tokens};
 
 pub const TABLE_SOURCE: &str = "https://platform.claude.com/docs/en/about-claude/pricing.md";
@@ -9,7 +11,7 @@ const WEB_SEARCH_USD: f64 = 10.0 / 1000.0;
 const US_GEO_MULTIPLIER: f64 = 1.1;
 const HAIKU_5_5_LONG_PROMPT_TOKENS: u64 = 100_000;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Prices {
     pub input: f64,
     pub cache_write_5m: f64,
@@ -66,13 +68,13 @@ impl Prices {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct FastPrices {
     pub input: f64,
     pub output: f64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct ModelPrices {
     pub standard: Prices,
     pub long_prompt: Option<Prices>,
@@ -177,38 +179,54 @@ fn built_in_models() -> HashMap<&'static str, ModelPrices> {
 
 pub struct PriceTable {
     built_in: HashMap<&'static str, ModelPrices>,
+    downloaded: HashMap<String, ModelPrices>,
     overrides: HashMap<String, ModelPrices>,
 }
 
 impl PriceTable {
     pub fn built_in() -> Self {
-        PriceTable {
-            built_in: built_in_models(),
-            overrides: HashMap::new(),
-        }
+        PriceTable::layered(HashMap::new(), HashMap::new())
     }
 
     pub fn with_overrides(overrides: HashMap<String, ModelPrices>) -> Self {
+        PriceTable::layered(HashMap::new(), overrides)
+    }
+
+    pub fn layered(
+        downloaded: HashMap<String, ModelPrices>,
+        overrides: HashMap<String, ModelPrices>,
+    ) -> Self {
         let built_in = built_in_models();
-        let mut overrides: HashMap<String, ModelPrices> = overrides
-            .into_iter()
-            .map(|(model, prices)| (without_date_suffix(&model).to_string(), prices))
-            .collect();
-        for (model, prices) in &mut overrides {
-            if let Some(known) = built_in.get(model.as_str()) {
-                prices.long_prompt = prices.long_prompt.or(known.long_prompt);
-                prices.fast = prices.fast.or(known.fast);
-            }
-        }
+        let downloaded = inheriting_rules(downloaded, &built_in);
+        let overrides = inheriting_rules(overrides, &built_in);
         PriceTable {
             built_in,
+            downloaded,
             overrides,
         }
     }
 
     pub fn model(&self, model: &str) -> Option<&ModelPrices> {
         let id = without_date_suffix(model);
-        self.overrides.get(id).or_else(|| self.built_in.get(id))
+        self.overrides
+            .get(id)
+            .or_else(|| self.downloaded.get(id))
+            .or_else(|| self.built_in.get(id))
+    }
+
+    pub fn built_in_model(&self, model: &str) -> Option<&ModelPrices> {
+        self.built_in.get(without_date_suffix(model))
+    }
+
+    pub fn highest(&self, field: impl Fn(&Prices) -> f64) -> f64 {
+        self.built_in
+            .values()
+            .chain(self.downloaded.values())
+            .chain(self.overrides.values())
+            .flat_map(|prices| [Some(prices.standard), prices.long_prompt])
+            .flatten()
+            .map(|prices| field(&prices))
+            .fold(0.0, f64::max)
     }
 
     pub fn price(&self, request: &Request) -> Option<f64> {
@@ -236,8 +254,30 @@ impl PriceTable {
         built_in.sort_by_key(|(model, _)| *model);
         let mut overrides: Vec<_> = self.overrides.iter().collect();
         overrides.sort_by_key(|(model, _)| model.as_str());
-        format!("{TABLE_DATE} {built_in:?} {overrides:?}")
+        if self.downloaded.is_empty() {
+            return format!("{TABLE_DATE} {built_in:?} {overrides:?}");
+        }
+        let mut downloaded: Vec<_> = self.downloaded.iter().collect();
+        downloaded.sort_by_key(|(model, _)| model.as_str());
+        format!("{TABLE_DATE} {built_in:?} {downloaded:?} {overrides:?}")
     }
+}
+
+fn inheriting_rules(
+    prices: HashMap<String, ModelPrices>,
+    built_in: &HashMap<&'static str, ModelPrices>,
+) -> HashMap<String, ModelPrices> {
+    prices
+        .into_iter()
+        .map(|(model, mut prices)| {
+            let model = without_date_suffix(&model).to_string();
+            if let Some(known) = built_in.get(model.as_str()) {
+                prices.long_prompt = prices.long_prompt.or(known.long_prompt);
+                prices.fast = prices.fast.or(known.fast);
+            }
+            (model, prices)
+        })
+        .collect()
 }
 
 pub(crate) fn without_date_suffix(model: &str) -> &str {

@@ -9,6 +9,7 @@ pub mod engine;
 pub mod ingest;
 pub mod limits;
 pub mod pace;
+pub mod price_updates;
 pub mod pricing;
 pub mod problems;
 pub mod report;

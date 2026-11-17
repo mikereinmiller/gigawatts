@@ -147,7 +147,7 @@ pub struct DataRow {
     pub cost_usd: Option<f64>,
 }
 
-/// What went wrong: `unrecognized_lines`, `no_price`, `price_gap`, `watch_failing`, `read_failing`, `cleanup_failing`, `refresh_failing`, or `report_unavailable`.
+/// What went wrong: `unrecognized_lines`, `no_price`, `price_gap`, `watch_failing`, `read_failing`, `cleanup_failing`, `refresh_failing`, `report_unavailable`, or `price_update_failing`.
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
 )]
@@ -161,6 +161,7 @@ pub enum ProblemKind {
     CleanupFailing,
     RefreshFailing,
     ReportUnavailable,
+    PriceUpdateFailing,
 }
 
 /// Something that makes a number wrong, stale, or missing, with how to fix it.

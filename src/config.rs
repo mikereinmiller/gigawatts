@@ -78,6 +78,7 @@ pub struct Config {
     accounts: HashMap<Account, AccountSettings>,
     switches: HashMap<PathBuf, Switch>,
     prices: HashMap<String, ModelPrices>,
+    price_updates: Option<bool>,
 }
 
 #[derive(Deserialize, Default)]
@@ -89,6 +90,7 @@ struct RawConfig {
     accounts: BTreeMap<String, RawAccount>,
     directories: BTreeMap<String, RawDirectory>,
     prices: BTreeMap<String, RawPrices>,
+    price_updates: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -190,6 +192,7 @@ impl Config {
                     (model, ModelPrices::standard(prices))
                 })
                 .collect(),
+            price_updates: raw.price_updates,
         })
     }
 
@@ -215,6 +218,14 @@ impl Config {
 
     pub fn price_table(&self) -> PriceTable {
         PriceTable::with_overrides(self.prices.clone())
+    }
+
+    pub fn price_table_over(&self, downloaded: HashMap<String, ModelPrices>) -> PriceTable {
+        PriceTable::layered(downloaded, self.prices.clone())
+    }
+
+    pub fn price_updates(&self) -> bool {
+        self.price_updates.unwrap_or(true)
     }
 }
 

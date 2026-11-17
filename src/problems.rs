@@ -44,9 +44,38 @@ pub fn collect(store: &Store, table: &PriceTable) -> store::Result<Vec<Problem>>
         .iter()
         .map(unrecognized_lines)
         .collect();
-    problems.extend(store.models_without_price(table)?.iter().map(no_price));
-    problems.extend(store.price_gaps()?.iter().map(price_gap));
+    let price_problems: Vec<Problem> = store
+        .models_without_price(table)?
+        .iter()
+        .map(no_price)
+        .chain(store.price_gaps()?.iter().map(price_gap))
+        .collect();
+    let failed_update = store
+        .last_price_update()?
+        .filter(|_| !price_problems.is_empty())
+        .and_then(|update| Some((update.failure?, update.failing_since_ms)));
+    problems.extend(price_problems);
+    if let Some((failure, since_ms)) = failed_update {
+        let since = since_ms
+            .map(|ms| store.local_datetime(ms))
+            .transpose()?
+            .flatten();
+        problems.push(price_update_failing(failure, since));
+    }
     Ok(problems)
+}
+
+fn price_update_failing(failure: String, since: Option<String>) -> Problem {
+    Problem {
+        kind: ProblemKind::PriceUpdateFailing,
+        affects: "cost: the price problems above stay until a price is fixed".to_string(),
+        since,
+        cause: failure,
+        fix: format!(
+            "Gigawatts tries again a day after this try while a price problem lasts. To fix it sooner, add the price to {CONFIG_PATH} as the problems above say. To stop downloading the pricing page, set `price_updates = false` there"
+        ),
+        account: None,
+    }
 }
 
 fn unrecognized_lines(unrecognized: &UnrecognizedKind) -> Problem {

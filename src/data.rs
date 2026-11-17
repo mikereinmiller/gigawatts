@@ -145,7 +145,7 @@ pub fn answer(
         &today,
     )?;
     response.range = range;
-    response.problems = crate::problems::collect(store, &config.price_table())?;
+    response.problems = crate::problems::collect(store, &store.price_table(config)?)?;
     response.problems.extend(engine_problems);
     label_accounts(&mut response, config);
     Ok(response)
@@ -264,7 +264,7 @@ pub fn mix(
         scope,
     )?;
     let filters = scoped(scope, &steps);
-    let table = config.price_table();
+    let table = store.price_table(config)?;
     let mut rows: Vec<CostMix> = Vec::new();
     for mix in store.token_mix(level, since.as_deref(), until.as_deref(), &filters)? {
         let Some(prices) = table.model(&mix.model).map(|prices| prices.standard) else {

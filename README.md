@@ -83,6 +83,9 @@ request_detail_days = 90
 # Serve the report page on another port, or 0 to turn it off.
 report_port = 7878
 
+# Download Anthropic's pricing page when a price looks out of date; false never does.
+price_updates = true
+
 [accounts."<account id>"]
 label = "work"
 tracking = true
@@ -92,7 +95,7 @@ credit_reset = 2026-11-01T00:00:00Z        # when monthly credits reset, if not 
 
 ## What it stores, and where
 
-History lives in `~/.local/share/gigawatts/history.sqlite3`, readable only by you. It holds counts, costs, models, repos, branches, times, session titles, and each account's email and IDs. It never stores prompts, responses, tool inputs, file contents, or commands, and Gigawatts sends nothing anywhere.
+History lives in `~/.local/share/gigawatts/history.sqlite3`, readable only by you. It holds counts, costs, models, repos, branches, times, session titles, and each account's email and IDs. It never stores prompts, responses, tool inputs, file contents, or commands, and Gigawatts sends none of it anywhere. Its one network request downloads Anthropic's public pricing page, at most once a day and only when a price looks out of date; `price_updates = false` turns it off.
 
 The report page listens on `127.0.0.1` only, but any user account on the same computer can reach it. On a shared machine, set `report_port = 0`.
 

@@ -1252,3 +1252,33 @@ fn status_json_starts_a_stopped_engine_and_prints_a_fresh_snapshot() {
     assert_eq!(snapshot["accounts"][0]["requests"], 300);
     assert!(EngineLock::is_held(&paths.lock()).unwrap());
 }
+
+#[test]
+fn a_model_with_no_price_makes_the_engine_try_the_pricing_page_through_curl() {
+    let home = home_with_login();
+    let projects = home.path.join(".claude").join("projects").join("p");
+    fs::create_dir_all(&projects).unwrap();
+    let line = format!(
+        r#"{{"type":"assistant","sessionId":"s1","requestId":"req_1","timestamp":"{}","message":{{"model":"claude-invented-9","usage":{{"input_tokens":1000,"output_tokens":500}}}}}}"#,
+        today_noon_utc()
+    ) + "\n";
+    fs::write(projects.join("s1.jsonl"), line).unwrap();
+
+    gigawatts(&home.path, &["engine"]);
+
+    let snapshot = wait_for_snapshot(
+        &Paths::new(&home.path).snapshot(),
+        "a failing price update",
+        |snapshot| problem_kinds(snapshot).contains(&"price_update_failing".to_string()),
+    );
+    let failing = snapshot["problems"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|problem| problem["kind"] == "price_update_failing")
+        .unwrap();
+    assert_eq!(
+        failing["cause"],
+        "Gigawatts can't download https://platform.claude.com/docs/en/about-claude/pricing.md: the test suite stands in for curl"
+    );
+}

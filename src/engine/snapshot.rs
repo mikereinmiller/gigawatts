@@ -83,7 +83,7 @@ pub fn build(
         account.requests += row.requests;
         account.cost_usd += row.cost_usd.unwrap_or_default();
     }
-    let table = config.price_table();
+    let table = store.price_table(config)?;
     for account in &mut accounts {
         let parsed = account
             .account
@@ -165,7 +165,7 @@ pub fn build(
         today,
         accounts,
         problems: [
-            problems::collect(store, &config.price_table())?,
+            problems::collect(store, &store.price_table(config)?)?,
             engine_problems.to_vec(),
         ]
         .concat(),

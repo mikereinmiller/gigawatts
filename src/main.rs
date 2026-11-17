@@ -567,7 +567,10 @@ fn doctor() -> ExitCode {
     let (Ok(config), Ok(store)) = (load_config(), open_store()) else {
         return ExitCode::from(2);
     };
-    match problems::collect(&store, &config.price_table()) {
+    match store
+        .price_table(&config)
+        .and_then(|table| problems::collect(&store, &table))
+    {
         Ok(mut problems) => {
             problems.extend(engine::running_problems(&paths()));
             print!("{}", problems::render(&problems));

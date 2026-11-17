@@ -272,3 +272,12 @@ fn the_report_port_defaults_to_7878_and_zero_turns_it_off() {
     );
     assert!(Config::parse("report_port = 70000\n", home).is_err());
 }
+
+#[test]
+fn price_updates_are_on_unless_the_config_turns_them_off() {
+    let unset = Config::parse("", Path::new(HOME)).unwrap();
+    let off = Config::parse("price_updates = false\n", Path::new(HOME)).unwrap();
+
+    assert!(unset.price_updates());
+    assert!(!off.price_updates());
+}

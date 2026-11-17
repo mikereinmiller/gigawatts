@@ -15,7 +15,7 @@ Read only these commands. The history database and the report page's `/api/*` ro
 
 ## Checking the version
 
-Every response has `schema_version`, currently `2`. New fields don't change it; a removed or renamed field, or one whose meaning changes, raises it. Check it and ask the user to update your integration when it's a number you don't know. Ignore fields you don't know.
+Every response has `schema_version`, currently `2`. New fields don't change it; a removed or renamed field, or one whose meaning changes, raises it. Check it and ask the user to update your integration when it's a number you don't know. Ignore fields you don't know. New values of an enum, such as a problem's `kind`, can appear without a change too, so treat a `kind` you don't know as a generic problem.
 
 ## How often to call
 

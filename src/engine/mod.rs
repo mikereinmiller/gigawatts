@@ -20,6 +20,7 @@ use crate::config::Config;
 use crate::contract::{Problem, ProblemKind};
 use crate::ingest::{self, Summary};
 use crate::limits::{self, Refresher};
+use crate::price_updates;
 use crate::sources::claude_json::Account;
 use crate::sources::get_usage::Claude;
 use crate::sources::git::Resolver;
@@ -183,7 +184,7 @@ pub fn read_all(
     config: &Config,
     resolver: &Resolver,
 ) -> Result<Summary, ingest::Error> {
-    let table = config.price_table();
+    let table = store.price_table(config)?;
     store.reprice_if_changed(&table)?;
     accounts::ingest(store, directories, config, &table, resolver)
 }
@@ -356,11 +357,11 @@ impl Engine<'_> {
                 files.push(path);
             }
         }
-        let table = self.config.price_table();
         let read = store
-            .reprice_if_changed(&table)
+            .price_table(&self.config)
+            .and_then(|table| store.reprice_if_changed(&table).map(|_| table))
             .map_err(ingest::Error::from)
-            .and_then(|_| {
+            .and_then(|table| {
                 accounts::ingest_files(
                     store,
                     &directories,
@@ -381,6 +382,7 @@ impl Engine<'_> {
         }
         self.note_activity(store, &directories, &files);
         self.refresh_due_limits(store, &directories);
+        self.update_prices(store);
         self.expire_requests_once_a_day(store);
         self.write_snapshot(store);
     }
@@ -555,8 +557,17 @@ impl Engine<'_> {
                 &directories,
             ));
         }
+        self.update_prices(store);
         self.expire_requests_once_a_day(store);
         self.write_snapshot(store);
+    }
+
+    fn update_prices(&self, store: &mut Store) {
+        if let Err(error) =
+            price_updates::update_if_needed(store, &self.config, &price_updates::Curl, now_ms())
+        {
+            eprintln!("gigawatts engine: can't update prices: {error}");
+        }
     }
 
     fn expire_requests_once_a_day(&mut self, store: &mut Store) {
