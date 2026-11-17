@@ -986,13 +986,14 @@ function creditsOf(view) {
   if (!credits) return null;
   const {used, limit: cap} = credits.credits;
   const left = Math.max(0, cap - used);
+  const resetMs = credits.pace?.window_end_ms ?? null;
   let runOutMs = credits.forecast?.full_at_ms ?? null;
   if (!runOutMs && credits.pace) {
     const elapsedDays = Math.max(1, (limits.fetched_at_ms - credits.pace.window_start_ms) / DAY_MS);
     const perDay = used / elapsedDays;
-    if (perDay > 0) runOutMs = limits.fetched_at_ms + left / perDay * DAY_MS;
+    const projected = perDay > 0 ? limits.fetched_at_ms + left / perDay * DAY_MS : null;
+    if (projected !== null && (resetMs === null || projected >= resetMs)) runOutMs = projected;
   }
-  const resetMs = credits.pace?.window_end_ms ?? null;
   return {limit: credits, limits, used, cap, left, runOutMs, resetMs, runsOutFirst: runOutMs !== null && resetMs !== null && runOutMs < resetMs};
 }
 

@@ -136,6 +136,11 @@ fn window_full_at(limit: &Limit, pace: &LimitPace, fetched_at_ms: i64) -> Option
     if elapsed_ms < window_ms * FORECAST_AFTER_WINDOW_SHARE {
         return None;
     }
+    let elapsed_percent = elapsed_ms * 100.0 / window_ms;
+    let near_full = 100.0 - limit.percent <= EVEN_WITHIN_POINTS;
+    if !near_full && limit.percent - elapsed_percent <= EVEN_WITHIN_POINTS {
+        return None;
+    }
     Some(pace.window_start_ms + (elapsed_ms * 100.0 / limit.percent).round() as i64)
 }
 

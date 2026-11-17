@@ -447,7 +447,7 @@ pub struct PacedLimit {
     pub limit: Limit,
     /// Used against expected by now, or null when the limit has no window to pace against.
     pub pace: Option<LimitPace>,
-    /// When the limit reaches 100% before it resets, or null when it isn't on course to.
+    /// When the limit reaches 100% before it resets, or null when it isn't on course to. The average rate since the window started forecasts only once use runs more than 5 points ahead of the share of the window gone, or is within 5 points of full.
     #[serde(default)]
     pub forecast: Option<LimitForecast>,
 }

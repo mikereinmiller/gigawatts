@@ -926,3 +926,32 @@ fn an_active_session_counts_its_last_15_minutes_its_total_and_when_it_was_last_a
     assert_eq!(active[0].total_usd, 19.0);
     assert_eq!(active[0].last_active_ms, local_ms("2026-11-04 13:59:00"));
 }
+
+#[test]
+fn a_weekly_limit_level_with_the_clock_forecasts_nothing() {
+    let limit = timed_limit("weekly_all", 12.0, "2026-11-08T04:00:00Z");
+
+    assert_eq!(forecast_at(&limit, "2026-11-01T23:59:00Z"), None);
+}
+
+#[test]
+fn a_limit_forecasts_only_once_it_runs_more_than_5_points_ahead_of_the_clock() {
+    let level = timed_limit("session", 45.0, "2026-11-11T15:00:00Z");
+    let ahead = timed_limit("session", 46.0, "2026-11-11T15:00:00Z");
+
+    assert_eq!(forecast_at(&level, "2026-11-11T12:00:00Z"), None);
+    assert_eq!(
+        forecast_at(&ahead, "2026-11-11T12:00:00Z"),
+        window_forecast("2026-11-11T14:20:52.174Z")
+    );
+}
+
+#[test]
+fn a_weekly_limit_within_5_points_of_full_forecasts_even_when_level_with_the_clock() {
+    let limit = timed_limit("weekly_all", 99.0, "2026-11-08T04:00:00Z");
+
+    assert_eq!(
+        forecast_at(&limit, "2026-11-07T19:36:00Z"),
+        window_forecast("2026-11-07T21:12:43.636Z")
+    );
+}
