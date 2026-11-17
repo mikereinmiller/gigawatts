@@ -1,7 +1,6 @@
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::style::Modifier;
-use ratatui::text::{Line, Span};
+use ratatui::text::Line;
 use ratatui::widgets::Paragraph;
 
 use crate::contract::{AccountToday, Snapshot};
@@ -13,14 +12,12 @@ use super::sections::{
     today_lines, today_panel,
 };
 use super::sessions::{self, Running};
-use super::style::MUTED;
 
 const ROOMY_FROM: u16 = 100;
 const THREE_COLUMNS_FROM: u16 = 150;
 const BORDER_ROWS: usize = 2;
 const BORDER_AND_PADDING_COLUMNS: u16 = 4;
-const STRIP_ROWS: u16 = 1;
-const SUMMARY_ROWS: u16 = 2;
+const COMPACT_TOP_GAP: u16 = 1;
 
 pub(crate) struct Fit {
     pub(crate) roomy: bool,
@@ -52,7 +49,7 @@ impl Overview {
     }
 
     fn height(&self) -> u16 {
-        STRIP_ROWS + self.today_height() + self.limits_height()
+        self.today_height() + self.limits_height()
     }
 }
 
@@ -139,7 +136,7 @@ pub(crate) fn draw(
         with_sessions,
     );
     let rest = match roomy(snapshot, now_ms, local_minute, area.width) {
-        Some(overview) if fit.roomy => draw_roomy(frame, area, snapshot, overview),
+        Some(overview) if fit.roomy => draw_roomy(frame, area, overview),
         _ => draw_compact(
             frame,
             area,
@@ -244,30 +241,13 @@ fn limits_title(account: &AccountToday, now_ms: i64, width: u16) -> String {
     }
 }
 
-fn strip(snapshot: &Snapshot) -> Line<'static> {
-    let combined: f64 = snapshot
-        .accounts
-        .iter()
-        .map(|account| account.cost_usd)
-        .sum();
-    Line::from(vec![
-        Span::styled(format!(" ${combined:.2}"), Modifier::BOLD),
-        Span::styled(
-            format!(" today across {} accounts", snapshot.accounts.len()),
-            MUTED,
-        ),
-    ])
-}
-
-fn draw_roomy(frame: &mut Frame, area: Rect, snapshot: &Snapshot, overview: Overview) -> Rect {
-    let [strip_area, today_row, limits_row, rest] = Layout::vertical([
-        Constraint::Length(STRIP_ROWS),
+fn draw_roomy(frame: &mut Frame, area: Rect, overview: Overview) -> Rect {
+    let [today_row, limits_row, rest] = Layout::vertical([
         Constraint::Length(overview.today_height()),
         Constraint::Length(overview.limits_height()),
         Constraint::Fill(1),
     ])
     .areas(area);
-    frame.render_widget(Paragraph::new(strip(snapshot)), strip_area);
     let widths: Vec<u16> = overview.columns.iter().map(|column| column.width).collect();
     let today_areas = columns(today_row, &widths);
     let limits_areas = columns(limits_row, &widths);
@@ -336,7 +316,7 @@ fn compact_height(snapshot: &Snapshot, now_ms: i64, width: u16) -> u16 {
         .iter()
         .map(|(_, lines)| lines.len() + BORDER_ROWS)
         .sum();
-    blocks as u16 + SUMMARY_ROWS
+    blocks as u16 + COMPACT_TOP_GAP
 }
 
 #[derive(Clone, Copy, Default)]
@@ -407,8 +387,7 @@ fn draw_compact(
         height: height.min(bottom.saturating_sub(y)),
         ..area
     };
-    frame.render_widget(Paragraph::new(strip(snapshot)), row(area.y, SUMMARY_ROWS));
-    let mut y = area.y + SUMMARY_ROWS;
+    let mut y = area.y + COMPACT_TOP_GAP;
     for (index, (account, lines)) in blocks.into_iter().enumerate() {
         if index > 0 {
             y += gap;

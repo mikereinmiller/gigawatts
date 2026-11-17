@@ -563,7 +563,7 @@ impl App {
             Span::raw(" ".repeat(gap)),
         ];
         first.extend(right);
-        let mut lines = vec![Line::from(first), self.account_tabs()];
+        let mut lines = vec![Line::from(first), self.account_tabs(width)];
         lines.extend(
             self.announcements.iter().map(|found| {
                 Line::styled(self.announcement(found), KEY.add_modifier(Modifier::BOLD))
@@ -610,7 +610,7 @@ impl App {
         right
     }
 
-    fn account_tabs(&self) -> Line<'static> {
+    fn account_tabs(&self, width: u16) -> Line<'static> {
         let accounts = &self.snapshot.accounts;
         if accounts.len() == 1 {
             return Line::styled(format!(" {}", accounts[0].account_label), Modifier::BOLD);
@@ -631,7 +631,27 @@ impl App {
             let key = self.all_digit().unwrap_or('a');
             spans.push(tab(format!(" {key} all "), self.stacked));
         }
+        if self.stacked {
+            spans.extend(self.combined_today(width, &spans));
+        }
         Line::from(spans)
+    }
+
+    fn combined_today(&self, width: u16, tabs: &[Span]) -> Vec<Span<'static>> {
+        let accounts = &self.snapshot.accounts;
+        let combined: f64 = accounts.iter().map(|account| account.cost_usd).sum();
+        let total = format!("${combined:.2}");
+        let rest = format!(" today · {} accounts ", accounts.len());
+        let used: usize = tabs.iter().map(Span::width).sum();
+        let needed = used + 1 + total.chars().count() + rest.chars().count();
+        if needed > width as usize {
+            return Vec::new();
+        }
+        vec![
+            Span::raw(" ".repeat(width as usize - needed + 1)),
+            Span::styled(total, Modifier::BOLD),
+            Span::styled(rest, MUTED),
+        ]
     }
 
     fn notices(&self, width: u16) -> Vec<Line<'static>> {

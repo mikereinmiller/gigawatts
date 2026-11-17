@@ -676,14 +676,11 @@ fn brackets_step_through_the_tabs_and_wrap_past_all() {
     let back_to_work = after('[');
 
     assert!(work_tab.contains("Credits"), "{work_tab}");
-    assert!(!work_tab.contains("across 2 accounts"), "{work_tab}");
-    assert!(
-        all_tab.contains("$14.60 today across 2 accounts"),
-        "{all_tab}"
-    );
+    assert!(!work_tab.contains("today · 2 accounts"), "{work_tab}");
+    assert!(all_tab.contains("$14.60 today · 2 accounts"), "{all_tab}");
     assert!(wrapped.contains("Weekly, Fable"), "{wrapped}");
-    assert!(!wrapped.contains("across 2 accounts"), "{wrapped}");
-    assert!(back_to_all.contains("across 2 accounts"), "{back_to_all}");
+    assert!(!wrapped.contains("today · 2 accounts"), "{wrapped}");
+    assert!(back_to_all.contains("today · 2 accounts"), "{back_to_all}");
     assert_eq!(back_to_work, work_tab);
 }
 
@@ -704,7 +701,7 @@ fn the_all_tab_takes_the_number_after_the_last_account() {
 
     assert!(tabs.contains(" 3 all "), "{tabs}");
     assert!(!tabs.contains("a all"), "{tabs}");
-    assert!(all.contains("across 2 accounts"), "{all}");
+    assert!(all.contains("today · 2 accounts"), "{all}");
     assert!(!all.contains("one account"), "{all}");
     assert_eq!(after_a, all);
     assert_eq!(back, tabs);
@@ -732,7 +729,7 @@ fn with_eight_accounts_the_all_tab_takes_nine() {
     let all = screen(&app, 150, 40);
 
     assert!(tabs.contains(" 9 all "), "{tabs}");
-    assert!(all.contains("across 8 accounts"), "{all}");
+    assert!(all.contains("today · 8 accounts"), "{all}");
 }
 
 #[test]
@@ -747,7 +744,7 @@ fn with_nine_accounts_the_all_tab_keeps_a_and_nine_opens_the_ninth_account() {
     assert!(tabs.contains(" a all "), "{tabs}");
     assert!(footer.contains("a all"), "{footer}");
     assert!(!footer.contains("10 all"), "{footer}");
-    assert!(!ninth.contains("across 9 accounts"), "{ninth}");
+    assert!(!ninth.contains("today · 9 accounts"), "{ninth}");
     assert!(
         cell_at(&app, 150, 40, "9 acct9")
             .modifier
@@ -1148,10 +1145,7 @@ fn every_account_view_adds_up_spend_today_across_accounts() {
     app.handle(KeyCode::Char('3').into());
     let stacked = screen(&app, 80, 40);
 
-    assert!(
-        stacked.contains("$14.60 today across 2 accounts"),
-        "{stacked}"
-    );
+    assert!(stacked.contains("$14.60 today · 2 accounts"), "{stacked}");
 }
 
 #[test]
@@ -1193,7 +1187,7 @@ fn the_every_account_view_closes_when_only_one_account_is_left() {
     app.update(snapshot(vec![personal()]));
     let shown = screen(&app, 80, 24);
 
-    assert!(!shown.contains("today across"), "{shown}");
+    assert!(!shown.contains("accounts"), "{shown}");
     assert!(shown.contains("Running now"), "{shown}");
 }
 
@@ -1247,9 +1241,9 @@ fn the_combined_total_is_not_labeled_estimated_when_any_account_is() {
     let stacked = screen(&app, 80, 24);
 
     assert!(
-        line_with(&stacked, "today across 2 accounts")
+        line_with(&stacked, " 3 all ")
             .trim_end_matches(['"', ' '])
-            .ends_with("$14.60 today across 2 accounts"),
+            .ends_with("$14.60 today · 2 accounts"),
         "{stacked}"
     );
 }
@@ -2981,7 +2975,9 @@ fn with_room_the_all_view_gives_each_account_a_column_with_its_today_over_its_li
     let single_today = one.lines().find(|line| line.contains("╭ Today")).unwrap();
 
     assert!(
-        lines[today - 1].contains(" $14.60 today across 2 accounts"),
+        line_with(&shown, " 3 all ")
+            .trim_end_matches(['"', ' '])
+            .ends_with("$14.60 today · 2 accounts"),
         "{shown}"
     );
     assert!(lines[today].contains("╭ work · today"), "{shown}");
@@ -3019,7 +3015,7 @@ fn three_accounts_get_three_columns_from_150_columns_and_the_compact_boxes_below
         "{wide}"
     );
     assert!(!narrow.contains("· today ─"), "{narrow}");
-    assert!(narrow.contains("today across 3 accounts"), "{narrow}");
+    assert!(narrow.contains("today · 3 accounts"), "{narrow}");
 }
 
 #[test]
@@ -3196,8 +3192,8 @@ fn a_stacked_limit_too_narrow_for_its_status_puts_it_on_the_next_row() {
 
 #[test]
 fn stacked_accounts_get_a_blank_row_between_them_when_the_window_has_room() {
-    let roomy = three_accounts_screen(149, 50);
-    let tight = three_accounts_screen(80, 40);
+    let roomy = three_accounts_screen(149, 49);
+    let tight = three_accounts_screen(80, 39);
     let gap_before = |shown: &str, label: &str| {
         let lines: Vec<&str> = shown.lines().collect();
         let at = lines.iter().position(|line| line.contains(label)).unwrap();
@@ -3353,8 +3349,8 @@ fn stacked_today_gets_a_blank_row_above_it_only_after_the_boxes_have_their_gaps(
             .trim_matches(|c| c == '"' || c == ' ')
             .is_empty()
     };
-    let roomy = with_a_filling_limit_screen(100, 58);
-    let tighter = with_a_filling_limit_screen(100, 56);
+    let roomy = with_a_filling_limit_screen(100, 57);
+    let tighter = with_a_filling_limit_screen(100, 55);
 
     assert!(today_gap(&roomy) && box_gap(&roomy), "{roomy}");
     assert!(!today_gap(&tighter) && box_gap(&tighter), "{tighter}");
@@ -3529,7 +3525,7 @@ fn stacked_spacing_never_hides_a_running_session_card() {
     app.handle(KeyCode::Char('4').into());
     answer(&mut app);
 
-    let shown = screen(&app, 100, 53);
+    let shown = screen(&app, 100, 52);
     let lines: Vec<&str> = shown.lines().collect();
     let work_box = lines
         .iter()
@@ -3883,5 +3879,36 @@ fn a_filling_credit_limit_leads_the_line_under_its_bar_with_the_countdown() {
             .trim_start_matches(['"', '│', ' '])
             .starts_with("100% in 2h 0m"),
         "{shown}"
+    );
+}
+
+#[test]
+fn the_combined_total_shows_only_when_the_tab_row_has_room_for_all_of_it() {
+    let mut app = open(numbered_accounts(8), None);
+    app.handle(KeyCode::Char('9').into());
+    let mut shown_at = Vec::new();
+
+    for width in 80..=150 {
+        let shown = screen(&app, width, 40);
+        let row = shown.lines().nth(1).unwrap().trim_matches('"');
+
+        assert_eq!(row.chars().count(), width as usize, "{width}: {row}");
+        if row.contains("today") {
+            assert!(
+                row.trim_end().ends_with("today · 8 accounts"),
+                "{width}: {row}"
+            );
+            shown_at.push(width);
+        }
+    }
+
+    assert!(
+        shown_at.first().is_some_and(|&width| width > 80),
+        "{shown_at:?}"
+    );
+    assert_eq!(
+        shown_at,
+        (shown_at[0]..=150).collect::<Vec<_>>(),
+        "{shown_at:?}"
     );
 }
