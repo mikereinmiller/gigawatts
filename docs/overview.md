@@ -194,7 +194,8 @@ It shows one account at a time, starting with the one used most recently, with a
 | `gigawatts` | Opens the full view, starting the engine if needed |
 | `gigawatts status` | Prints one line: the closest limit with its pace, "100% by <time>" for the fullest limit and for whichever other limit fills first, when either is on course to fill before it resets, and today's spend against usual. `--account` picks an account and `--all` prints one line per account. `--json` prints the whole snapshot instead, built fresh, for integrations |
 | `gigawatts data` | Answers a history query by range (or `--since` and `--until` dates) and grouping. A readable table by default, versioned JSON with `--json` |
-| `gigawatts schema` | Prints the JSON Schema for the snapshot, `data --json`, and `data --limits --json` |
+| `gigawatts insights` | Prints each skill's and subagent's cost per run over the last 8 Monday weeks (or `--since` and `--until` dates), with each shift and the setting change that lines up with it. A readable table by default, versioned JSON with `--json`. `--help` includes the steps an agent follows to propose edits |
+| `gigawatts schema` | Prints the JSON Schema for the snapshot, `data --json`, `data --limits --json`, and `insights --json` |
 | `gigawatts accounts` | Lists accounts and their tracking state. `add <path>`, tracking on or off, and `forget <account>` to delete history |
 | `gigawatts service install` / `uninstall` | Adds or removes the login service |
 | `gigawatts stop` | Stops the engine |
@@ -225,7 +226,9 @@ Settings live in `~/.config/gigawatts/config.toml` on both platforms, and data (
 
 ## Asking an agent
 
-There is no insights skill. Gigawatts calculates, and any agent interprets: it reads `gigawatts data --json`, with `gigawatts schema` for what each field means, and answers questions like where last week's spend went. What's worth changing depends on each person's repos and habits, which the agent sees and Gigawatts doesn't. The README shows how to ask. An MCP server isn't planned.
+Gigawatts calculates, and any agent interprets: it reads `gigawatts data --json`, with `gigawatts schema` for what each field means, and answers questions like where last week's spend went. What's worth changing depends on each person's repos and habits, which the agent sees and Gigawatts doesn't. The README shows how to ask. An MCP server isn't planned.
+
+`gigawatts insights` computes what each skill and subagent costs per run, week by week over the last 8 Monday weeks. A skill run is one unbroken stretch of the skill in a session's main conversation, and its cost includes the subagents it ran; a subagent run is one subagent ID, counted in the week it started. A shift is a move of 30% or more in cost per run between the two weeks before a Monday and the two weeks from it, with at least 10 runs on each side; of shifts in the same direction on consecutive Mondays only the largest is kept. Each shift names the model, effort, or Claude Code version with the largest share of spend on each side when they differ. The command prints a table, `--json` prints the published `insights` response, and the unscoped report page shows the same numbers in an "Insights" card, with Suggestions and Changes tabs, left out of exports. `gigawatts insights --help` ends with instructions, compiled into the binary from `docs/insights-guide.md`, that have any agent read the response with the user's skill and agent files and propose edits. Shipping them in the binary keeps them matched to its output and means nothing is copied into Claude Code's files. Gigawatts never watches skill files or judges quality.
 
 ## Views
 

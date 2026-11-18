@@ -433,6 +433,199 @@ pub struct DayCost {
     pub cost_usd: f64,
 }
 
+/// What each skill and subagent costs per run, week by week: `gigawatts insights --json`. Skill and subagent rows overlap: a subagent's requests made inside a skill count toward both, so don't add the two lists together.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct InsightsResponse {
+    /// Raised only when a field is removed, renamed, or changes meaning. New fields keep it.
+    pub schema_version: u32,
+    /// Today's local date, YYYY-MM-DD.
+    pub today: String,
+    /// The first local day asked for, YYYY-MM-DD. Without `--since`, the Monday seven weeks before the week `until` falls in.
+    pub since: String,
+    /// The last local day included, YYYY-MM-DD.
+    pub until: String,
+    /// The first local day the numbers cover, YYYY-MM-DD: `since`, or the first day this machine still keeps request detail for when that's later.
+    pub data_starts: String,
+    /// The Monday of each week covered, YYYY-MM-DD, oldest first. Every row's `weeks` lines up with it.
+    pub weeks: Vec<String>,
+    /// One row per skill, most expensive first. A skill run is one unbroken stretch of the skill in a session's main conversation.
+    pub skills: Vec<InsightRow>,
+    /// One row per subagent type, most expensive first. A subagent run is one subagent, counted in the week it started.
+    pub agents: Vec<InsightRow>,
+}
+
+/// One skill's or subagent type's runs and cost.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct InsightRow {
+    /// The skill or subagent type, as Claude Code names it.
+    pub name: String,
+    /// Runs started in the whole range.
+    pub runs: u64,
+    /// Spend in the whole range, US dollars. A skill's spend includes its subagents. Requests whose model has no price add nothing.
+    pub cost_usd: f64,
+    /// `cost_usd` divided by `runs`, or null with no runs.
+    pub cost_per_run_usd: Option<f64>,
+    /// The part of a skill's `cost_usd` that the subagents it launched spent, US dollars. Always 0 for a subagent row.
+    pub subagent_cost_usd: f64,
+    /// On a subagent row, what the first request of every launch in the range cost together, US dollars: mostly the starting context each launch writes to the cache. Divide by `runs` for one launch. Null on a skill row, whose `facts.launches` carries the same figure per subagent type.
+    pub first_request_cost_usd: Option<f64>,
+    /// On a skill row, how its runs spread across sessions and what they launch, over the whole range. Null on a subagent row.
+    pub facts: Option<RunFacts>,
+    /// The same figures for each week in the response's `weeks`, oldest first.
+    pub weeks: Vec<WeekRuns>,
+    /// Moves in cost per run, oldest first. Empty when nothing moved enough, or too few runs to tell.
+    pub shifts: Vec<Shift>,
+}
+
+/// How a skill's runs spread across sessions, and the subagents they launch, over the whole range.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct RunFacts {
+    /// Runs started in the range divided by the sessions they started in, or null with no runs.
+    pub runs_per_session: Option<f64>,
+    /// What the skill's runs after the first in their session cost, US dollars, subagents included. A request belongs to the latest run of its skill in its session that started at or before it, so a subagent's requests count in the run that launched it.
+    pub repeat_run_cost_usd: f64,
+    /// The share of `cost_usd` spent in the costliest tenth of the sessions that spent on the skill (at least one session), from 0 to 1. Null when the skill cost nothing.
+    pub top_tenth_session_share: Option<f64>,
+    /// One entry per subagent type the skill launched, most launches first.
+    pub launches: Vec<LaunchFacts>,
+}
+
+/// The launches of one subagent type from one skill.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct LaunchFacts {
+    /// The subagent type, as Claude Code names it.
+    pub agent: String,
+    /// Subagents of this type the skill launched in the range: each is one subagent in one session.
+    pub launches: u64,
+    /// `launches` divided by the skill's `runs`, or null with no runs.
+    pub per_run: Option<f64>,
+    /// What these launches spent in the range, US dollars.
+    pub cost_usd: f64,
+    /// What the first request of each launch cost, added up, US dollars: mostly the starting context each launch writes to the cache.
+    pub first_request_cost_usd: f64,
+}
+
+/// A move of 30% or more in cost per run between the two weeks before a Monday and the two weeks from it, with at least 10 runs on each side and a price for every request. Of shifts in the same direction on consecutive Mondays, only the largest is listed.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct Shift {
+    /// The Monday the cost per run moved, YYYY-MM-DD: the first day of the two weeks after.
+    pub week: String,
+    /// Cost per run over the two weeks before, US dollars.
+    pub before_cost_per_run_usd: f64,
+    /// Cost per run over the two weeks after, US dollars.
+    pub after_cost_per_run_usd: f64,
+    /// Runs started in the two weeks before.
+    pub before_runs: u64,
+    /// Runs started in the two weeks after.
+    pub after_runs: u64,
+    /// The move as a fraction of the cost per run before: -0.4 is 40% cheaper, 0.5 is 50% dearer.
+    pub change: f64,
+    /// Each setting whose largest share of spend differs between the two sides. Empty when none does: the shift lines up with no model, effort, or version change.
+    pub causes: Vec<ShiftCause>,
+}
+
+/// A setting that changed across a shift.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct ShiftCause {
+    /// Which setting changed.
+    pub setting: Setting,
+    /// The value with the largest share of spend before, or null when most spend had none.
+    pub from: Option<String>,
+    /// The value with the largest share of spend after, or null when most spend had none.
+    pub to: Option<String>,
+    /// True when the change was in the subagents a skill launched, so the skill's own conversation kept its setting. False for a change in the skill's own conversation, and always false on a subagent row.
+    pub in_subagents: bool,
+}
+
+/// `model`, `effort` (Claude Code's effort level), or `version` (Claude Code's version).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum Setting {
+    Model,
+    Effort,
+    Version,
+}
+
+/// One week's runs and cost for a skill or subagent type.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct WeekRuns {
+    /// The week's Monday, YYYY-MM-DD.
+    pub week: String,
+    /// Runs started this week.
+    pub runs: u64,
+    /// Spend this week, US dollars, including runs that started the week before.
+    pub cost_usd: f64,
+    /// `cost_usd` divided by `runs`, or null with no runs.
+    pub cost_per_run_usd: Option<f64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct TakeawaysResponse {
+    pub skills: Vec<RowTakeaways>,
+    pub agents: Vec<RowTakeaways>,
+    pub events: Vec<ChangeEvent>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ChangeEvent {
+    pub week: String,
+    pub cause: String,
+    pub rows: Vec<EventRow>,
+    pub effect: ChangeEffect,
+    pub monthly_usd: f64,
+    pub reversed_on: Option<String>,
+    pub undid: Option<UndoneChange>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct EventRow {
+    pub name: String,
+    pub subagent: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct UndoneChange {
+    pub week: String,
+    pub cause: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct RowTakeaways {
+    pub name: String,
+    pub subagent: bool,
+    pub to_save_usd: Option<f64>,
+    pub takeaways: Vec<Takeaway>,
+    pub changes: Vec<Change>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Takeaway {
+    pub title: String,
+    pub detail: String,
+    pub monthly_usd: Option<f64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Change {
+    pub week: String,
+    pub cause: String,
+    pub before_cost_per_run_usd: f64,
+    pub after_cost_per_run_usd: f64,
+    pub change: f64,
+    pub monthly_usd: f64,
+    pub effect: ChangeEffect,
+    pub reversed_on: Option<String>,
+    pub shared_with: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ChangeEffect {
+    Saving,
+    Costing,
+    Reversed,
+}
+
 /// Each account's latest limits: `gigawatts data --limits --json`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct LimitsResponse {

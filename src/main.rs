@@ -7,7 +7,9 @@ use clap::{Parser, Subcommand, ValueEnum};
 use gigawatts::accounts::{self, Directory};
 use gigawatts::check_costs::CheckReport;
 use gigawatts::config::{self, Config};
-use gigawatts::contract::{AccountToday, DataResponse, GroupBy, LimitsResponse, Range, Snapshot};
+use gigawatts::contract::{
+    AccountToday, DataResponse, GroupBy, InsightsResponse, LimitsResponse, Range, Snapshot,
+};
 use gigawatts::data::Days;
 use gigawatts::engine;
 use gigawatts::pace;
@@ -61,6 +63,19 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Print what each skill and subagent costs per run, week by week
+    #[command(after_long_help = gigawatts::insights::GUIDE)]
+    Insights {
+        /// The first day to include, as YYYY-MM-DD in local time (default: the Monday seven weeks before the week of --until)
+        #[arg(long, value_parser = gigawatts::data::local_date)]
+        since: Option<String>,
+        /// The last day to include, as YYYY-MM-DD in local time (default: today)
+        #[arg(long, value_parser = gigawatts::data::local_date)]
+        until: Option<String>,
+        /// Print versioned JSON instead of a table
+        #[arg(long)]
+        json: bool,
+    },
     /// Print the closest limit with its pace and today's spend against usual, then ask the engine to refresh limits
     Status {
         /// The account to show, by ID or label (default: the one used most recently)
@@ -89,7 +104,7 @@ enum Command {
     },
     /// Stop the background engine
     Stop,
-    /// Print the JSON Schema for the snapshot and `data` responses
+    /// Print the JSON Schema for the snapshot, `data`, and `insights` responses
     Schema,
     /// Start the background engine if it isn't running, replacing an older one
     #[command(hide = true)]
@@ -176,6 +191,9 @@ fn main() -> ExitCode {
                 Days::Range(range)
             };
             data(days, by, &drill, json)
+        }
+        Command::Insights { since, until, json } => {
+            insights(since.as_deref(), until.as_deref(), json)
         }
         Command::Status { json: true, .. } => status_json(),
         Command::Status { account, all, .. } => status(account.as_deref(), all),
@@ -310,6 +328,33 @@ fn data(days: Days, by: GroupBy, drill: &[String], json: bool) -> ExitCode {
         }
         Err(error) => {
             eprintln!("gigawatts: {error}");
+            ExitCode::from(2)
+        }
+    }
+}
+
+fn insights(since: Option<&str>, until: Option<&str>, json: bool) -> ExitCode {
+    if let (Some(since), Some(until)) = (since, until)
+        && until < since
+    {
+        eprintln!("gigawatts: --until {until} is before --since {since}.");
+        return ExitCode::from(2);
+    }
+    let store = match open_store() {
+        Ok(store) => store,
+        Err(code) => return code,
+    };
+    match gigawatts::insights::answer(&store, since, until) {
+        Ok(response) => {
+            if json {
+                println!("{}", to_json(&response));
+            } else {
+                print!("{}", gigawatts::insights::render(&response));
+            }
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("gigawatts: can't query the history database: {error}");
             ExitCode::from(2)
         }
     }
@@ -1063,6 +1108,7 @@ fn schema() -> ExitCode {
         "snapshot": for_output().into_root_schema_for::<Snapshot>(),
         "data": for_output().into_root_schema_for::<DataResponse>(),
         "limits": for_output().into_root_schema_for::<LimitsResponse>(),
+        "insights": for_output().into_root_schema_for::<InsightsResponse>(),
     });
     println!("{}", to_json(&schemas));
     ExitCode::SUCCESS

@@ -59,7 +59,7 @@ fn editing_a_symlinked_config_writes_through_the_link() {
 }
 
 #[test]
-fn schema_prints_the_snapshot_data_and_limits_schemas() {
+fn schema_prints_the_snapshot_data_limits_and_insights_schemas() {
     let dir = tempfile::tempdir().unwrap();
 
     let output = gigawatts(Some(dir.path()), dir.path(), &["schema"]);
@@ -69,7 +69,8 @@ fn schema_prints_the_snapshot_data_and_limits_schemas() {
     assert_eq!(schemas["snapshot"]["title"], "Snapshot");
     assert_eq!(schemas["data"]["title"], "DataResponse");
     assert_eq!(schemas["limits"]["title"], "LimitsResponse");
-    for name in ["snapshot", "data", "limits"] {
+    assert_eq!(schemas["insights"]["title"], "InsightsResponse");
+    for name in ["snapshot", "data", "limits", "insights"] {
         let required = schemas[name]["required"].as_array().unwrap();
         assert!(required.contains(&"schema_version".into()), "{name}");
     }
@@ -276,6 +277,68 @@ fn a_row_on_a_model_with_no_price_has_no_paid_for() {
 }
 
 #[test]
+fn insights_json_prints_cost_per_run_as_an_insights_response() {
+    let mut first: serde_json::Value =
+        serde_json::from_str(&opus_request("r1", "2026-01-05T12:00:00Z", 250_000, 0)).unwrap();
+    first["attributionSkill"] = "review".into();
+    let home = logged_in_home(&(first.to_string() + "\n"));
+    let ingested = gigawatts(Some(home.path()), home.path(), &["ingest"]);
+    assert_eq!(ingested.status.code(), Some(0), "{ingested:?}");
+
+    let output = gigawatts(
+        Some(home.path()),
+        home.path(),
+        &[
+            "insights",
+            "--since",
+            "2026-01-05",
+            "--until",
+            "2026-01-11",
+            "--json",
+        ],
+    );
+
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    let response: gigawatts::contract::InsightsResponse =
+        serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(response.schema_version, 2);
+    assert_eq!(response.weeks, ["2026-01-05"]);
+    let [review] = response.skills.as_slice() else {
+        panic!("{:?}", response.skills);
+    };
+    assert_eq!(review.name, "review");
+    assert_eq!(review.runs, 1);
+    assert_eq!(review.cost_per_run_usd, Some(1.0));
+    let table = gigawatts(
+        Some(home.path()),
+        home.path(),
+        &["insights", "--since", "2026-01-05", "--until", "2026-01-11"],
+    );
+    let printed = String::from_utf8_lossy(&table.stdout);
+    assert!(printed.contains("review"), "{printed}");
+    assert!(printed.contains("$1.00"), "{printed}");
+    assert!(
+        printed.ends_with("Agents: read `gigawatts insights --help` before proposing changes.\n"),
+        "{printed}"
+    );
+}
+
+#[test]
+fn insights_help_carries_the_agent_guide_without_any_history() {
+    let home = tempfile::tempdir().unwrap();
+
+    let output = gigawatts(Some(home.path()), home.path(), &["insights", "--help"]);
+
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    let guide =
+        fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("docs/insights-guide.md"))
+            .unwrap();
+    let help = String::from_utf8_lossy(&output.stdout);
+    assert!(help.contains(guide.trim_end()), "{help}");
+    assert!(guide.contains("gigawatts insights --json"), "{guide}");
+}
+
+#[test]
 fn data_limits_json_prints_each_accounts_latest_limits() {
     let home = logged_in_home("");
     let database = home.path().join(".local/share/gigawatts/history.sqlite3");
@@ -388,6 +451,23 @@ fn data_rejects_a_range_that_ends_before_it_starts() {
         Some(home.path()),
         home.path(),
         &["data", "--since", "2026-01-06", "--until", "2026-01-05"],
+    );
+
+    assert_eq!(output.status.code(), Some(2), "{output:?}");
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "gigawatts: --until 2026-01-05 is before --since 2026-01-06.\n"
+    );
+}
+
+#[test]
+fn insights_rejects_a_range_that_ends_before_it_starts() {
+    let home = logged_in_home("");
+
+    let output = gigawatts(
+        Some(home.path()),
+        home.path(),
+        &["insights", "--since", "2026-01-06", "--until", "2026-01-05"],
     );
 
     assert_eq!(output.status.code(), Some(2), "{output:?}");

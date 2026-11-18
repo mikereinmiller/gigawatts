@@ -47,7 +47,8 @@ A light red badge at the right end of the title row means a limit is forecast to
 | `gigawatts status` | Prints one line: the closest limit and today's spend. `--all` prints one line per account, `--json` everything as JSON |
 | `gigawatts report` | Opens the report page in your browser, at `http://127.0.0.1:7878` |
 | `gigawatts data` | Prints cost history. `--range week`, `--by repo`, `--json` for scripts and agents |
-| `gigawatts schema` | Prints the JSON Schema, with a description of every field, for `status --json`, `data --json`, and `data --limits --json` |
+| `gigawatts insights` | Prints what each skill and subagent costs per run, week by week, and each shift in it. `--json` for scripts and agents. `--help` includes the steps an agent follows to propose edits |
+| `gigawatts schema` | Prints the JSON Schema, with a description of every field, for `status --json`, `data --json`, `data --limits --json`, and `insights --json` |
 | `gigawatts accounts` | Lists the Claude Code accounts Gigawatts found and whether each is tracked |
 | `gigawatts doctor` | Lists anything wrong, with its cause and fix |
 | `gigawatts stop` | Stops the engine |
@@ -116,6 +117,16 @@ Gigawatts does the math; an agent can do the interpreting. Any agent that can ru
 - "Compare this month's spend by repo with last month's using `gigawatts data`, and point out anything that jumped."
 - "Use `gigawatts data --range month --by repo --drill <repo> --json` to tell me which branches in this repo were the most expensive."
 - "My old plan billed usage at API prices against a $2,000 monthly credit budget. Use `gigawatts data --json` to tell me how far past that budget this month's usage would have gone."
+
+### Find which skills and agents to make cheaper
+
+Ask in any Claude Code session, in any folder:
+
+> Use Gigawatts to show which of my skills and agents cost the most, and what I could change.
+
+Claude runs `gigawatts insights`, reads `gigawatts insights --help` for how to judge the numbers, opens your skill and agent files, and proposes specific edits, each with the file and line, the cost it would save, and what it might cost in quality. It changes nothing until you say which edits to apply. Ask again two weeks after a change to see whether it worked.
+
+The instructions Claude follows ship inside `gigawatts`, so updating Gigawatts updates them. There's nothing to copy or install.
 
 ## Build on it
 

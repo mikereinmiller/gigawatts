@@ -7,6 +7,7 @@ pub mod cost;
 pub mod data;
 pub mod engine;
 pub mod ingest;
+pub mod insights;
 pub mod limits;
 pub mod pace;
 pub mod price_updates;

@@ -16,7 +16,7 @@ For a Herdr mod, a status bar, a script, a dashboard, or any other reader: read 
   - Cost check on the real corpus: `mise exec -- cargo run --release -- check-costs`
 - `mise run install` installs your build and restarts the engine on it. A running engine is replaced only by a different version, so every behavior change bumps the patch version in `Cargo.toml`.
 - The JSON contract (`src/contract.rs`) is what integrations build on:
-  - Every field and type `gigawatts schema` publishes (`Snapshot`, `DataResponse`, `LimitsResponse`, and what they contain) carries a doc comment, and `tests/cli.rs` fails on one without. The other types in the file belong to the report page's private `/api/*` routes.
+  - Every field and type `gigawatts schema` publishes (`Snapshot`, `DataResponse`, `LimitsResponse`, `InsightsResponse`, and what they contain) carries a doc comment, and `tests/cli.rs` fails on one without. The other types in the file belong to the report page's private `/api/*` routes.
   - Adding a field keeps `schema_version`. Removing or renaming one, or changing what it means, raises it.
   - A change readers would notice gets a matching edit to `docs/integrations.md`.
 - Gigawatts reads Claude Code's files and never writes to them, and never reads its login token.

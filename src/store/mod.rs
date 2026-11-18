@@ -14,6 +14,7 @@ use crate::sources::claude_json::{Account, Login};
 use crate::sources::git::{Place, Resolver};
 use crate::sources::transcript::{CostState, Line, READER_VERSION, Request, Tokens};
 
+mod insights;
 mod limits;
 mod pace;
 mod prices;
@@ -23,6 +24,9 @@ mod retention;
 mod sessions;
 mod totals;
 
+pub use insights::{
+    LaunchSpend, RunCount, RunFactRows, RunKind, RunSpend, SkillRepeats, SkillSessionCost,
+};
 pub use limits::{LimitPoint, LimitRise, LimitsReading, UsageAdvice};
 pub use pace::{ClockSpend, CostFlags};
 pub use prices::{DownloadedPrices, PriceUpdate};
