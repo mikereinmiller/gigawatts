@@ -837,8 +837,12 @@ fn question_mark_opens_help_and_question_mark_or_escape_closes_it() {
     assert!(help.contains("Keys"), "{help}");
     assert!(help.contains("1-9"), "{help}");
     assert!(help.contains("show that account"), "{help}");
-    assert!(help.contains("over your pace"), "{help}");
+    assert!(help.contains("under  ▇▇▇ on  ▇▇▇ over your pace"), "{help}");
     assert!(help.contains("expected use by now"), "{help}");
+    assert!(
+        help.contains("used elsewhere, like claude.ai (~13% is estimated)"),
+        "{help}"
+    );
     assert_eq!(escape, Flow::Continue);
     assert!(!closed.contains("show that account"), "{closed}");
     assert!(!toggled.contains("show that account"), "{toggled}");
@@ -3645,6 +3649,11 @@ fn the_footer_and_help_show_the_report_page_address_when_the_footer_has_room() {
     assert!(narrow.contains("q quit"), "{narrow}");
     assert!(help.contains("report  http://127.0.0.1:7878"), "{help}");
     assert!(help.contains("q       quit"), "{help}");
+    assert!(
+        help.contains("used elsewhere, like claude.ai (~13% is estimated)"),
+        "{help}"
+    );
+    assert!(help.contains("a session spending $20/hr or more"), "{help}");
 }
 
 #[test]
@@ -4231,13 +4240,59 @@ fn weekly_used_elsewhere(account: &mut AccountToday) {
 }
 
 #[test]
-fn a_weekly_limit_says_about_how_much_was_used_elsewhere() {
+fn a_weekly_limit_shows_about_how_much_was_used_elsewhere_beside_its_percent() {
     let mut account = personal();
     weekly_used_elsewhere(&mut account);
     let app = open(snapshot(vec![account]), Some(PERSONAL.to_string()));
     let shown = screen(&app, 80, 40);
 
-    assert!(shown.contains("~13% elsewhere"), "{shown}");
+    assert!(shown.contains("24% (~13%)"), "{shown}");
+    assert!(!shown.contains("elsewhere"), "{shown}");
+}
+
+#[test]
+fn the_elsewhere_estimate_takes_the_shade_of_its_part_of_the_bar() {
+    let mut account = personal();
+    weekly_used_elsewhere(&mut account);
+    let app = open(snapshot(vec![account]), Some(PERSONAL.to_string()));
+
+    let estimate = cell_at(&app, 80, 40, "(~13%)");
+    let dim_cell = bar_cells(&app, 80, 40, "Weekly, all")
+        .into_iter()
+        .find(|cell| cell.modifier.contains(Modifier::DIM))
+        .unwrap();
+
+    assert_eq!(estimate.fg, dim_cell.fg);
+    assert!(estimate.modifier.contains(Modifier::DIM));
+}
+
+#[test]
+fn bars_stay_the_same_length_when_one_limit_has_an_elsewhere_estimate() {
+    let mut account = personal();
+    weekly_used_elsewhere(&mut account);
+    let app = open(snapshot(vec![account]), Some(PERSONAL.to_string()));
+    let shown = screen(&app, 80, 40);
+
+    let bar = |name: &str| {
+        line_with(&shown, name)
+            .chars()
+            .filter(|c| "▇▂".contains(*c))
+            .count()
+    };
+    assert_eq!(bar("Session "), bar("Weekly, all"), "{shown}");
+}
+
+#[test]
+fn a_roomy_bar_shows_the_elsewhere_estimate_beside_its_percent() {
+    let mut account = personal();
+    weekly_used_elsewhere(&mut account);
+    let mut app = open(snapshot(vec![account, work()]), None);
+    app.handle(KeyCode::Char('3').into());
+
+    let shown = screen(&app, 120, 60);
+
+    assert!(shown.contains("24% (~13%)"), "{shown}");
+    assert!(!shown.contains("elsewhere"), "{shown}");
 }
 
 #[test]
@@ -4248,10 +4303,38 @@ fn every_account_shows_the_weekly_estimate_at_80_columns() {
     app.handle(KeyCode::Char('3').into());
     let shown = screen(&app, 80, 40);
 
-    assert!(shown.contains("~13% elsewhere"), "{shown}");
+    assert!(shown.contains("24% (~13%)"), "{shown}");
     for line in shown.lines() {
         assert!(line.trim_matches('"').chars().count() <= 80, "{line}");
     }
+}
+
+#[test]
+fn every_account_lines_up_its_bars_when_one_account_has_an_estimate() {
+    let mut account = personal();
+    weekly_used_elsewhere(&mut account);
+    let mut app = open(snapshot(vec![account, work()]), None);
+    app.handle(KeyCode::Char('3').into());
+
+    let weekly = bar_cells(&app, 80, 40, "Weekly, all models");
+    let credits = bar_cells(&app, 80, 40, "Credits ");
+
+    assert_eq!(weekly.len(), credits.len());
+}
+
+#[test]
+fn a_window_too_narrow_for_the_estimate_leaves_it_out_instead_of_cutting_it_off() {
+    let mut account = personal();
+    weekly_used_elsewhere(&mut account);
+    let app = open(snapshot(vec![account]), Some(PERSONAL.to_string()));
+
+    let shown = screen(&app, 44, 30);
+
+    assert!(
+        line_with(&shown, "Weekly, all").contains("24% │"),
+        "{shown}"
+    );
+    assert!(!shown.contains("(~"), "{shown}");
 }
 
 #[test]
@@ -4274,6 +4357,6 @@ fn the_weekly_bar_shades_the_estimate_used_elsewhere_at_the_end_of_what_is_fille
         .filter(|i| cells[*i].modifier.contains(Modifier::DIM))
         .collect();
 
-    assert_eq!(cells.len(), 34, "{cells:?}");
-    assert_eq!(dim, vec![4, 5, 6, 7], "{cells:?}");
+    assert_eq!(cells.len(), 27, "{cells:?}");
+    assert_eq!(dim, vec![2, 3, 4, 5], "{cells:?}");
 }

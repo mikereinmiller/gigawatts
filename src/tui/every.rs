@@ -8,8 +8,8 @@ use crate::limits::age;
 
 use super::HISTORY_MIN_HEIGHT;
 use super::sections::{
-    COLUMN_GAP, LimitLayout, LocalMinute, limit_lines, limits_width, section, source_and_age,
-    today_lines, today_panel,
+    COLUMN_GAP, LimitLayout, LocalMinute, estimate_width, limit_lines, limits_width, section,
+    source_and_age, today_lines, today_panel,
 };
 use super::sessions::{self, Running};
 
@@ -207,6 +207,7 @@ fn roomy(
                     local_minute,
                     inner(width),
                     LimitLayout::Roomy,
+                    0,
                 )),
             },
         })
@@ -307,6 +308,12 @@ fn compact_lines(
     before_today: bool,
 ) -> Vec<(&AccountToday, Vec<Line<'static>>)> {
     let inner_width = inner(width);
+    let estimate_width = snapshot
+        .accounts
+        .iter()
+        .map(|account| estimate_width(account, now_ms))
+        .max()
+        .unwrap_or(0);
     snapshot
         .accounts
         .iter()
@@ -318,6 +325,7 @@ fn compact_lines(
                 &|_| String::new(),
                 inner_width,
                 LimitLayout::Stacked,
+                estimate_width,
             );
             if before_today {
                 lines.push(Line::default());

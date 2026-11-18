@@ -29,6 +29,7 @@ pub(crate) const COLUMN_GAP: u16 = 1;
 const PERCENT_WIDTH: usize = 6;
 const STACKED_BAR_MAX: usize = 60;
 const STACKED_BAR_MIN: usize = 12;
+const BAR_MIN: usize = 8;
 const STATUS_GAP: usize = 2;
 const STATUS_WIDTH: usize = "resets 21d 14h".len();
 const SEPARATOR: &str = " · ";
@@ -155,6 +156,7 @@ fn panels(
                 local_minute,
                 inner,
                 LimitLayout::Compact,
+                estimate_width(account, now_ms),
             ),
             today: today_lines(account, problems, inner, false),
             side_by_side,
@@ -169,6 +171,7 @@ fn panels(
         local_minute,
         limits_inner,
         LimitLayout::Roomy,
+        0,
     );
     let mut today = today_panel(account, problems, now_ms, today_inner, true);
     limits.insert(0, Line::default());
@@ -291,6 +294,7 @@ pub(crate) fn limit_lines(
     local_minute: LocalMinute,
     width: u16,
     layout: LimitLayout,
+    estimate_width: usize,
 ) -> Vec<Line<'static>> {
     let stacked = layout == LimitLayout::Stacked;
     let mut lines = Vec::new();
@@ -324,6 +328,7 @@ pub(crate) fn limit_lines(
                         forecast(shown, now_ms, local_minute),
                         &detail(shown, now_ms, local_minute),
                         width,
+                        (elsewhere_estimate(shown, now_ms), estimate_width),
                         false,
                     ),
                     LimitLayout::Stacked => {
@@ -335,6 +340,7 @@ pub(crate) fn limit_lines(
                             forecast(shown, now_ms, local_minute),
                             &flags(shown, now_ms),
                             width,
+                            (elsewhere_estimate(shown, now_ms), estimate_width),
                             true,
                         );
                         let budget = credit_budget(shown, now_ms);
@@ -392,16 +398,21 @@ fn limit_row(
     let color = if stale { STALE } else { pace_color(shown) };
     let width = width as usize;
     let reading = format!("{}%", percent(shown.limit.percent));
+    let estimate = elsewhere_estimate(shown, now_ms)
+        .map(|estimate| format!(" {estimate}"))
+        .unwrap_or_default();
+    let reading_width = reading.chars().count() + estimate.chars().count();
     let name = clip(
         &limit_name(&shown.limit),
-        width.saturating_sub(reading.chars().count() + 1).max(1),
+        width.saturating_sub(reading_width + 1).max(1),
     );
-    let gap = width.saturating_sub(name.chars().count() + reading.chars().count());
+    let gap = width.saturating_sub(name.chars().count() + reading_width);
     let mut lines = vec![
         Line::from(vec![
             Span::styled(name, Modifier::BOLD),
             Span::raw(" ".repeat(gap)),
             Span::styled(reading, Style::new().fg(color).add_modifier(Modifier::BOLD)),
+            Span::styled(estimate, elsewhere_style(color)),
         ]),
         Line::from(bar(shown, width, color, stale)),
     ];
@@ -443,6 +454,7 @@ fn named_limit_row(
     forecast: Option<String>,
     parts: &[String],
     width: u16,
+    (estimate, estimate_width): (Option<String>, usize),
     status_beside: bool,
 ) -> Vec<Line<'static>> {
     let color = if stale || reset {
@@ -450,7 +462,13 @@ fn named_limit_row(
     } else {
         pace_color(shown)
     };
-    let room = (width as usize).saturating_sub(NAME_WIDTH + PERCENT_WIDTH);
+    let room_beside_name = (width as usize).saturating_sub(NAME_WIDTH + PERCENT_WIDTH);
+    let estimate_width = if room_beside_name >= BAR_MIN + estimate_width {
+        estimate_width
+    } else {
+        0
+    };
+    let room = room_beside_name - estimate_width;
     let status_fits = room >= STACKED_BAR_MIN + STATUS_GAP + STATUS_WIDTH;
     let bar_width = match (status_beside, status_fits) {
         (false, _) => room,
@@ -458,7 +476,7 @@ fn named_limit_row(
         (true, false) => room.min(STACKED_BAR_MAX),
     };
     let beside = status.is_some() && status_beside && status_fits;
-    let bar_width = bar_width.max(8);
+    let bar_width = bar_width.max(BAR_MIN);
     let mut spans = vec![Span::raw(format!(
         "{:<NAME_WIDTH$}",
         clip(&limit_name(&shown.limit), NAME_WIDTH - 1)
@@ -473,6 +491,12 @@ fn named_limit_row(
         reading,
         Style::new().fg(color).add_modifier(Modifier::BOLD),
     ));
+    if estimate_width > 0 {
+        spans.push(Span::styled(
+            format!(" {:<1$}", estimate.unwrap_or_default(), estimate_width - 1),
+            elsewhere_style(color),
+        ));
+    }
     let style = if stale { MUTED } else { NORMAL };
     let forecast_style = forecast_style(stale);
     let mut lines = Vec::new();
@@ -491,6 +515,7 @@ fn named_limit_row(
             extras_inline = NAME_WIDTH
                 + bar_width
                 + PERCENT_WIDTH
+                + estimate_width
                 + STATUS_GAP
                 + status.chars().count()
                 + extras_width
@@ -633,14 +658,32 @@ fn elsewhere(shown: &PacedLimit) -> String {
         .unwrap_or_default()
 }
 
-fn elsewhere_points(shown: &PacedLimit) -> Option<String> {
+pub(crate) fn estimate_width(account: &AccountToday, now_ms: i64) -> usize {
+    account
+        .limits
+        .iter()
+        .flat_map(|limits| &limits.limits)
+        .filter_map(|shown| elsewhere_estimate(shown, now_ms))
+        .map(|estimate| estimate.chars().count() + 1)
+        .max()
+        .unwrap_or(0)
+}
+
+fn elsewhere_estimate(shown: &PacedLimit, now_ms: i64) -> Option<String> {
+    if has_reset(shown, now_ms) {
+        return None;
+    }
     shown
         .elsewhere_percent
-        .map(|points| format!("~{points:.0}% elsewhere"))
+        .map(|points| format!("(~{points:.0}%)"))
+}
+
+fn elsewhere_style(color: Color) -> Style {
+    Style::new().fg(color).add_modifier(Modifier::DIM)
 }
 
 fn detail_after_credits(shown: &PacedLimit, now_ms: i64, local_minute: LocalMinute) -> Vec<String> {
-    let mut parts: Vec<String> = elsewhere_points(shown).into_iter().collect();
+    let mut parts = Vec::new();
     if let Some(resets_ms) = resets_ms(shown) {
         parts.push(resets(resets_ms, now_ms, local_minute));
     }
@@ -737,10 +780,7 @@ fn flags(shown: &PacedLimit, now_ms: i64) -> Vec<String> {
     if has_reset(shown, now_ms) {
         return Vec::new();
     }
-    elsewhere_points(shown)
-        .into_iter()
-        .chain(unusual_severity(&shown.limit))
-        .collect()
+    unusual_severity(&shown.limit).into_iter().collect()
 }
 
 fn forecast_style(stale: bool) -> Style {
@@ -1076,14 +1116,24 @@ pub(crate) fn help(frame: &mut Frame, area: Rect, report_port: Option<u16>) {
         key("Esc", "close help, advice, or the sessions list"),
         key("q", "quit (Ctrl-C too)"),
         Line::default(),
-        color("▇▇▇", Style::new().fg(UNDER), "under your pace"),
-        color("▇▇▇", Style::new().fg(EVEN), "on pace"),
-        color("▇▇▇", Style::new().fg(OVER), "over your pace"),
+        Line::from(vec![
+            Span::styled(format!("  {:<8}", "▇▇▇"), Style::new().fg(UNDER)),
+            Span::raw("under  "),
+            Span::styled("▇▇▇ ", Style::new().fg(EVEN)),
+            Span::raw("on  "),
+            Span::styled("▇▇▇ ", Style::new().fg(OVER)),
+            Span::raw("over your pace"),
+        ]),
         color("▇▇▇", Style::new().fg(STALE), "a reading over an hour old"),
         color(
             "▇",
             Style::new().add_modifier(Modifier::BOLD),
             "expected use by now",
+        ),
+        color(
+            "▇▇▇",
+            Style::new().fg(EVEN).add_modifier(Modifier::DIM),
+            "used elsewhere, like claude.ai (~13% is estimated)",
         ),
         color(
             "▲",
