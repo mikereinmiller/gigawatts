@@ -997,6 +997,27 @@ fn a_forecast_under_a_roomy_bar_shares_the_reset_line() {
 }
 
 #[test]
+fn a_forecast_beside_a_named_bar_shares_the_reset_line() {
+    let app = open(snapshot(vec![filling_fast()]), None);
+
+    let shown = screen(&app, 120, 24);
+
+    assert!(
+        shown
+            .contains("│                     100% in 1h 20m at 10:40 · resets in 2h 40m at 12:00 "),
+        "{shown}"
+    );
+    assert_eq!(
+        cell_at(&app, 120, 24, "100% in").fg,
+        ratatui::style::Color::LightRed
+    );
+    assert_eq!(
+        cell_at(&app, 120, 24, "resets in 2h 40m").fg,
+        ratatui::style::Color::Reset
+    );
+}
+
+#[test]
 fn a_reset_with_no_room_beside_the_forecast_goes_on_the_next_line() {
     let mut first = filling_fast();
     first.limits.as_mut().unwrap().limits[0].forecast = Some(LimitForecast {
@@ -1036,7 +1057,10 @@ fn a_forecast_from_the_last_30_minutes_reads_like_any_other() {
 
     let shown = screen(&app, 120, 24);
 
-    assert!(shown.contains("100% in 1h 20m at 10:40"), "{shown}");
+    assert!(
+        shown.contains("100% in 1h 20m at 10:40 · resets"),
+        "{shown}"
+    );
     assert!(!shown.contains("30m"), "{shown}");
 }
 

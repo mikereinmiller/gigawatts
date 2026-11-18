@@ -525,15 +525,10 @@ fn named_limit_row(
     if extras_inline {
         return lines;
     }
-    if let Some(forecast) = forecast {
-        lines.push(Line::from(vec![
-            Span::raw(" ".repeat(NAME_WIDTH)),
-            Span::styled(forecast, forecast_style),
-        ]));
-    }
-    for packed in pack(parts, (width as usize).saturating_sub(NAME_WIDTH)) {
+    let details: Vec<String> = forecast.iter().chain(parts).cloned().collect();
+    for packed in pack(&details, (width as usize).saturating_sub(NAME_WIDTH)) {
         let mut spans = vec![Span::raw(" ".repeat(NAME_WIDTH))];
-        spans.extend(detail_spans(&packed, None, style, stale));
+        spans.extend(detail_spans(&packed, forecast.as_deref(), style, stale));
         lines.push(Line::from(spans));
     }
     lines
