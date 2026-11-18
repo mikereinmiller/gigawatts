@@ -115,6 +115,7 @@ Gigawatts does the math; an agent can do the interpreting. Any agent that can ru
 - "Run `gigawatts data --range week --by skill --json` and tell me which skill cost the most this week and why."
 - "Compare this month's spend by repo with last month's using `gigawatts data`, and point out anything that jumped."
 - "Use `gigawatts data --range month --by repo --drill <repo> --json` to tell me which branches in this repo were the most expensive."
+- "My old plan billed usage at API prices against a $2,000 monthly credit budget. Use `gigawatts data --json` to tell me how far past that budget this month's usage would have gone."
 
 ## Build on it
 
