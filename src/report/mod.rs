@@ -181,6 +181,14 @@ fn respond(request: &Request, store: &Store, paths: &Paths) -> Response {
         },
         "/api/mix" => api_mix(query, store, paths),
         "/api/advice" => json_answer(data::advice(store)),
+        "/api/insights" => {
+            json_answer(crate::insights::answer(store, None, None).map(|insights| {
+                crate::contract::InsightsPage {
+                    takeaways: crate::insights::takeaways(&insights),
+                    insights,
+                }
+            }))
+        }
         "/api/limits" => match parse_query(query) {
             Ok(asked) => json_answer(data::limit_history(store, &asked.days)),
             Err(message) => Response::error("400 Bad Request", &message),

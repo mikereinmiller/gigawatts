@@ -560,6 +560,13 @@ pub struct WeekRuns {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct InsightsPage {
+    #[serde(flatten)]
+    pub insights: InsightsResponse,
+    pub takeaways: TakeawaysResponse,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct TakeawaysResponse {
     pub skills: Vec<RowTakeaways>,
     pub agents: Vec<RowTakeaways>,

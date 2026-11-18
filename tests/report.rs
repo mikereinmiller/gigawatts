@@ -1374,3 +1374,56 @@ fn a_preset_range_starts_on_its_first_day_and_has_no_end() {
         .collect();
     assert_eq!(points, vec![(last_week, 90.0), (this_morning, 3.0)]);
 }
+
+#[test]
+fn api_insights_answers_the_last_eight_weeks_cost_per_run() {
+    let today: String = rusqlite::Connection::open_in_memory()
+        .unwrap()
+        .query_row("SELECT date('now', 'localtime')", [], |row| row.get(0))
+        .unwrap();
+    let home = home_with_lines(&[request(
+        "s-a",
+        "r1",
+        &local_noon_in_utc(&today),
+        Some("review"),
+        serde_json::json!({"input_tokens": 250_000, "output_tokens": 0}),
+    )]);
+    let port = serving(&home);
+
+    let insights = json(&get(port, "/api/insights", ""));
+
+    let response: gigawatts::contract::InsightsResponse = serde_json::from_value(insights).unwrap();
+    assert_eq!(response.weeks.len(), 8);
+    let [review] = response.skills.as_slice() else {
+        panic!("{:?}", response.skills);
+    };
+    assert_eq!(review.name, "review");
+    assert_eq!(review.runs, 1);
+    assert_eq!(review.cost_per_run_usd, Some(1.0));
+}
+
+#[test]
+fn api_insights_carries_each_rows_takeaways() {
+    let today: String = rusqlite::Connection::open_in_memory()
+        .unwrap()
+        .query_row("SELECT date('now', 'localtime')", [], |row| row.get(0))
+        .unwrap();
+    let home = home_with_lines(&[request(
+        "s-a",
+        "r1",
+        &local_noon_in_utc(&today),
+        Some("review"),
+        serde_json::json!({"input_tokens": 250_000, "output_tokens": 0}),
+    )]);
+    let port = serving(&home);
+
+    let answer = &json(&get(port, "/api/insights", ""))["takeaways"];
+
+    assert_eq!(answer["skills"][0]["name"], "review");
+    assert_eq!(answer["skills"][0]["to_save_usd"], serde_json::Value::Null);
+    assert_eq!(
+        answer["skills"][0]["takeaways"][0]["title"],
+        "Too few runs to judge"
+    );
+    assert_eq!(answer["agents"], serde_json::json!([]));
+}

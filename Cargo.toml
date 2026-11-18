@@ -1,6 +1,6 @@
 [package]
 name = "gigawatts"
-version = "0.1.30"
+version = "0.1.51"
 edition = "2024"
 license = "MIT"
 
