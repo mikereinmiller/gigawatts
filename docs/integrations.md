@@ -13,6 +13,10 @@ This is for anything that shows Gigawatts' numbers somewhere else: a Herdr pane,
 
 Read only these commands. The history database and the report page's `/api/*` routes are private and change between releases. The engine's `~/.local/share/gigawatts/snapshot.json` is the same shape as `status --json`, but it's only rewritten when something changes, so while Claude Code is idle it can be hours old.
 
+## Reading what the cost paid for
+
+Each `data --json` row's `paid_for` splits its tokens' cost into input, output, cache writes, and cache reads, in dollars at list price. Use it instead of token counts: cache reads are the largest count in almost every session but cost the least per token. Cache writes are context sent fresh, as after a cold start or a resume past the cache's lifetime; cache reads are context re-read on every turn. `paid_for` covers every day in the range. It is null when no priced tokens cover a row, as on a model with no price, and its sum can differ from `cost_usd`, which also covers surcharges such as fast mode.
+
 ## Checking the version
 
 Every response has `schema_version`, currently `2`. New fields don't change it; a removed or renamed field, or one whose meaning changes, raises it. Check it and ask the user to update your integration when it's a number you don't know. Ignore fields you don't know. New values of an enum, such as a problem's `kind`, can appear without a change too, so treat a `kind` you don't know as a generic problem.

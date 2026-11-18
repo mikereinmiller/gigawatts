@@ -2,8 +2,8 @@ use std::fmt::{self, Write};
 
 use crate::config::Config;
 use crate::contract::{
-    AccountLimitHistory, AdviceResponse, AgentModelsResponse, CostMix, CostStatus, DataResponse,
-    DataRow, DayCost, DrillStep, GroupBy, Level, LimitHistory, LimitHistoryPoint,
+    AccountLimitHistory, AdviceResponse, AgentModelsResponse, CostMix, CostSplit, CostStatus,
+    DataResponse, DataRow, DayCost, DrillStep, GroupBy, Level, LimitHistory, LimitHistoryPoint,
     LimitHistoryResponse, MixResponse, Problem, Range, SCHEMA_VERSION, SeriesResponse,
     SessionsResponse,
 };
@@ -135,6 +135,22 @@ pub fn answer(
     let today = store.local_today()?;
     let scope = &resolve_scope(store, scope)?;
     let (range, since, until) = bounds(store, days, &today)?;
+    let (steps, level) = resolve_drill(
+        store,
+        group_by,
+        drill,
+        since.as_deref(),
+        until.as_deref(),
+        scope,
+    )?;
+    let split = priced_mix(
+        store,
+        config,
+        level,
+        since.as_deref(),
+        until.as_deref(),
+        &scoped(scope, &steps),
+    )?;
     let mut response = query_scoped(
         store,
         since.as_deref(),
@@ -145,6 +161,7 @@ pub fn answer(
         &today,
     )?;
     response.range = range;
+    attach_paid_for(&mut response.rows, &split);
     response.problems = crate::problems::collect(store, &store.price_table(config)?)?;
     response.problems.extend(engine_problems);
     label_accounts(&mut response, config);
@@ -264,21 +281,14 @@ pub fn mix(
         scope,
     )?;
     let filters = scoped(scope, &steps);
-    let table = store.price_table(config)?;
-    let mut rows: Vec<CostMix> = Vec::new();
-    for mix in store.token_mix(level, since.as_deref(), until.as_deref(), &filters)? {
-        let Some(prices) = table.model(&mix.model).map(|prices| prices.standard) else {
-            continue;
-        };
-        let row = mix_row(&mut rows, &mix.account, &mix.key, mix.not_in_transcript);
-        let tokens = &mix.tokens;
-        row.input_usd += tokens.input as f64 * prices.input / 1_000_000.0;
-        row.output_usd += tokens.output as f64 * prices.output / 1_000_000.0;
-        row.cache_read_usd += tokens.cache_read as f64 * prices.cache_read / 1_000_000.0;
-        row.cache_write_usd += (tokens.cache_write_5m as f64 * prices.cache_write_5m
-            + tokens.cache_write_1h as f64 * prices.cache_write_1h)
-            / 1_000_000.0;
-    }
+    let mut rows = priced_mix(
+        store,
+        config,
+        level,
+        since.as_deref(),
+        until.as_deref(),
+        &filters,
+    )?;
     for count in store.session_counts(level, since.as_deref(), until.as_deref(), &filters)? {
         mix_row(&mut rows, &count.account, &count.key, false).sessions = count.sessions;
     }
@@ -302,6 +312,52 @@ pub fn mix(
         level,
         rows,
     })
+}
+
+fn priced_mix(
+    store: &Store,
+    config: &Config,
+    level: Level,
+    since: Option<&str>,
+    until: Option<&str>,
+    filters: &[Filter],
+) -> Result<Vec<CostMix>, Error> {
+    let table = store.price_table(config)?;
+    let mut rows: Vec<CostMix> = Vec::new();
+    for mix in store.token_mix(level, since, until, filters)? {
+        let Some(prices) = table.model(&mix.model).map(|prices| prices.standard) else {
+            continue;
+        };
+        let row = mix_row(&mut rows, &mix.account, &mix.key, mix.not_in_transcript);
+        let tokens = &mix.tokens;
+        row.input_usd += tokens.input as f64 * prices.input / 1_000_000.0;
+        row.output_usd += tokens.output as f64 * prices.output / 1_000_000.0;
+        row.cache_read_usd += tokens.cache_read as f64 * prices.cache_read / 1_000_000.0;
+        row.cache_write_usd += (tokens.cache_write_5m as f64 * prices.cache_write_5m
+            + tokens.cache_write_1h as f64 * prices.cache_write_1h)
+            / 1_000_000.0;
+    }
+    Ok(rows)
+}
+
+fn attach_paid_for(rows: &mut [DataRow], mixes: &[CostMix]) {
+    for row in rows {
+        let found = mixes.iter().find(|mix| {
+            mix.account == row.account
+                && mix.key == row.key
+                && mix.not_in_transcript == row.not_in_transcript
+        });
+        row.paid_for = found
+            .filter(|mix| {
+                mix.input_usd + mix.output_usd + mix.cache_write_usd + mix.cache_read_usd > 0.0
+            })
+            .map(|mix| CostSplit {
+                input_usd: mix.input_usd,
+                output_usd: mix.output_usd,
+                cache_write_usd: mix.cache_write_usd,
+                cache_read_usd: mix.cache_read_usd,
+            });
+    }
 }
 
 fn mix_row<'a>(

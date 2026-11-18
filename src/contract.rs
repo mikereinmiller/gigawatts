@@ -145,6 +145,22 @@ pub struct DataRow {
     pub web_searches: u64,
     /// Cost in US dollars, or null when a model in the row has no price.
     pub cost_usd: Option<f64>,
+    /// What the row's tokens cost by kind, at list price, over every day in the range. Null when no priced tokens cover the row. Compare the four with each other to see what the cost paid for; their sum can differ from `cost_usd`, which also covers surcharges such as fast mode.
+    #[serde(default)]
+    pub paid_for: Option<CostSplit>,
+}
+
+/// A cost split by token kind, US dollars at list price.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct CostSplit {
+    /// Uncached input tokens.
+    pub input_usd: f64,
+    /// Output tokens, thinking included.
+    pub output_usd: f64,
+    /// Tokens written to the prompt cache: context sent fresh, as after a cold start, a resume past the cache's lifetime, or a large read.
+    pub cache_write_usd: f64,
+    /// Tokens read from the prompt cache: context re-read on every turn, which grows with a session's length.
+    pub cache_read_usd: f64,
 }
 
 /// What went wrong: `unrecognized_lines`, `no_price`, `price_gap`, `watch_failing`, `read_failing`, `cleanup_failing`, `refresh_failing`, `report_unavailable`, or `price_update_failing`.

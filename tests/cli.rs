@@ -181,12 +181,98 @@ fn data_json_prints_the_table_rows_as_a_data_response() {
     assert_eq!(row.requests, 2);
     assert_eq!(row.input_tokens, 1_000_000);
     assert_eq!(row.output_tokens, 100_000);
+    assert_eq!(
+        row.paid_for,
+        Some(gigawatts::contract::CostSplit {
+            input_usd: 4.0,
+            output_usd: 2.0,
+            cache_write_usd: 0.0,
+            cache_read_usd: 0.0,
+        })
+    );
     let table = gigawatts(Some(home.path()), home.path(), &["data", "--range", "all"]);
     let cost = format!("${:.2}", row.cost_usd.unwrap());
     assert!(
         String::from_utf8_lossy(&table.stdout).contains(&cost),
         "{cost} not in {table:?}"
     );
+}
+
+fn skill_request(session: &str, request: &str, model: &str, input: u64, output: u64) -> String {
+    serde_json::json!({
+        "type": "assistant",
+        "sessionId": session,
+        "requestId": request,
+        "timestamp": "2026-01-05T12:00:00Z",
+        "attributionSkill": "review",
+        "message": {
+            "model": model,
+            "usage": {"input_tokens": input, "output_tokens": output}
+        }
+    })
+    .to_string()
+        + "\n"
+}
+
+fn data_json(home: &tempfile::TempDir, args: &[&str]) -> gigawatts::contract::DataResponse {
+    let ingested = gigawatts(Some(home.path()), home.path(), &["ingest"]);
+    assert_eq!(ingested.status.code(), Some(0), "{ingested:?}");
+    let output = gigawatts(Some(home.path()), home.path(), args);
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    serde_json::from_slice(&output.stdout).unwrap()
+}
+
+#[test]
+fn a_drilled_skill_splits_each_sessions_cost_by_what_it_paid_for() {
+    let transcript = skill_request("s1", "r1", "claude-opus-5-5", 1_000_000, 0)
+        + &skill_request("s2", "r2", "claude-opus-5-5", 0, 100_000);
+    let home = logged_in_home(&transcript);
+
+    let response = data_json(
+        &home,
+        &[
+            "data", "--range", "all", "--by", "skill", "--drill", "review", "--json",
+        ],
+    );
+
+    let paid_for = |key: &str| {
+        response
+            .rows
+            .iter()
+            .find(|row| row.key.as_deref() == Some(key))
+            .unwrap_or_else(|| panic!("no {key} in {:?}", response.rows))
+            .paid_for
+            .clone()
+    };
+    let split = |input_usd, output_usd| {
+        Some(gigawatts::contract::CostSplit {
+            input_usd,
+            output_usd,
+            cache_write_usd: 0.0,
+            cache_read_usd: 0.0,
+        })
+    };
+    assert_eq!(paid_for("s1"), split(4.0, 0.0));
+    assert_eq!(paid_for("s2"), split(0.0, 2.0));
+}
+
+#[test]
+fn a_row_on_a_model_with_no_price_has_no_paid_for() {
+    let home = logged_in_home(&skill_request(
+        "s1",
+        "r1",
+        "claude-unreleased-9-9",
+        1_000_000,
+        0,
+    ));
+
+    let response = data_json(&home, &["data", "--range", "all", "--json"]);
+
+    let [row] = response.rows.as_slice() else {
+        panic!("{:?}", response.rows);
+    };
+    assert_eq!(row.cost_usd, None);
+    assert_eq!(row.paid_for, None);
 }
 
 #[test]

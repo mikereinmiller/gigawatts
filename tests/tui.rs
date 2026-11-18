@@ -1360,6 +1360,7 @@ fn row(account: &str, key: Option<&str>, label: &str, cost: f64) -> DataRow {
         cache_write_tokens: 0,
         web_searches: 0,
         cost_usd: Some(cost),
+        paid_for: None,
     }
 }
 

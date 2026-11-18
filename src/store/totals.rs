@@ -366,6 +366,7 @@ impl Store {
                 cache_write_tokens: row.get::<_, i64>(10)? as u64,
                 web_searches: row.get::<_, i64>(11)? as u64,
                 cost_usd: row.get(12)?,
+                paid_for: None,
             })
         })?;
         Ok(rows.collect::<rusqlite::Result<_>>()?)

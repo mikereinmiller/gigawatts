@@ -221,6 +221,7 @@ fn total(
         cache_write_tokens: cache_write,
         web_searches: 0,
         cost_usd: Some(cost_usd),
+        paid_for: None,
     }
 }
 
