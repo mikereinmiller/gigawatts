@@ -1636,7 +1636,8 @@ function adviceCard(view) {
   const entries = forAccount(latest.advice.accounts);
   const card = element('section', undefined, 'card');
   const head = element('div', undefined, 'card-head');
-  head.append(element('h2', 'Ways to spend less'), element('span', entries.length ? `Anthropic's advice from Claude Code's /usage, read ${ago(Math.max(...entries.map(entry => entry.fetched_at_ms)))}` : 'Anthropic\'s advice from Claude Code\'s /usage', 'hint'));
+  const span = entries.length && entries.every(entry => entry.behaviors?.week) ? 'This week\'s usage' : entries.length && entries.every(entry => !entry.behaviors?.week && entry.behaviors?.day) ? 'Today\'s usage' : 'Usage';
+  head.append(element('h2', 'Anthropic\'s advice'), element('span', entries.length ? `${span}, from Claude Code's /usage, read ${ago(Math.max(...entries.map(entry => entry.fetched_at_ms)))}` : 'From Claude Code\'s /usage', 'hint'));
   card.append(head);
   if (!entries.length) {
     card.append(element('p', 'No advice saved today. The engine saves it hourly while Claude Code is active.', 'note'));
@@ -2579,9 +2580,9 @@ function render() {
   const where = breakdown(view, chart.colors);
   const who = whoDidTheWork(view.agents, true);
   sections.push(...(primaryScope() === 'model' ? [who, where] : [where, who]));
+  sections.push(biggestSessions(view));
   const advice = adviceCard(view);
   if (advice) sections.push(advice);
-  sections.push(biggestSessions(view));
   document.getElementById('content').replaceChildren(...sections);
   drawProblems();
 }

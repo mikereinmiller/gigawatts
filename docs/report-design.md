@@ -33,6 +33,10 @@ When `gigawatts doctor` lists a problem, a box above the headline names what eac
 6. **Who did the work.** Subagents (and your own conversation) by model, as a table. It shows at a glance when a subagent runs on the expensive model.
 7. **Biggest sessions.** The ten most expensive sessions in the range. A session row shows its title with its date, main skill, active time, and peak context, and opens a side panel with its split by skill, model, and subagent.
 
+The page then turns from what happened in the range to what to change. The cards below don't follow the range picker, so they sit last, and each heading names its own time window.
+
+8. **Anthropic's advice.** Unscoped page only, and only when the range includes today.
+
 A past range (last month, or a custom range that ends before today) leads with that period instead of current state: its average active day, busiest day, and biggest driver.
 
 ## Details and scope
@@ -44,7 +48,7 @@ The page has two ways to look closer, for two different questions.
 
 The "Not in transcripts" row (spend Claude Code billed for requests it never wrote to its transcripts) opens a panel that explains it and shows its cost, its change against the period before, its days, and its split by model. It has no Focus button, since nothing can be filtered to it.
 
-A "Ways to spend less" card on the unscoped page lists Anthropic's recommendations from Claude Code's `/usage`, which the engine saves hourly, with each one's share of the week's usage. It stays out of exports, because the advice names files and paths.
+The "Anthropic's advice" card lists Anthropic's recommendations from Claude Code's `/usage`, which the engine saves hourly, with each one's share of the week's usage, in the order and number Claude Code gives them. Its hint says "this week's usage" or "today's usage" to match that share, since it doesn't follow the range picker. It stays out of exports, because the advice names files and paths.
 
 A click previews and the button commits, because redrawing the page on every click gets in the way of scanning. A session is never a scope: it is the last level, and its panel already shows everything about it.
 
