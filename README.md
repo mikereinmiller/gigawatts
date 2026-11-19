@@ -145,7 +145,7 @@ rm -rf ~/.local/share/gigawatts ~/.config/gigawatts   # deletes your history and
 
 ## How it works
 
-[`docs/overview.md`](docs/overview.md) is the full design: where each number comes from, how costs are priced, and what's planned.
+[`docs/overview.md`](docs/overview.md) is the full design: where each number comes from and how costs are priced.
 
 ## License
 

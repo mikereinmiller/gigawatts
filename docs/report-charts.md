@@ -41,4 +41,4 @@ If SVG turns out slow or awkward, Chart.js is the fallback. Everything the page 
 
 ## Pick
 
-Hand-drawn SVG (Mike, 2026-11-11). Hover worked in every candidate in Safari and Firefox, so draw time, size, and theming decided it. Each chart is one function in the page that takes the API's JSON and returns SVG, so a library can replace just those functions if the page later needs zoom, panning, or hover over dense data.
+Hand-drawn SVG (2026-11-11). Hover worked in every candidate in Safari and Firefox, so draw time, size, and theming decided it. Each chart is one function in the page that takes the API's JSON and returns SVG, so a library can replace just those functions if the page later needs zoom, panning, or hover over dense data.
