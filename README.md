@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/images/banner.jpg" alt="Gigawatts banner: a glowing box reading 1.21 GW beside the name over a neon grid"></p>
+
 # Gigawatts
 
 A local usage monitor for Claude Code. It shows how much of your usage limits you've used, what your work cost, and where it went: by repo, branch, skill, subagent, and model.
@@ -5,6 +7,8 @@ A local usage monitor for Claude Code. It shows how much of your usage limits yo
 It spends no Claude tokens, changes nothing in Claude Code's settings, and never reads your login token. Your numbers stay on your machine.
 
 Gigawatts is in early beta. Expect rough edges, and please report what breaks. It gets fresh limits through a Claude Code request that Anthropic hasn't documented, so a Claude Code release could change it; when that happens, Gigawatts marks the numbers it affects and keeps showing the rest.
+
+![The Gigawatts terminal view: usage limits with pace, today's spend against a usual day, today's sessions, and spending by repo](docs/images/terminal.png)
 
 ## Requirements
 
@@ -55,15 +59,32 @@ A light red badge at the right end of the title row means a limit is forecast to
 
 Every command takes `--help`.
 
-## Update
+`gigawatts report` opens the same numbers as a page in your browser, with spend per day, limits over time, and where the money went:
 
-```sh
-cd gigawatts
-git pull
-mise run install
-```
+![The Gigawatts report page: a month's spend, weekly limit forecast, today's spend, and spend per day by repo](docs/images/report.jpg)
 
-`mise run install` stops the running engine and starts the new one. Check what you're running with `gigawatts --version`.
+## Ask an agent about your spend
+
+Gigawatts does the math; an agent can do the interpreting. Any agent that can run commands can answer questions from `gigawatts data --json`, and `gigawatts schema` tells it what each field means. Try asking:
+
+- "Run `gigawatts data --range week --by skill --json` and tell me which skill cost the most this week and why."
+- "Compare this month's spend by repo with last month's using `gigawatts data`, and point out anything that jumped."
+- "Use `gigawatts data --range month --by repo --drill <repo> --json` to tell me which branches in this repo were the most expensive."
+- "My old plan billed usage at API prices against a $2,000 monthly credit budget. Use `gigawatts data --json` to tell me how far past that budget this month's usage would have gone."
+
+### Find which skills and agents to make cheaper
+
+Ask in any Claude Code session, in any folder:
+
+> Use Gigawatts to show which of my skills and agents cost the most, and what I could change.
+
+Claude runs `gigawatts insights`, reads `gigawatts insights --help` for how to judge the numbers, opens your skill and agent files, and proposes specific edits, each with the file and line, the cost it would save, and what it might cost in quality. It changes nothing until you say which edits to apply. Ask again two weeks after a change to see whether it worked.
+
+The instructions Claude follows ship inside `gigawatts`, so updating Gigawatts updates them. There's nothing to copy or install.
+
+## Build on it
+
+[`docs/integrations.md`](docs/integrations.md) explains the JSON commands, what each field means, and how to show alerts, for anyone building a pane, a status bar, or a script on Gigawatts' numbers. Point an agent at it.
 
 ## Accounts
 
@@ -100,6 +121,16 @@ History lives in `~/.local/share/gigawatts/history.sqlite3`, readable only by yo
 
 The report page listens on `127.0.0.1` only, but any user account on the same computer can reach it. On a shared machine, set `report_port = 0`.
 
+## Update
+
+```sh
+cd gigawatts
+git pull
+mise run install
+```
+
+`mise run install` stops the running engine and starts the new one. Check what you're running with `gigawatts --version`.
+
 ## Uninstall
 
 ```sh
@@ -109,33 +140,10 @@ cargo uninstall gigawatts
 rm -rf ~/.local/share/gigawatts ~/.config/gigawatts   # deletes your history and settings
 ```
 
-## Ask an agent about your spend
+## How it works
 
-Gigawatts does the math; an agent can do the interpreting. Any agent that can run commands can answer questions from `gigawatts data --json`, and `gigawatts schema` tells it what each field means. Try asking:
-
-- "Run `gigawatts data --range week --by skill --json` and tell me which skill cost the most this week and why."
-- "Compare this month's spend by repo with last month's using `gigawatts data`, and point out anything that jumped."
-- "Use `gigawatts data --range month --by repo --drill <repo> --json` to tell me which branches in this repo were the most expensive."
-- "My old plan billed usage at API prices against a $2,000 monthly credit budget. Use `gigawatts data --json` to tell me how far past that budget this month's usage would have gone."
-
-### Find which skills and agents to make cheaper
-
-Ask in any Claude Code session, in any folder:
-
-> Use Gigawatts to show which of my skills and agents cost the most, and what I could change.
-
-Claude runs `gigawatts insights`, reads `gigawatts insights --help` for how to judge the numbers, opens your skill and agent files, and proposes specific edits, each with the file and line, the cost it would save, and what it might cost in quality. It changes nothing until you say which edits to apply. Ask again two weeks after a change to see whether it worked.
-
-The instructions Claude follows ship inside `gigawatts`, so updating Gigawatts updates them. There's nothing to copy or install.
-
-## Build on it
-
-[`docs/integrations.md`](docs/integrations.md) explains the JSON commands, what each field means, and how to show alerts, for anyone building a pane, a status bar, or a script on Gigawatts' numbers. Point an agent at it.
+[`docs/overview.md`](docs/overview.md) is the full design: where each number comes from, how costs are priced, and what's planned.
 
 ## License
 
 MIT. See [`LICENSE`](LICENSE).
-
-## How it works
-
-[`docs/overview.md`](docs/overview.md) is the full design: where each number comes from, how costs are priced, and what's planned.
