@@ -412,7 +412,7 @@ fn the_every_account_view_keeps_a_limits_severity_and_credits_at_80_columns() {
 
     assert_eq!(stacked.matches("warning").count(), 1, "{stacked}");
     assert!(
-        stacked.contains("$437.60 of $2,200 · $1,762 left · $82 a day to last"),
+        stacked.contains("$437.60 of $2,200 · $82 / day"),
         "{stacked}"
     );
     assert!(stacked.contains("20%  resets 21d 14h"), "{stacked}");
@@ -759,7 +759,7 @@ fn with_nine_accounts_the_all_tab_keeps_a_and_nine_opens_the_ninth_account() {
 }
 
 #[test]
-fn a_credit_limit_beside_today_shows_what_is_left_and_a_daily_budget() {
+fn a_credit_limit_beside_today_shows_a_daily_budget() {
     let mut account = work();
     let credits = &mut account.limits.as_mut().unwrap().limits[0];
     credits.limit.resets_at = Some("2026-12-01T00:00:00Z".to_string());
@@ -768,11 +768,8 @@ fn a_credit_limit_beside_today_shows_what_is_left_and_a_daily_budget() {
     let shown = screen(&app, 150, 40);
 
     assert!(shown.contains("╭ Limits"), "{shown}");
-    assert!(
-        shown.contains("$437.60 of $2,200 · $1,762 left · $"),
-        "{shown}"
-    );
-    assert!(shown.contains(" a day to last"), "{shown}");
+    assert!(shown.contains("$437.60 of $2,200 · $"), "{shown}");
+    assert!(shown.contains(" / day"), "{shown}");
     assert!(!shown.contains("437.60 of 2200.00 USD"), "{shown}");
 }
 
@@ -3144,10 +3141,9 @@ fn a_limit_detail_longer_than_its_pane_wraps_instead_of_being_cut() {
     let shown = screen(&app, 100, 56);
 
     assert!(
-        shown.contains("│ $437.60 of $2,200 · $1,762 left         │"),
+        shown.contains("│ $437.60 of $2,200 · $82 / day           │"),
         "{shown}"
     );
-    assert!(shown.contains("│ $82 a day to last "), "{shown}");
     assert!(
         shown.contains("│ resets in 21d 14h                       │"),
         "{shown}"
@@ -3342,9 +3338,7 @@ fn stacked_credits_put_their_budget_on_its_own_row_at_any_width() {
             "{shown}"
         );
         assert!(
-            shown.contains(
-                "│                     $437.60 of $2,200 · $1,762 left · $82 a day to last"
-            ),
+            shown.contains("│                     $437.60 of $2,200 · $82 / day"),
             "{shown}"
         );
     }
@@ -3489,11 +3483,7 @@ fn a_stacked_credit_budget_too_long_for_its_row_wraps() {
         "{shown}"
     );
     assert!(
-        shown.contains("│                     $1,762 left "),
-        "{shown}"
-    );
-    assert!(
-        shown.contains("│                     $82 a day to last "),
+        shown.contains("│                     $82 / day "),
         "{shown}"
     );
 }
@@ -3508,7 +3498,7 @@ fn credits_with_no_cap_show_only_what_was_used() {
         shown.contains("│                     $437.60 used "),
         "{shown}"
     );
-    assert!(!shown.contains(" left"), "{shown}");
+    assert!(!shown.contains("/ day"), "{shown}");
 }
 
 #[test]
@@ -3518,10 +3508,10 @@ fn credits_in_another_currency_put_its_code_after_each_amount() {
     });
 
     assert!(
-        shown.contains("437.60 EUR of 2,200 EUR · 1,762 EUR left"),
+        shown.contains("437.60 EUR of 2,200 EUR · 82 EUR / day"),
         "{shown}"
     );
-    assert!(shown.contains("82 EUR a day to last"), "{shown}");
+    assert!(shown.contains("82 EUR / day"), "{shown}");
 }
 
 #[test]
@@ -3530,21 +3520,18 @@ fn credits_under_a_day_from_their_reset_leave_out_the_daily_figure() {
         limit.pace.as_mut().unwrap().window_end_ms = NOW_MS + 12 * 3_600_000;
     });
 
-    assert!(
-        shown.contains("$437.60 of $2,200 · $1,762 left "),
-        "{shown}"
-    );
-    assert!(!shown.contains("a day to last"), "{shown}");
+    assert!(shown.contains("$437.60 of $2,200 "), "{shown}");
+    assert!(!shown.contains("/ day"), "{shown}");
 }
 
 #[test]
-fn credits_over_their_cap_show_none_left_and_no_daily_figure() {
+fn credits_over_their_cap_show_no_daily_figure() {
     let shown = work_credits_screen(80, |limit| {
         limit.limit.credits.as_mut().unwrap().used = 2300.0;
     });
 
-    assert!(shown.contains("$2,300.00 of $2,200 · $0 left "), "{shown}");
-    assert!(!shown.contains("a day to last"), "{shown}");
+    assert!(shown.contains("$2,300.00 of $2,200 "), "{shown}");
+    assert!(!shown.contains("/ day"), "{shown}");
 }
 
 #[test]
@@ -3555,10 +3542,7 @@ fn credits_in_the_millions_group_every_three_digits() {
         credits.limit = Some(2_000_000.0);
     });
 
-    assert!(
-        shown.contains("$1,234,567.89 of $2,000,000 · $765,432 left"),
-        "{shown}"
-    );
+    assert!(shown.contains("$1,234,567.89 of $2,000,000 "), "{shown}");
 }
 
 #[test]
@@ -4184,7 +4168,7 @@ fn credits_used_elsewhere_follow_the_cap_in_the_money_line() {
     let shown = work_credits_screen(80, used_elsewhere);
 
     assert!(
-        shown.contains("│                     $494.00 of $2,200 ($84 elsewhere) · $1,706 left"),
+        shown.contains("│                     $494.00 of $2,200 ($84 elsewhere) · $"),
         "{shown}"
     );
 }

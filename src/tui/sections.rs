@@ -758,16 +758,9 @@ fn credit_budget(shown: &PacedLimit, now_ms: i64) -> Vec<String> {
         return Vec::new();
     };
     let currency = &credits.currency;
-    let Some(cap) = credits.limit else {
-        return vec![credits_spent(shown, credits)];
-    };
-    let left = (cap - credits.used).max(0.0);
-    let mut parts = vec![
-        credits_spent(shown, credits),
-        format!("{} left", money(left, currency, false)),
-    ];
+    let mut parts = vec![credits_spent(shown, credits)];
     if let Some((per_day, _)) = credits_per_day(shown, now_ms) {
-        parts.push(format!("{} a day to last", money(per_day, currency, false)));
+        parts.push(format!("{} / day", money(per_day, currency, false)));
     }
     parts
 }
