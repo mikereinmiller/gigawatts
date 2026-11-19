@@ -275,7 +275,7 @@ pub struct AccountToday {
 pub struct AccountLimits {
     /// Where the reading came from.
     pub source: LimitSource,
-    /// When Anthropic reported it, Unix milliseconds. A reading over an hour old may not include use outside Claude Code, and raises no filling alerts.
+    /// When Anthropic reported it, Unix milliseconds. A reading over an hour old raises no filling alerts.
     pub fetched_at_ms: i64,
     /// Each limit Anthropic reported, with pace and forecast.
     pub limits: Vec<PacedLimit>,

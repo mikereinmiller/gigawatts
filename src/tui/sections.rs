@@ -9,7 +9,7 @@ use crate::contract::{
     ProblemKind,
 };
 use crate::limits::{age, limit_name, percent, unusual_severity};
-use crate::status::{MAY_MISS_OUTSIDE_USE_MS, has_reset, resets_ms};
+use crate::status::{STALE_AFTER_MS, has_reset, resets_ms};
 
 use super::HISTORY_MIN_HEIGHT;
 use super::digits;
@@ -300,17 +300,10 @@ pub(crate) fn limit_lines(
     let mut lines = Vec::new();
     match &account.limits {
         Some(limits) if !limits.limits.is_empty() => {
-            let stale = now_ms - limits.fetched_at_ms > MAY_MISS_OUTSIDE_USE_MS;
+            let stale = now_ms - limits.fetched_at_ms > STALE_AFTER_MS;
             if stacked {
                 lines.push(Line::styled(
                     format!("Limits · {}", source_and_age(limits, now_ms)),
-                    MUTED,
-                ));
-            }
-            if stale {
-                lines.extend(wrapped(
-                    "Read over an hour ago, so it may not include use outside Claude Code.",
-                    width,
                     MUTED,
                 ));
             }

@@ -3575,7 +3575,7 @@ fn stacked_spacing_never_hides_a_running_session_card() {
     app.handle(KeyCode::Char('4').into());
     answer(&mut app);
 
-    let shown = screen(&app, 100, 52);
+    let shown = screen(&app, 100, 51);
     let lines: Vec<&str> = shown.lines().collect();
     let work_box = lines
         .iter()

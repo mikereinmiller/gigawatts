@@ -1,6 +1,6 @@
 use crate::contract::{AccountToday, Alert, AlertState};
 use crate::limits::short_limit_name;
-use crate::status::{MAY_MISS_OUTSIDE_USE_MS, has_reset, resets_ms};
+use crate::status::{STALE_AFTER_MS, has_reset, resets_ms};
 
 const FILLING_ALERT_WITHIN_MS: i64 = 24 * 60 * 60_000;
 
@@ -10,7 +10,7 @@ pub fn alerts(accounts: &[AccountToday], now_ms: i64) -> Vec<Alert> {
         let Some(limits) = &account.limits else {
             continue;
         };
-        let stale = now_ms - limits.fetched_at_ms > MAY_MISS_OUTSIDE_USE_MS;
+        let stale = now_ms - limits.fetched_at_ms > STALE_AFTER_MS;
         for shown in &limits.limits {
             if has_reset(shown, now_ms) {
                 continue;

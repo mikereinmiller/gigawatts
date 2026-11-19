@@ -5,7 +5,7 @@ use crate::contract::{
 };
 use crate::limits::{age, limit_name, percent};
 
-pub(crate) const MAY_MISS_OUTSIDE_USE_MS: i64 = 60 * 60_000;
+pub(crate) const STALE_AFTER_MS: i64 = 60 * 60_000;
 
 pub fn render_line(
     account: &AccountToday,
@@ -63,9 +63,6 @@ fn limit_part(
                 });
             parts.extend(another_filling);
             parts.push(format!("read {}", age(elapsed_ms)));
-            if elapsed_ms > MAY_MISS_OUTSIDE_USE_MS {
-                parts.push("may not include use outside Claude Code".to_string());
-            }
             parts.join(", ")
         }
     }

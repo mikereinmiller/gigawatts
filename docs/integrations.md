@@ -53,7 +53,7 @@ On the `session` and `weekly_all` limits, `elsewhere_percent` estimates how many
 ## Freshness and gaps
 
 - `today` is the local date the snapshot counts as today. `status --json` always builds it for the current date.
-- Each account's `limits.fetched_at_ms` is when Anthropic reported the reading. Over an hour old, it may not include use outside Claude Code, such as claude.ai chats; say how old it is rather than hide it. Filling alerts already leave such readings out.
+- Each account's `limits.fetched_at_ms` is when Anthropic reported the reading. Show how old it is. Filling alerts leave out readings over an hour old.
 - `problems` lists anything that makes a number wrong, stale, or missing, each with `affects`, `cause`, and `fix` in plain words. Show a count, and the details on request.
 - A cost can be estimated until Claude Code records its own figure when the session ends. `cost_estimated` says when today's total includes such spend.
 

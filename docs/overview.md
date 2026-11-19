@@ -204,7 +204,7 @@ It shows one account at a time, starting with the one used most recently, with a
 
 ## Stale data and errors
 
-- **Stale limits.** Every limit shows its age. Opening the view refreshes any account whose reading is over 10 minutes old. `gigawatts status` prints the saved reading and asks the engine to refresh in the background, at most once per 10 minutes. A reading over an hour old is greyed out with "may not include use outside Claude Code," since chat and cloud sessions only show up through limits.
+- **Stale limits.** Every limit shows its age. Opening the view refreshes any account whose reading is over 10 minutes old. `gigawatts status` prints the saved reading and asks the engine to refresh in the background, at most once per 10 minutes. A reading over an hour old is greyed out.
 - **Problems.** Each affected number carries a short marker, like "limits: refresh failing since 2 PM" or "cost leaves out claude-opus-5-6 until its session ends: no price." The footer shows when anything is wrong, and `gigawatts doctor` lists each problem with its cause and what to do. Watched problems include unrecognized transcript lines, unknown models, price gaps ("adjusted" sessions, plus a price that comes out above Claude Code's record even with spend missing from the transcript), failing refreshes, a failing price download, folders the engine can't watch, transcripts or logins it can't read, and a daily cleanup of old request detail that fails.
 
 ## Settings

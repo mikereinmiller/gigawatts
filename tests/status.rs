@@ -335,7 +335,7 @@ fn monthly_credits_on_the_default_reset_show_their_pace_and_window_end() {
 
     assert_eq!(
         line,
-        "personal: Credits 20% under even pace, resets 2026-11-12 00:00, read 2 hours ago, may not include use outside Claude Code · today $0.00, no usual yet"
+        "personal: Credits 20% under even pace, resets 2026-11-12 00:00, read 2 hours ago · today $0.00, no usual yet"
     );
 }
 
@@ -377,7 +377,7 @@ fn a_limit_that_reset_since_the_reading_is_not_the_closest() {
 
     assert_eq!(
         line,
-        "personal: Weekly, all models 60% over even pace, resets 2026-11-08 02:59, read 10 hours ago, may not include use outside Claude Code · today $0.00, no usual yet"
+        "personal: Weekly, all models 60% over even pace, resets 2026-11-08 02:59, read 10 hours ago · today $0.00, no usual yet"
     );
 }
 
