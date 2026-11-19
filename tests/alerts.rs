@@ -56,6 +56,7 @@ fn account(id: &str, label: &str, fetched_ago_ms: i64, limits: Vec<PacedLimit>) 
         },
         fastest_session: None,
         active_sessions: Vec::new(),
+        sessions_today: Vec::new(),
         unpriced_models: Vec::new(),
         adjusted_models: Vec::new(),
         cost_estimated: false,

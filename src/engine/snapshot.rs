@@ -42,6 +42,7 @@ pub fn build(
             pace: no_pace(),
             fastest_session: None,
             active_sessions: Vec::new(),
+            sessions_today: Vec::new(),
             unpriced_models: Vec::new(),
             adjusted_models: Vec::new(),
             cost_estimated: false,
@@ -72,6 +73,7 @@ pub fn build(
                     pace: no_pace(),
                     fastest_session: None,
                     active_sessions: Vec::new(),
+                    sessions_today: Vec::new(),
                     unpriced_models: Vec::new(),
                     adjusted_models: Vec::new(),
                     cost_estimated: false,
@@ -92,6 +94,7 @@ pub fn build(
         account.pace = pace::dollar_pace(store, parsed.as_ref(), now_ms)?;
         account.active_sessions = pace::active_sessions(store, parsed.as_ref(), now_ms)?;
         account.fastest_session = account.active_sessions.first().cloned();
+        account.sessions_today = pace::sessions_today(store, parsed.as_ref(), now_ms)?;
         let flags = store.cost_flags_on(parsed.as_ref(), &today)?;
         account.unpriced_models = flags
             .unpriced_models

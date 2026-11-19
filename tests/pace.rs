@@ -8,7 +8,9 @@ use gigawatts::contract::{
     Share,
 };
 use gigawatts::ingest::ingest_tree;
-use gigawatts::pace::{active_sessions, dollar_pace, fastest_session, limit_forecast, limit_pace};
+use gigawatts::pace::{
+    active_sessions, dollar_pace, fastest_session, limit_forecast, limit_pace, sessions_today,
+};
 use gigawatts::pricing::PriceTable;
 use gigawatts::sources::claude_json::Account;
 use gigawatts::sources::get_usage;
@@ -954,4 +956,175 @@ fn a_weekly_limit_within_5_points_of_full_forecasts_even_when_level_with_the_clo
         forecast_at(&limit, "2026-11-07T19:36:00Z"),
         window_forecast("2026-11-07T21:12:43.636Z")
     );
+}
+
+fn store_with_sessions(files: &[(&str, String)]) -> (tempfile::TempDir, Store) {
+    let dir = tempfile::tempdir().unwrap();
+    let projects = dir.path().join("projects").join("-work-orchard");
+    fs::create_dir_all(&projects).unwrap();
+    for (name, lines) in files {
+        fs::write(projects.join(format!("{name}.jsonl")), lines).unwrap();
+    }
+    let mut store = Store::open(&dir.path().join("history.sqlite3")).unwrap();
+    ingest_tree(
+        &mut store,
+        &dir.path().join("projects"),
+        &PriceTable::built_in(),
+        &Attribution::default(),
+        &Resolver::default(),
+    )
+    .unwrap();
+    (dir, store)
+}
+
+#[test]
+fn a_session_quiet_for_two_hours_is_in_sessions_today_but_not_active() {
+    let (_dir, store) = store_with_sessions(&[
+        (
+            "s1",
+            session_spend_line("s1", "a1", "2026-11-04 11:30:00", 6)
+                + &session_spend_line("s1", "a2", "2026-11-04 12:00:00", 2),
+        ),
+        (
+            "s2",
+            session_spend_line("s2", "b1", "2026-11-04 13:55:00", 3),
+        ),
+    ]);
+    let now = local_ms("2026-11-04 14:00:00");
+
+    let today = sessions_today(&store, None, now).unwrap();
+    let active = active_sessions(&store, None, now).unwrap();
+
+    let spend =
+        |session: &str, last_15_minutes_usd: f64, today_usd: f64, last: &str| SessionSpend {
+            session: session.to_string(),
+            label: session.to_string(),
+            repo: "orchard".to_string(),
+            branch: Some("ab/carts".to_string()),
+            last_15_minutes_usd,
+            total_usd: today_usd,
+            last_active_ms: local_ms(last),
+            today_usd,
+            top_driver: Some(Share {
+                label: "no skill".to_string(),
+                share: 1.0,
+            }),
+            models: vec![Share {
+                label: "claude-opus-5-5".to_string(),
+                share: 1.0,
+            }],
+        };
+    assert_eq!(
+        today,
+        vec![
+            spend("s1", 0.0, 8.0, "2026-11-04 12:00:00"),
+            spend("s2", 3.0, 3.0, "2026-11-04 13:55:00"),
+        ]
+    );
+    assert_eq!(
+        active
+            .iter()
+            .map(|s| s.session.as_str())
+            .collect::<Vec<_>>(),
+        vec!["s2"]
+    );
+}
+
+#[test]
+fn a_session_running_past_midnight_shows_only_todays_spend_in_sessions_today() {
+    let (_dir, store) = store_with_sessions(&[(
+        "s1",
+        session_spend_line("s1", "a1", "2026-11-03 23:50:00", 7)
+            + &session_spend_line("s1", "a2", "2026-11-04 00:10:00", 3),
+    )]);
+
+    let today = sessions_today(&store, None, local_ms("2026-11-04 14:00:00")).unwrap();
+
+    assert_eq!(today.len(), 1);
+    assert_eq!(today[0].today_usd, 3.0);
+    assert_eq!(today[0].total_usd, 10.0);
+    assert_eq!(today[0].last_15_minutes_usd, 0.0);
+}
+
+#[test]
+fn a_session_active_only_yesterday_is_not_in_sessions_today() {
+    let (_dir, store) = store_with_sessions(&[(
+        "s1",
+        session_spend_line("s1", "a1", "2026-11-03 23:58:00", 7),
+    )]);
+
+    let today = sessions_today(&store, None, local_ms("2026-11-04 00:05:00")).unwrap();
+
+    assert_eq!(today, Vec::new());
+}
+
+#[test]
+fn a_finished_session_names_the_skill_and_models_that_spent_most_today() {
+    let with_skill = |line: String, skill: &str| {
+        line.replace(
+            r#""gitBranch":"ab/carts","#,
+            &format!(r#""gitBranch":"ab/carts","attributionSkill":"{skill}","#),
+        )
+    };
+    let (_dir, store) = store_with_sessions(&[(
+        "s1",
+        with_skill(
+            session_spend_line("s1", "a1", "2026-11-04 09:00:00", 6),
+            "review",
+        ) + &session_spend_line("s1", "a2", "2026-11-04 10:00:00", 4)
+            .replace("claude-opus-5-5", "claude-sonnet-5-5"),
+    )]);
+
+    let today = sessions_today(&store, None, local_ms("2026-11-04 14:00:00")).unwrap();
+
+    assert_eq!(
+        today[0].top_driver,
+        Some(Share {
+            label: "review".to_string(),
+            share: 0.75
+        })
+    );
+    assert_eq!(
+        today[0].models,
+        vec![
+            Share {
+                label: "claude-opus-5-5".to_string(),
+                share: 0.75
+            },
+            Share {
+                label: "claude-sonnet-5-5".to_string(),
+                share: 0.25
+            }
+        ]
+    );
+}
+
+#[test]
+fn just_after_midnight_a_session_counts_its_last_15_minutes_from_before_midnight() {
+    let (_dir, store) = store_with_sessions(&[(
+        "s1",
+        session_spend_line("s1", "a1", "2026-11-03 23:55:00", 10)
+            + &session_spend_line("s1", "a2", "2026-11-04 00:02:00", 1),
+    )]);
+
+    let today = sessions_today(&store, None, local_ms("2026-11-04 00:05:00")).unwrap();
+
+    assert_eq!(today.len(), 1);
+    assert_eq!(today[0].last_15_minutes_usd, 11.0);
+    assert_eq!(today[0].today_usd, 1.0);
+}
+
+#[test]
+fn a_session_with_only_unpriced_requests_today_is_in_sessions_today_at_0() {
+    let (_dir, store) = store_with_sessions(&[(
+        "s1",
+        session_spend_line("s1", "a1", "2026-11-04 09:00:00", 1)
+            .replace("claude-opus-5-5", "claude-opus-9-9"),
+    )]);
+
+    let today = sessions_today(&store, None, local_ms("2026-11-04 14:00:00")).unwrap();
+
+    assert_eq!(today.len(), 1);
+    assert_eq!(today[0].session, "s1");
+    assert_eq!(today[0].today_usd, 0.0);
 }

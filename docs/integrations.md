@@ -6,7 +6,7 @@ This is for anything that shows Gigawatts' numbers somewhere else: a Herdr pane,
 
 | Command | Gives you | Use it for |
 |---|---|---|
-| `gigawatts status --json` | Everything happening now: each account's limits, today's spend, running sessions, problems, and alerts. Built fresh on every call, and it starts the engine if it isn't running. | Anything that shows the current state. |
+| `gigawatts status --json` | Everything happening now: each account's limits, today's spend, running sessions (`active_sessions`) and every session with requests today (`sessions_today`), problems, and alerts. Built fresh on every call, and it starts the engine if it isn't running. | Anything that shows the current state. |
 | `gigawatts data --json` | Spend history, grouped with `--by repo`, `branch`, `skill`, `agent`, or `model`, over `--range today`, `week`, `month`, or `all`, or `--since` and `--until` dates. `--drill <key>` narrows to one row's breakdown. | Reports and "where did the money go" questions. |
 | `gigawatts data --limits --json` | Each account's latest limits, after the engine refreshes any over 10 minutes old when the engine is running; otherwise the saved readings. | Limits alone, without the rest of the snapshot. |
 | `gigawatts insights --json` | What each skill and subagent costs per run, week by week over the last 8 Monday weeks (or `--since` and `--until`), with each shift of 30% or more in cost per run and the model, effort, or Claude Code version change that lines up with it. | Finding which skills and subagents to make cheaper, and whether a change worked. |

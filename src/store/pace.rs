@@ -13,7 +13,7 @@ const SPEND_TODAY_BY: &str = "
       AND requests.account_id IS ?3
       AND requests.session_id IN (
           SELECT session_id FROM requests INDEXED BY requests_by_day
-          WHERE day >= date(?1 / 1000, 'unixepoch', 'localtime')
+          WHERE day >= date((?1 + 1) / 1000, 'unixepoch', 'localtime')
             AND time_ms > ?1 AND time_ms <= ?2 AND account_id IS ?3)
     GROUP BY session.uuid, 2";
 const DRIVER_LABEL: &str = "CASE WHEN agent.text IS NOT NULL THEN agent.text || ' subagent'
@@ -120,6 +120,42 @@ impl Store {
         since_ms: i64,
         now_ms: i64,
     ) -> Result<Vec<SessionSpend>> {
+        self.sessions_spending(account, since_ms, since_ms, since_ms, now_ms)
+    }
+
+    pub fn sessions_spending_today(
+        &self,
+        account: Option<&Account>,
+        fast_since_ms: i64,
+        now_ms: i64,
+    ) -> Result<Vec<SessionSpend>> {
+        let first_today_ms: Option<i64> = self.connection.query_row(
+            "SELECT min(time_ms) FROM requests INDEXED BY requests_by_day
+             WHERE day = date(?1 / 1000, 'unixepoch', 'localtime')",
+            [now_ms],
+            |row| row.get(0),
+        )?;
+        let Some(first_today_ms) = first_today_ms else {
+            return Ok(Vec::new());
+        };
+        let listed_after_ms = first_today_ms - 1;
+        self.sessions_spending(
+            account,
+            listed_after_ms.min(fast_since_ms),
+            listed_after_ms,
+            fast_since_ms,
+            now_ms,
+        )
+    }
+
+    fn sessions_spending(
+        &self,
+        account: Option<&Account>,
+        scan_from_ms: i64,
+        listed_after_ms: i64,
+        fast_since_ms: i64,
+        now_ms: i64,
+    ) -> Result<Vec<SessionSpend>> {
         let account_id = match account {
             None => None,
             Some(account) => match self.account_row_id(account)? {
@@ -132,12 +168,14 @@ impl Store {
             .prepare_cached(
                 "WITH recent AS (
                      -- SQLite fills the bare `id` from the row that max(time_ms) picks.
-                     SELECT session_id, coalesce(sum(cost_usd), 0) AS usd, max(time_ms) AS last_ms,
-                            id AS last_id
+                     SELECT session_id,
+                            coalesce(sum(cost_usd) FILTER (WHERE time_ms > ?4), 0) AS usd,
+                            max(time_ms) AS last_ms, id AS last_id
                      FROM requests INDEXED BY requests_by_day
-                     WHERE day >= date(?1 / 1000, 'unixepoch', 'localtime')
+                     WHERE day >= date((?1 + 1) / 1000, 'unixepoch', 'localtime')
                        AND time_ms > ?1 AND time_ms <= ?2 AND account_id IS ?3
                      GROUP BY session_id
+                     HAVING max(time_ms) > ?5
                  )
                  SELECT session.uuid, coalesce(session.title, session.uuid),
                         coalesce(dir.repo_name, cwd.text, 'unknown folder'), branch.text,
@@ -157,22 +195,31 @@ impl Store {
                      ON branch.id = coalesce(latest.head_branch_label, latest.git_branch_label)
                  ORDER BY recent.usd DESC, recent.last_ms DESC",
             )?
-            .query_map(params![since_ms, now_ms, account_id], |row| {
-                Ok(SessionSpend {
-                    session: row.get(0)?,
-                    label: row.get(1)?,
-                    repo: row.get(2)?,
-                    branch: row.get(3)?,
-                    last_15_minutes_usd: row.get(4)?,
-                    total_usd: row.get(5)?,
-                    last_active_ms: row.get(6)?,
-                    today_usd: row.get(7)?,
-                    top_driver: None,
-                    models: Vec::new(),
-                })
-            })?
+            .query_map(
+                params![
+                    scan_from_ms,
+                    now_ms,
+                    account_id,
+                    fast_since_ms,
+                    listed_after_ms
+                ],
+                |row| {
+                    Ok(SessionSpend {
+                        session: row.get(0)?,
+                        label: row.get(1)?,
+                        repo: row.get(2)?,
+                        branch: row.get(3)?,
+                        last_15_minutes_usd: row.get(4)?,
+                        total_usd: row.get(5)?,
+                        last_active_ms: row.get(6)?,
+                        today_usd: row.get(7)?,
+                        top_driver: None,
+                        models: Vec::new(),
+                    })
+                },
+            )?
             .collect::<rusqlite::Result<Vec<SessionSpend>>>()?;
-        let window = (since_ms, now_ms, account_id);
+        let window = (scan_from_ms, now_ms, account_id);
         for (uuid, share) in self.shares_today(window, DRIVER_LABEL, DRIVER_JOINS, &sessions)? {
             let session = sessions.iter_mut().find(|session| session.session == uuid);
             if let Some(session) = session.filter(|session| session.top_driver.is_none()) {

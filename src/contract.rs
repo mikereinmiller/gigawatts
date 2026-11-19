@@ -260,6 +260,9 @@ pub struct AccountToday {
     pub fastest_session: Option<SessionSpend>,
     /// Sessions that wrote to their transcript in the last 15 minutes, fastest spending (`last_15_minutes_usd`) first.
     pub active_sessions: Vec<SessionSpend>,
+    /// Sessions with requests today, running or finished, most spent today (`today_usd`) first. Their `today_usd` adds up to `cost_usd`, apart from spend Claude Code never wrote to a transcript.
+    #[serde(default)]
+    pub sessions_today: Vec<SessionSpend>,
     /// Models used today that have no price, so their cost is missing until their session ends.
     pub unpriced_models: Vec<String>,
     /// Models whose cost today was scaled to Claude Code's record because their price looks wrong.
@@ -819,7 +822,7 @@ pub struct LimitPace {
     pub provisional: bool,
 }
 
-/// A Claude Code session that wrote to its transcript in the last 15 minutes.
+/// A Claude Code session's spend: one that wrote to its transcript in the last 15 minutes in `active_sessions`, or one with requests today in `sessions_today`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct SessionSpend {
     /// The session ID.
@@ -830,7 +833,7 @@ pub struct SessionSpend {
     pub repo: String,
     /// The git branch, or null.
     pub branch: Option<String>,
-    /// Spend in the last 15 minutes, US dollars. Times 4 is the hourly rate.
+    /// Spend in the last 15 minutes, US dollars, or 0 for a session quiet longer than that. Times 4 is the hourly rate.
     pub last_15_minutes_usd: f64,
     /// The session's spend since it started, US dollars.
     pub total_usd: f64,

@@ -340,3 +340,18 @@ pub fn active_sessions(
 ) -> store::Result<Vec<SessionSpend>> {
     store.sessions_spending_since(account, now_ms - FASTEST_WITHIN_MS, now_ms)
 }
+
+pub fn sessions_today(
+    store: &Store,
+    account: Option<&Account>,
+    now_ms: i64,
+) -> store::Result<Vec<SessionSpend>> {
+    let mut sessions =
+        store.sessions_spending_today(account, now_ms - FASTEST_WITHIN_MS, now_ms)?;
+    sessions.sort_by(|a, b| {
+        b.today_usd
+            .total_cmp(&a.today_usd)
+            .then_with(|| b.last_active_ms.cmp(&a.last_active_ms))
+    });
+    Ok(sessions)
+}

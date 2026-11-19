@@ -12,7 +12,7 @@ Measured 2026-11-11 on the Mac (Apple Silicon), across six runs: four debug, two
 |---|---|---|
 | Database size | 110 MB | 106.1 MB, 247 bytes per stored request |
 | Today's query | 5 ms | 0.34–0.39 ms |
-| Dollar pace, active sessions, and today's cost flags | 40 ms | 18.7–19.4 ms |
+| Dollar pace, active sessions, sessions today, and today's cost flags (2026-11-19, four release runs) | 40 ms | 21.6–22.4 ms |
 | Yearly report by model | 250 ms | 61–87 ms |
 | Yearly report by repo | 250 ms | 77–113 ms |
 | Yearly report by branch | 250 ms | 84–138 ms |

@@ -58,6 +58,7 @@ fn account(limits: Option<AccountLimits>, cost_usd: f64, today: DollarPace) -> A
         pace: today,
         fastest_session: None,
         active_sessions: Vec::new(),
+        sessions_today: Vec::new(),
         unpriced_models: Vec::new(),
         adjusted_models: Vec::new(),
         cost_estimated: false,
