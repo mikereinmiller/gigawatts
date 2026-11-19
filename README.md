@@ -6,7 +6,7 @@ A local usage monitor for Claude Code. It shows how much of your usage limits yo
 
 It spends no Claude tokens, changes nothing in Claude Code's settings, and never reads your login token. Your numbers stay on your machine.
 
-Gigawatts is in early beta. Expect rough edges, and please report what breaks. It gets fresh limits through a Claude Code request that Anthropic hasn't documented, so a Claude Code release could change it; when that happens, Gigawatts marks the numbers it affects and keeps showing the rest.
+Gigawatts is in beta. Expect rough edges, and please report what breaks.
 
 ![The Gigawatts terminal view: usage limits with pace, today's spend against a usual day, today's sessions, and spending by repo](docs/images/terminal.png)
 
@@ -27,21 +27,24 @@ mise run install    # builds, installs, and starts the engine
 
 That puts `gigawatts` in `~/.cargo/bin`. Make sure that folder is on your `PATH`. Without mise, run `cargo install --path . --locked`, then `gigawatts stop` and `gigawatts engine`.
 
-Then start the background engine at login, so history keeps recording while no window is open:
+The engine keeps running after you close the terminal view, but it stops when the computer restarts. To have it start again at login, run:
 
 ```sh
 gigawatts service install
 ```
 
-On macOS this adds a launchd agent; on Linux, a systemd user unit. Both start the engine right away.
+On macOS this adds a launchd agent; on Linux, a systemd user unit. Without it, opening `gigawatts` starts the engine again, and it catches up on any transcripts Claude Code still has. There are no limit readings for the time it was stopped.
 
 ## Use it
 
-```sh
-gigawatts
-```
+Run `gigawatts` to open the terminal view. It shows:
 
-opens the terminal view: your limits with pace and reset countdowns, today's spend against your usual day, every session that spent today with the running ones first, and a spending table you can switch between repo, skill, subagent, and model. Press `?` for every key.
+- each limit, with your pace and a countdown to its reset
+- today's spend next to a usual day
+- every session that spent money today, running ones first
+- a spending table you can switch between repo, skill, subagent, and model
+
+Press `?` to see every key.
 
 A light red badge at the right end of the title row means a limit is forecast to fill before it resets and within the next 24 hours, or is already full.
 
