@@ -1217,7 +1217,7 @@ fn the_every_account_view_closes_when_only_one_account_is_left() {
     let shown = screen(&app, 80, 24);
 
     assert!(!shown.contains("accounts"), "{shown}");
-    assert!(shown.contains("Running now"), "{shown}");
+    assert!(shown.contains("Sessions today"), "{shown}");
 }
 
 #[test]
@@ -2535,8 +2535,8 @@ fn the_top_skill_header_lines_up_with_its_values() {
 #[test]
 fn a_long_repo_and_branch_is_cut_from_the_middle() {
     let mut account = personal();
-    account.active_sessions[0].repo = "inventory".to_string();
-    account.active_sessions[0].branch = Some(format!(
+    account.sessions_today[0].repo = "inventory".to_string();
+    account.sessions_today[0].branch = Some(format!(
         "cloud-agent/inv-917/{}update-dep-rails-8.1.4.1-5-action_view",
         "x".repeat(120)
     ));
@@ -2561,7 +2561,7 @@ fn from_180_columns_active_sessions_and_spending_sit_side_by_side_and_below_that
     let side_by_side = |shown: &str| {
         shown
             .lines()
-            .any(|line| line.contains("╭ Running now") && line.contains("╭ Spending"))
+            .any(|line| line.contains("╭ Sessions today") && line.contains("╭ Spending"))
     };
 
     assert!(side_by_side(&wide), "{wide}");
@@ -2585,8 +2585,8 @@ fn the_spending_box_ends_after_its_rows_instead_of_running_to_the_bottom() {
 #[test]
 fn a_session_with_no_title_yet_is_called_untitled_with_a_short_id() {
     let mut account = personal();
-    account.active_sessions[0].session = "624c5b71-1579-43af-9d9a-1882a9e5dabb".to_string();
-    account.active_sessions[0].label = account.active_sessions[0].session.clone();
+    account.sessions_today[0].session = "624c5b71-1579-43af-9d9a-1882a9e5dabb".to_string();
+    account.sessions_today[0].label = account.sessions_today[0].session.clone();
     let app = open(snapshot(vec![account]), None);
 
     let shown = screen(&app, 120, 44);
@@ -2611,7 +2611,7 @@ fn with_sessions_beside_spending_a_200_by_40_window_keeps_the_side_by_side_top_r
     assert!(
         shown
             .lines()
-            .any(|line| line.contains("╭ Running now") && line.contains("╭ Spending")),
+            .any(|line| line.contains("╭ Sessions today") && line.contains("╭ Spending")),
         "{shown}"
     );
 }
@@ -2634,7 +2634,7 @@ fn each_running_session_is_a_card_with_its_cost_today_where_and_share_of_today()
         .unwrap();
 
     assert!(
-        lines[top - 2].contains("╭ Running now · 2 sessions · $8.90 of today's $14.20 ─"),
+        lines[top - 2].contains("╭ Sessions today · 2 running · $14.20 ─"),
         "{shown}"
     );
     assert!(
@@ -2648,11 +2648,11 @@ fn each_running_session_is_a_card_with_its_cost_today_where_and_share_of_today()
 #[test]
 fn a_session_names_the_skill_or_subagent_that_spent_most_and_its_top_model_when_it_used_several() {
     let mut account = personal();
-    account.active_sessions[0].top_driver = Some(Share {
+    account.sessions_today[0].top_driver = Some(Share {
         label: "review".to_string(),
         share: 0.6,
     });
-    account.active_sessions[0].models = vec![
+    account.sessions_today[0].models = vec![
         Share {
             label: "claude-opus-5-5".to_string(),
             share: 0.8,
@@ -2662,11 +2662,11 @@ fn a_session_names_the_skill_or_subagent_that_spent_most_and_its_top_model_when_
             share: 0.2,
         },
     ];
-    account.active_sessions[1].top_driver = Some(Share {
+    account.sessions_today[1].top_driver = Some(Share {
         label: "code-reviewer subagent".to_string(),
         share: 1.0,
     });
-    account.active_sessions[1].models = vec![Share {
+    account.sessions_today[1].models = vec![Share {
         label: "claude-opus-5-5".to_string(),
         share: 1.0,
     }];
@@ -2683,7 +2683,7 @@ fn a_session_names_the_skill_or_subagent_that_spent_most_and_its_top_model_when_
 fn cards_go_by_cost_today_and_a_session_spending_fast_always_gets_one() {
     let mut account = personal();
     account.cost_usd = 40.0;
-    account.active_sessions = vec![
+    account.sessions_today = vec![
         card_session("Session A", 9.0, 0.5),
         card_session("Session B", 8.0, 0.5),
         card_session("Session C", 7.0, 0.5),
@@ -2705,7 +2705,7 @@ fn cards_go_by_cost_today_and_a_session_spending_fast_always_gets_one() {
 fn fast_sessions_beyond_the_cards_are_flagged_in_the_line_that_adds_up_the_rest() {
     let mut account = personal();
     account.cost_usd = 40.0;
-    account.active_sessions = vec![
+    account.sessions_today = vec![
         card_session("Session A", 9.0, 6.0),
         card_session("Session B", 8.0, 6.0),
         card_session("Session C", 7.0, 6.0),
@@ -2730,7 +2730,7 @@ fn sessions_that_do_not_fit_and_background_runs_add_up_on_one_line() {
     let mut background = card_session("624c5b71-0000", 0.3, 0.1);
     background.label = background.session.clone();
     background.repo = "temporary".to_string();
-    account.active_sessions = vec![
+    account.sessions_today = vec![
         card_session("Session A", 9.0, 0.5),
         card_session("Session B", 8.0, 0.5),
         card_session("Session C", 7.0, 0.5),
@@ -2754,7 +2754,7 @@ fn a_background_run_spending_fast_gets_its_own_card() {
     let mut runaway = card_session("624c5b71-0000", 5.0, 12.5);
     runaway.label = runaway.session.clone();
     runaway.repo = "temporary".to_string();
-    account.active_sessions = vec![card_session("Session A", 9.0, 0.5), runaway];
+    account.sessions_today = vec![card_session("Session A", 9.0, 0.5), runaway];
     let app = open(snapshot(vec![account]), None);
 
     let shown = screen(&app, 100, 34);
@@ -2770,7 +2770,7 @@ fn background_runs_alone_line_up_with_the_rest_of_the_panel() {
     let mut background = card_session("624c5b71-0000", 0.3, 0.1);
     background.label = background.session.clone();
     background.repo = "temporary".to_string();
-    account.active_sessions = vec![background];
+    account.sessions_today = vec![background];
     let app = open(snapshot(vec![account]), None);
 
     let shown = screen(&app, 100, 34);
@@ -2781,7 +2781,7 @@ fn background_runs_alone_line_up_with_the_rest_of_the_panel() {
 #[test]
 fn a_session_with_nothing_new_for_five_minutes_says_it_is_idle() {
     let mut account = personal();
-    account.active_sessions[1].last_active_ms = NOW_MS - 9 * 60_000;
+    account.sessions_today[1].last_active_ms = NOW_MS - 9 * 60_000;
     let app = open(snapshot(vec![account]), None);
 
     let shown = screen(&app, 100, 40);
@@ -2791,22 +2791,29 @@ fn a_session_with_nothing_new_for_five_minutes_says_it_is_idle() {
 }
 
 #[test]
-fn a_session_quiet_for_over_15_minutes_leaves_running_now_even_if_the_snapshot_still_lists_it() {
+fn a_session_quiet_for_over_15_minutes_stays_as_finished_even_if_the_snapshot_says_it_spent_recently()
+ {
     let mut account = personal();
-    account.active_sessions[1].last_active_ms = NOW_MS - 2 * 3_600_000;
+    account.sessions_today[1].last_active_ms = NOW_MS - 2 * 3_600_000;
+    account.sessions_today[1].last_15_minutes_usd = 6.0;
     let app = open(snapshot(vec![account]), None);
 
     let shown = screen(&app, 100, 40);
 
-    assert!(shown.contains("Running now · 1 session · $8.40"), "{shown}");
+    assert!(
+        shown.contains("Sessions today · 1 running · $14.20"),
+        "{shown}"
+    );
     assert!(shown.contains("Fix the login redirect"), "{shown}");
-    assert!(!shown.contains("Write release notes"), "{shown}");
+    assert!(shown.contains("Write release notes"), "{shown}");
+    assert!(shown.contains("last active 2h ago"), "{shown}");
+    assert!(!shown.contains("▲"), "{shown}");
 }
 
 #[test]
 fn a_session_from_an_engine_that_did_not_record_last_activity_shows_no_idle_time() {
     let mut account = personal();
-    account.active_sessions[1].last_active_ms = 0;
+    account.sessions_today[1].last_active_ms = 0;
     let app = open(snapshot(vec![account]), None);
 
     let shown = screen(&app, 100, 40);
@@ -2815,22 +2822,22 @@ fn a_session_from_an_engine_that_did_not_record_last_activity_shows_no_idle_time
 }
 
 #[test]
-fn with_nothing_running_the_section_says_so_in_one_line() {
+fn with_no_sessions_today_the_section_says_so_in_one_line() {
     let mut account = personal();
-    account.active_sessions.clear();
+    account.sessions_today.clear();
     let app = open(snapshot(vec![account]), None);
 
     let shown = screen(&app, 100, 40);
 
-    assert!(shown.contains("╭ Running now ─"), "{shown}");
-    assert!(shown.contains("Nothing in the last 15 minutes."), "{shown}");
+    assert!(shown.contains("╭ Sessions today ─"), "{shown}");
+    assert!(shown.contains("│ No sessions today "), "{shown}");
 }
 
 #[test]
 fn s_shows_every_running_session_in_the_spending_tables_place_and_esc_goes_back() {
     let mut account = personal();
     account.cost_usd = 40.0;
-    account.active_sessions = (0..6)
+    account.sessions_today = (0..6)
         .map(|n| card_session(&format!("Session {n}"), 6.0 - n as f64, 0.5))
         .collect();
     let mut app = with_spending(open(snapshot(vec![account]), None));
@@ -2860,7 +2867,7 @@ fn in_80_by_24_the_sessions_list_reaches_every_session_and_background_run_with_d
     let mut background = card_session("624c5b71-0000", 0.3, 0.1);
     background.label = background.session.clone();
     background.repo = "temporary".to_string();
-    account.active_sessions = (0..6)
+    account.sessions_today = (0..6)
         .map(|n| card_session(&format!("Session {n}"), 6.0 - n as f64, 0.5))
         .chain([background])
         .collect();
@@ -2914,7 +2921,7 @@ fn in_80_by_24_tab_does_nothing_while_the_sessions_list_is_open() {
 }
 
 #[test]
-fn beside_spending_the_running_now_pane_splits_where_limits_and_today_do_and_matches_spendings_height()
+fn beside_spending_the_sessions_today_pane_splits_where_limits_and_today_do_and_matches_spendings_height()
  {
     let app = with_spending(open(snapshot(vec![personal()]), None));
 
@@ -2924,7 +2931,7 @@ fn beside_spending_the_running_now_pane_splits_where_limits_and_today_do_and_mat
     let top = lines.iter().find(|line| line.contains("╭ Today")).unwrap();
     let bottom = lines
         .iter()
-        .position(|line| line.contains("╭ Running now") && line.contains("╭ Spending"))
+        .position(|line| line.contains("╭ Sessions today") && line.contains("╭ Spending"))
         .unwrap();
     let closing = lines[bottom..]
         .iter()
@@ -2940,17 +2947,17 @@ fn beside_spending_the_running_now_pane_splits_where_limits_and_today_do_and_mat
 }
 
 #[test]
-fn the_running_now_heading_has_a_blank_row_under_it_and_its_dollars_stand_out() {
+fn the_sessions_today_heading_has_a_blank_row_under_it_and_its_dollars_stand_out() {
     let app = open(snapshot(vec![personal()]), None);
 
     let shown = screen(&app, 100, 40);
     let lines: Vec<&str> = shown.lines().collect();
     let heading = lines
         .iter()
-        .position(|line| line.contains("╭ Running now"))
+        .position(|line| line.contains("╭ Sessions today"))
         .unwrap();
     let cost = cell_at(&app, 100, 40, "$8.40 │");
-    let running = cell_at(&app, 100, 40, "$8.90 of");
+    let total = cell_at(&app, 100, 40, "$14.20 ─");
 
     assert!(
         lines[heading + 1].trim_matches(['│', ' ', '"']).is_empty(),
@@ -2962,7 +2969,7 @@ fn the_running_now_heading_has_a_blank_row_under_it_and_its_dollars_stand_out() 
     );
     assert_eq!(cost.fg, ratatui::style::Color::Cyan);
     assert!(cost.modifier.contains(Modifier::BOLD));
-    assert_eq!(running.fg, ratatui::style::Color::Cyan);
+    assert_eq!(total.fg, ratatui::style::Color::Cyan);
 }
 
 #[test]
@@ -3007,7 +3014,7 @@ fn with_limits_and_today_stacked_no_pane_heading_has_a_blank_row_under_it() {
     };
 
     assert!(
-        below("╭ Running now").contains("│ Fix the login redirect"),
+        below("╭ Sessions today").contains("│ Fix the login redirect"),
         "{shown}"
     );
     assert!(below("╭ Spending").contains("← →  repo"), "{shown}");
@@ -3109,7 +3116,7 @@ fn the_all_view_shows_every_accounts_running_sessions_with_the_account_named() {
     let shown = every_account_screen(100, 56);
 
     assert!(
-        shown.contains("╭ Running now · 2 sessions · $8.90 of today's $14.60"),
+        shown.contains("╭ Sessions today · 2 running · $14.60 ─"),
         "{shown}"
     );
     assert!(
@@ -3120,13 +3127,13 @@ fn the_all_view_shows_every_accounts_running_sessions_with_the_account_named() {
 }
 
 #[test]
-fn from_180_columns_the_all_view_puts_running_now_beside_spending() {
+fn from_180_columns_the_all_view_puts_sessions_today_beside_spending() {
     let shown = every_account_screen(200, 50);
 
     assert!(
         shown
             .lines()
-            .any(|line| line.contains("╭ Running now") && line.contains("╭ Spending")),
+            .any(|line| line.contains("╭ Sessions today") && line.contains("╭ Spending")),
         "{shown}"
     );
 }
@@ -3563,13 +3570,13 @@ fn credits_in_the_millions_group_every_three_digits() {
 #[test]
 fn stacked_spacing_never_hides_a_running_session_card() {
     let mut busy = personal();
-    busy.active_sessions = (0..8)
+    busy.sessions_today = (0..8)
         .map(|n| session(&format!("Task {n}"), "orchard", "main", 0.1, 1.0 + n as f64))
         .collect();
     let mut side = personal();
     side.account = Some(NEW.to_string());
     side.account_label = "side".to_string();
-    side.active_sessions = Vec::new();
+    side.sessions_today = Vec::new();
     let mut app = with_spending(open(snapshot(vec![busy, work(), side]), None));
     app.handle(KeyCode::Char('4').into());
     answer(&mut app);
@@ -3607,7 +3614,7 @@ fn help_explains_the_every_account_bar_too() {
 #[test]
 fn stacked_spacing_never_hides_a_session_card_beside_the_spending_table() {
     let mut busy = personal();
-    busy.active_sessions = (0..8)
+    busy.sessions_today = (0..8)
         .map(|n| session(&format!("Task {n}"), "orchard", "main", 0.1, 1.0 + n as f64))
         .collect();
     let mut accounts = vec![busy, work()];
@@ -3615,7 +3622,7 @@ fn stacked_spacing_never_hides_a_session_card_beside_the_spending_table() {
         let mut extra = personal();
         extra.account = Some(format!("{id}-{label}"));
         extra.account_label = label.to_string();
-        extra.active_sessions = Vec::new();
+        extra.sessions_today = Vec::new();
         accounts.push(extra);
     }
     let mut app = with_spending(open(snapshot(accounts), None));
@@ -3922,7 +3929,7 @@ fn a_credit_limit_at_100_percent_with_no_reset_lights_nothing() {
 fn the_line_that_adds_up_the_rest_sits_in_the_bottom_border_so_a_second_row_of_cards_fits() {
     let mut account = personal();
     account.cost_usd = 40.0;
-    account.active_sessions = vec![
+    account.sessions_today = vec![
         card_session("Session A", 9.0, 0.5),
         card_session("Session B", 8.0, 0.5),
         card_session("Session C", 7.0, 0.5),
@@ -3941,7 +3948,7 @@ fn the_line_that_adds_up_the_rest_sits_in_the_bottom_border_so_a_second_row_of_c
 
 fn four_sessions_on_the_all_tab() -> App {
     let mut first = personal();
-    first.active_sessions = vec![
+    first.sessions_today = vec![
         card_session("Session A", 9.0, 0.5),
         card_session("Session B", 8.0, 0.5),
         card_session("Session C", 7.0, 0.5),
@@ -3950,7 +3957,7 @@ fn four_sessions_on_the_all_tab() -> App {
     let mut side = personal();
     side.account = Some(NEW.to_string());
     side.account_label = "side".to_string();
-    side.active_sessions = Vec::new();
+    side.sessions_today = Vec::new();
     let mut app = with_spending(open(snapshot(vec![first, work(), side]), None));
     app.handle(KeyCode::Char('4').into());
     answer(&mut app);
@@ -3985,7 +3992,7 @@ fn blank_rows_give_way_one_at_a_time_so_a_second_row_of_session_cards_fits() {
         assert!(shown.contains("Session D"), "{height}: {shown}");
         assert_eq!(blank_inside(lines[2]), under_tabs, "{height}: {shown}");
         assert_eq!(
-            pane_top(&lines, "╭ Running now"),
+            pane_top(&lines, "╭ Sessions today"),
             running_gap,
             "{height}: {shown}"
         );
@@ -4010,10 +4017,10 @@ fn the_row_under_the_tabs_stays_unless_giving_it_up_wins_a_second_row_of_cards()
         let mut account = personal();
         account.account = Some(format!("account-{n}"));
         account.account_label = format!("account {n}");
-        account.active_sessions = Vec::new();
+        account.sessions_today = Vec::new();
         accounts.push(account);
     }
-    accounts[0].active_sessions = vec![
+    accounts[0].sessions_today = vec![
         card_session("Session A", 9.0, 0.5),
         card_session("Session B", 8.0, 0.5),
         card_session("Session C", 7.0, 0.5),
@@ -4045,7 +4052,7 @@ fn the_row_under_the_tabs_stays_unless_giving_it_up_wins_a_second_row_of_cards()
 #[test]
 fn on_one_account_the_row_under_the_tabs_then_the_running_gap_give_way_for_a_second_row() {
     let mut account = personal();
-    account.active_sessions = vec![
+    account.sessions_today = vec![
         card_session("Session A", 9.0, 0.5),
         card_session("Session B", 8.0, 0.5),
         card_session("Session C", 7.0, 0.5),
@@ -4063,7 +4070,7 @@ fn on_one_account_the_row_under_the_tabs_then_the_running_gap_give_way_for_a_sec
         let lines: Vec<&str> = shown.lines().collect();
         let running = lines
             .iter()
-            .position(|line| line.contains("╭ Running"))
+            .position(|line| line.contains("╭ Sessions today"))
             .unwrap();
 
         assert_eq!(blank_inside(lines[2]), row_under_tabs, "{height}: {shown}");
@@ -4087,7 +4094,7 @@ fn on_one_account_the_row_under_the_tabs_then_the_running_gap_give_way_for_a_sec
 #[test]
 fn under_180_columns_the_running_gap_gives_way_for_a_second_row_too() {
     let mut account = personal();
-    account.active_sessions = vec![
+    account.sessions_today = vec![
         card_session("Session A", 9.0, 0.5),
         card_session("Session B", 8.0, 0.5),
         card_session("Session C", 7.0, 0.5),
@@ -4102,7 +4109,7 @@ fn under_180_columns_the_running_gap_gives_way_for_a_second_row_too() {
         let lines: Vec<&str> = shown.lines().collect();
         let running = lines
             .iter()
-            .position(|line| line.contains("╭ Running"))
+            .position(|line| line.contains("╭ Sessions today"))
             .unwrap();
 
         assert_eq!(
@@ -4420,4 +4427,208 @@ fn a_reset_limits_bar_is_gray_and_has_no_pace_mark() {
             ratatui::style::Color::DarkGray
         );
     }
+}
+
+fn finished(mut spend: SessionSpend, quiet_minutes: i64) -> SessionSpend {
+    spend.last_active_ms = NOW_MS - quiet_minutes * 60_000;
+    spend.last_15_minutes_usd = 0.0;
+    spend
+}
+
+#[test]
+fn sessions_today_puts_fast_then_running_then_finished_cards_under_the_days_total() {
+    let mut account = personal();
+    account.cost_usd = 40.0;
+    account.sessions_today = vec![
+        finished(card_session("Finished costly", 20.0, 0.0), 120),
+        card_session("Running cheap", 5.0, 0.5),
+        card_session("Fast newcomer", 3.0, 6.0),
+    ];
+    let app = open(snapshot(vec![account]), None);
+
+    let shown = screen(&app, 160, 60);
+    let at = |text: &str| {
+        shown
+            .find(text)
+            .unwrap_or_else(|| panic!("{text}: {shown}"))
+    };
+
+    assert!(
+        shown.contains("╭ Sessions today · 2 running · $40.00 ─"),
+        "{shown}"
+    );
+    assert!(at("│ Fast newcomer ") < at("│ Running cheap "), "{shown}");
+    assert!(at("│ Running cheap ") < at("│ Finished costly "), "{shown}");
+    assert!(shown.contains("last active 2h ago"), "{shown}");
+    assert_eq!(shown.matches("▲").count(), 1, "{shown}");
+}
+
+#[test]
+fn a_finished_card_is_dimmed() {
+    let mut account = personal();
+    account.sessions_today = vec![
+        card_session("Running cheap", 5.0, 0.5),
+        finished(card_session("Finished costly", 8.0, 0.0), 40),
+    ];
+    let app = open(snapshot(vec![account]), None);
+
+    let running = cell_at(&app, 100, 40, "Running cheap");
+    let done = cell_at(&app, 100, 40, "Finished costly");
+    let done_cost = cell_at(&app, 100, 40, "$8.00");
+
+    assert_eq!(running.fg, ratatui::style::Color::Reset);
+    assert_eq!(done.fg, ratatui::style::Color::DarkGray);
+    assert_eq!(done_cost.fg, ratatui::style::Color::DarkGray);
+}
+
+#[test]
+fn finished_sessions_fold_into_the_rest_before_any_running_one() {
+    let mut account = personal();
+    account.cost_usd = 40.0;
+    account.sessions_today = vec![
+        finished(card_session("Finished costly", 20.0, 0.0), 30),
+        card_session("Session A", 4.0, 0.5),
+        card_session("Session B", 3.0, 0.5),
+    ];
+    let app = open(snapshot(vec![account]), None);
+
+    let shown = screen(&app, 100, 34);
+
+    for name in ["A", "B"] {
+        assert!(shown.contains(&format!("│ Session {name} ")), "{shown}");
+    }
+    assert!(!shown.contains("Finished costly"), "{shown}");
+    assert!(shown.contains("+ 1 more · $20.00 today"), "{shown}");
+}
+
+#[test]
+fn a_finished_background_run_counts_in_background_runs() {
+    let mut account = personal();
+    account.cost_usd = 40.0;
+    let mut background = finished(card_session("624c5b71-0000", 0.3, 0.0), 50);
+    background.label = background.session.clone();
+    background.repo = "temporary".to_string();
+    background.last_15_minutes_usd = 12.5;
+    account.sessions_today = vec![card_session("Session A", 9.0, 0.5), background];
+    let app = open(snapshot(vec![account]), None);
+
+    let shown = screen(&app, 100, 34);
+
+    assert!(shown.contains("1 background run · $0.30 today"), "{shown}");
+    assert!(!shown.contains("untitled session"), "{shown}");
+    assert!(shown.contains("· 1 running ·"), "{shown}");
+}
+
+#[test]
+fn a_session_quiet_for_16_minutes_is_finished_and_says_when_it_was_last_active() {
+    let mut account = personal();
+    account.sessions_today[0].last_active_ms = NOW_MS - 9 * 60_000;
+    account.sessions_today[1].last_active_ms = NOW_MS - 16 * 60_000;
+    let app = open(snapshot(vec![account]), None);
+
+    let shown = screen(&app, 100, 40);
+
+    assert!(shown.contains("idle 9m │"), "{shown}");
+    assert!(shown.contains("last active 16m ago"), "{shown}");
+    assert!(shown.contains("· 1 running ·"), "{shown}");
+}
+
+#[test]
+fn the_all_tab_puts_running_sessions_from_every_account_before_finished_ones() {
+    let mut first = personal();
+    first.sessions_today = vec![finished(card_session("Finished costly", 20.0, 0.0), 90)];
+    let mut second = work();
+    second.sessions_today = vec![card_session("Running cheap", 0.4, 0.1)];
+    let mut app = open(snapshot(vec![first, second]), Some(PERSONAL.to_string()));
+
+    app.handle(KeyCode::Char('3').into());
+    let shown = screen(&app, 100, 60);
+    let at = |text: &str| {
+        shown
+            .find(text)
+            .unwrap_or_else(|| panic!("{text}: {shown}"))
+    };
+
+    assert!(at("│ Running cheap ") < at("│ Finished costly "), "{shown}");
+    assert!(shown.contains("│ work · orchard · main"), "{shown}");
+    assert!(
+        shown.contains("╭ Sessions today · 1 running · $14.60 ─"),
+        "{shown}"
+    );
+}
+
+#[test]
+fn s_lists_every_session_today_in_tier_order() {
+    let mut account = personal();
+    account.cost_usd = 40.0;
+    account.sessions_today = (0..5)
+        .map(|n| {
+            finished(
+                card_session(&format!("Finished {n}"), 9.0 - n as f64, 0.0),
+                30,
+            )
+        })
+        .chain([card_session("Running cheap", 0.2, 0.1)])
+        .collect();
+    let mut app = with_spending(open(snapshot(vec![account]), None));
+
+    app.handle(KeyCode::Char('s').into());
+    let shown = screen(&app, 100, 60);
+    let at = |text: &str| {
+        shown
+            .find(text)
+            .unwrap_or_else(|| panic!("{text}: {shown}"))
+    };
+
+    assert!(at("│ Running cheap ") < at("│ Finished 0 "), "{shown}");
+    for n in 0..4 {
+        assert!(
+            at(&format!("│ Finished {n} ")) < at(&format!("│ Finished {} ", n + 1)),
+            "{shown}"
+        );
+    }
+}
+
+#[test]
+fn finished_cards_only_fill_the_rows_running_sessions_need() {
+    let mut account = personal();
+    account.cost_usd = 40.0;
+    account.sessions_today = (0..5)
+        .map(|n| {
+            finished(
+                card_session(&format!("Finished {n}"), 9.0 - n as f64, 0.0),
+                30,
+            )
+        })
+        .chain([card_session("Running cheap", 0.2, 0.1)])
+        .collect();
+    let app = with_spending(open(snapshot(vec![account]), None));
+
+    let shown = screen(&app, 100, 60);
+
+    assert!(shown.contains("│ Running cheap "), "{shown}");
+    assert!(shown.contains("│ Finished 0 "), "{shown}");
+    assert!(!shown.contains("Finished 1"), "{shown}");
+    assert!(shown.contains("+ 4 more · $26.00 today"), "{shown}");
+}
+
+#[test]
+fn with_nothing_running_finished_cards_take_one_row() {
+    let mut account = personal();
+    account.cost_usd = 40.0;
+    account.sessions_today = (0..3)
+        .map(|n| {
+            finished(
+                card_session(&format!("Finished {n}"), 9.0 - n as f64, 0.0),
+                30,
+            )
+        })
+        .collect();
+    let app = with_spending(open(snapshot(vec![account]), None));
+
+    let shown = screen(&app, 100, 60);
+
+    assert!(shown.contains("│ Finished 1 "), "{shown}");
+    assert!(!shown.contains("Finished 2"), "{shown}");
+    assert!(shown.contains("+ 1 more · $7.00 today"), "{shown}");
 }

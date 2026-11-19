@@ -37,7 +37,7 @@ On macOS this adds a launchd agent; on Linux, a systemd user unit. Both start th
 gigawatts
 ```
 
-opens the terminal view: your limits with pace and reset countdowns, today's spend against your usual day, the sessions running now, and a spending table you can switch between repo, skill, subagent, and model. Press `?` for every key.
+opens the terminal view: your limits with pace and reset countdowns, today's spend against your usual day, every session that spent today with the running ones first, and a spending table you can switch between repo, skill, subagent, and model. Press `?` for every key.
 
 A light red badge at the right end of the title row means a limit is forecast to fill before it resets and within the next 24 hours, or is already full.
 

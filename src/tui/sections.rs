@@ -86,7 +86,7 @@ pub(crate) fn one_account_height(
     let sessions = if with_sessions {
         let room = height.saturating_sub(panels_height + HISTORY_MIN_HEIGHT);
         sessions::height(
-            &sessions::Running::of(account, now_ms),
+            &sessions::SessionsToday::of(account, now_ms),
             width,
             room,
             panels.side_by_side.is_some(),
@@ -125,7 +125,8 @@ fn overview_panels(
         let left = limits_width(width);
         let roomy = panels(account, problems, now_ms, local_minute, width, Some(left));
         let sessions =
-            sessions::min_height(&sessions::Running::of(account, now_ms), width, true) as usize;
+            sessions::min_height(&sessions::SessionsToday::of(account, now_ms), width, true)
+                as usize;
         let below = if with_sessions {
             sessions + HISTORY_MIN_HEIGHT as usize
         } else {
@@ -254,7 +255,7 @@ pub(crate) fn one_account(
         sessions::draw(
             frame,
             sessions_area,
-            &sessions::Running::of(account, now_ms),
+            &sessions::SessionsToday::of(account, now_ms),
             now_ms,
             roomy,
         );
@@ -1122,7 +1123,7 @@ pub(crate) fn help(frame: &mut Frame, area: Rect, report_port: Option<u16>) {
         key("↑ ↓", "highlight a spending row"),
         key("Enter", "show or hide a repo's branches"),
         key("e", "show or hide every repo's branches"),
-        key("s", "list every running session"),
+        key("s", "list every session today"),
         key("u", "show Anthropic's usage advice for today"),
     ];
     if let Some(port) = report_port {

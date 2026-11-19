@@ -18,7 +18,7 @@ expression: advice
 "│ $14.20 · 2│ Today · 13 sessions, 2319 requests                                       │           │"
 "│ cost leave│   94%  Give "review" subagents a cheaper model                           │           │"
 "╰───────────│   38%  Start fresh when you switch tasks · run /clear                    │───────────╯"
-"╭ Running no│   22%  always on context                                                 │───────────╮"
+"╭ Sessions t│   22%  always on context                                                 │───────────╮"
 "│ Fix the lo│ Agents: review 33% · deployer 6%                                         │     $0.50 │"
 "│ orchard · │ Skills: implement 4%                                                     │           │"
 "│ ▇▇▇▇▇▇▇▇▇▇│                                                                          │% of today │"
