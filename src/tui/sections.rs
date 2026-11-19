@@ -323,7 +323,7 @@ pub(crate) fn limit_lines(
                     LimitLayout::Compact => named_limit_row(
                         shown,
                         stale,
-                        false,
+                        has_reset(shown, now_ms),
                         None,
                         forecast(shown, now_ms, local_minute),
                         &detail(shown, now_ms, local_minute),
@@ -338,7 +338,7 @@ pub(crate) fn limit_lines(
                             has_reset(shown, now_ms),
                             status(shown, now_ms),
                             forecast(shown, now_ms, local_minute),
-                            &flags(shown, now_ms),
+                            &flags(shown, now_ms, local_minute),
                             width,
                             (elsewhere_estimate(shown, now_ms), estimate_width),
                             true,
@@ -395,9 +395,18 @@ fn limit_row(
     local_minute: LocalMinute,
     width: u16,
 ) -> Vec<Line<'static>> {
-    let color = if stale { STALE } else { pace_color(shown) };
+    let reset = has_reset(shown, now_ms);
+    let color = if stale || reset {
+        STALE
+    } else {
+        pace_color(shown)
+    };
     let width = width as usize;
-    let reading = format!("{}%", percent(shown.limit.percent));
+    let reading = if reset {
+        "reset".to_string()
+    } else {
+        format!("{}%", percent(shown.limit.percent))
+    };
     let estimate = elsewhere_estimate(shown, now_ms)
         .map(|estimate| format!(" {estimate}"))
         .unwrap_or_default();
@@ -414,7 +423,7 @@ fn limit_row(
             Span::styled(reading, Style::new().fg(color).add_modifier(Modifier::BOLD)),
             Span::styled(estimate, elsewhere_style(color)),
         ]),
-        Line::from(bar(shown, width, color, stale)),
+        Line::from(bar(shown, width, color, stale, reset)),
     ];
     let forecast = forecast(shown, now_ms, local_minute);
     let mut budget = credit_budget(shown, now_ms);
@@ -481,7 +490,7 @@ fn named_limit_row(
         "{:<NAME_WIDTH$}",
         clip(&limit_name(&shown.limit), NAME_WIDTH - 1)
     ))];
-    spans.extend(bar(shown, bar_width, color, stale || reset));
+    spans.extend(bar(shown, bar_width, color, stale, reset));
     let reading = if reset {
         format!("{:>PERCENT_WIDTH$}", "reset")
     } else {
@@ -593,15 +602,26 @@ fn pace_color(shown: &PacedLimit) -> Color {
     }
 }
 
-fn bar(shown: &PacedLimit, width: usize, color: Color, stale: bool) -> Vec<Span<'static>> {
-    let track = if stale { STALE_TRACK } else { BAR };
-    let filled = cells(shown.limit.percent, width);
+fn bar(
+    shown: &PacedLimit,
+    width: usize,
+    color: Color,
+    stale: bool,
+    reset: bool,
+) -> Vec<Span<'static>> {
+    let track = if stale || reset { STALE_TRACK } else { BAR };
+    let filled = if reset {
+        0
+    } else {
+        cells(shown.limit.percent, width)
+    };
     let elsewhere_from = elsewhere_share(shown).map_or(filled, |elsewhere| {
         filled.saturating_sub(cells(elsewhere, width))
     });
     let expected = shown
         .pace
         .as_ref()
+        .filter(|_| !reset)
         .map(|pace| cells(pace.expected_percent, width).min(width.saturating_sub(1)));
     let mut spans = Vec::new();
     for index in 0..width {
@@ -638,7 +658,7 @@ fn cells(percent: f64, width: usize) -> usize {
 
 fn detail(shown: &PacedLimit, now_ms: i64, local_minute: LocalMinute) -> Vec<String> {
     if has_reset(shown, now_ms) {
-        return vec!["reset since this reading".to_string()];
+        return vec![reset_detail(shown, now_ms, local_minute)];
     }
     let mut parts: Vec<String> = shown
         .limit
@@ -649,6 +669,22 @@ fn detail(shown: &PacedLimit, now_ms: i64, local_minute: LocalMinute) -> Vec<Str
         .collect();
     parts.extend(detail_after_credits(shown, now_ms, local_minute));
     parts
+}
+
+fn reset_detail(shown: &PacedLimit, now_ms: i64, local_minute: LocalMinute) -> String {
+    let Some(resets_ms) = resets_ms(shown) else {
+        return "reset, not read since".to_string();
+    };
+    let when = if now_ms - resets_ms < DAY_MS {
+        clock(resets_ms, local_minute)
+    } else {
+        local_minute(resets_ms)
+    };
+    if when.is_empty() {
+        format!("reset {} ago, not read since", duration(now_ms - resets_ms))
+    } else {
+        format!("reset at {when}, not read since")
+    }
 }
 
 fn elsewhere(shown: &PacedLimit) -> String {
@@ -776,9 +812,9 @@ fn money(amount: f64, currency: &str, cents: bool) -> String {
     }
 }
 
-fn flags(shown: &PacedLimit, now_ms: i64) -> Vec<String> {
+fn flags(shown: &PacedLimit, now_ms: i64, local_minute: LocalMinute) -> Vec<String> {
     if has_reset(shown, now_ms) {
-        return Vec::new();
+        return vec![reset_detail(shown, now_ms, local_minute)];
     }
     unusual_severity(&shown.limit).into_iter().collect()
 }

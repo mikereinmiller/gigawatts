@@ -1329,6 +1329,11 @@ fn the_every_account_view_marks_a_limit_that_reset_since_its_reading() {
         cell_at(&app, 80, 40, " reset ").fg,
         ratatui::style::Color::DarkGray
     );
+    assert!(!session_row.contains('▇'), "{stacked}");
+    assert!(
+        stacked.contains("reset 20m ago, not read since"),
+        "{stacked}"
+    );
 }
 
 #[test]
@@ -4360,4 +4365,60 @@ fn the_weekly_bar_shades_the_estimate_used_elsewhere_at_the_end_of_what_is_fille
 
     assert_eq!(cells.len(), 27, "{cells:?}");
     assert_eq!(dim, vec![2, 3, 4, 5], "{cells:?}");
+}
+
+fn reset_account_screen(width: u16, height: u16) -> String {
+    let mut reset = personal();
+    reset.limits.as_mut().unwrap().limits[0].limit.resets_at =
+        Some("2026-11-09T09:00:00Z".to_string());
+    let app = open(snapshot(vec![reset, work()]), None);
+    screen(&app, width, height)
+}
+
+#[test]
+fn a_limit_past_its_reset_shows_an_empty_gray_bar_and_when_it_reset_at_any_width() {
+    for width in [60, 120] {
+        let shown = reset_account_screen(width, 40);
+
+        assert!(shown.contains("reset at 09:00, not read since"), "{shown}");
+        assert!(!shown.contains("since this reading"), "{shown}");
+        let lines: Vec<&str> = shown.lines().collect();
+        let name = lines
+            .iter()
+            .position(|line| line.contains("Session"))
+            .unwrap();
+        let bar = lines[name..=name + 1]
+            .iter()
+            .find(|line| line.contains('▂'))
+            .unwrap();
+        let session_bar = &bar[..bar.find("│ ╭").unwrap_or(bar.len())];
+        assert!(!session_bar.contains('▇'), "{shown}");
+        assert!(lines[name].contains("reset"), "{shown}");
+        assert!(!lines[name].contains("5%"), "{shown}");
+    }
+}
+
+#[test]
+fn a_reset_limits_bar_is_gray_and_has_no_pace_mark() {
+    let mut reset = personal();
+    reset.limits.as_mut().unwrap().limits[0].limit.resets_at =
+        Some("2026-11-09T09:00:00Z".to_string());
+    let app = open(snapshot(vec![reset, work()]), None);
+
+    let cells = bar_cells(&app, 60, 40, "Session ");
+
+    assert!(!cells.is_empty());
+    for cell in &cells {
+        assert_eq!(cell.symbol(), "▂", "{cells:?}");
+        assert!(
+            !cell.modifier.contains(ratatui::style::Modifier::BOLD),
+            "{cells:?}"
+        );
+    }
+    for width in [60, 120] {
+        assert_eq!(
+            cell_at(&app, width, 40, "reset │").fg,
+            ratatui::style::Color::DarkGray
+        );
+    }
 }
