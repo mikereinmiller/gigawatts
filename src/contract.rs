@@ -840,7 +840,7 @@ pub struct SessionSpend {
     /// When it last wrote to its transcript, Unix milliseconds.
     #[serde(default)]
     pub last_active_ms: i64,
-    /// The session's spend today, US dollars.
+    /// The session's spend today on this account, US dollars.
     #[serde(default)]
     pub today_usd: f64,
     /// The skill or subagent that spent most of today's spend, with its share, or null.

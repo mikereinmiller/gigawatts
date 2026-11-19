@@ -185,6 +185,7 @@ impl Store {
                         recent.last_ms,
                         (SELECT coalesce(sum(cost_usd), 0) FROM requests
                          WHERE requests.session_id = recent.session_id
+                           AND requests.account_id IS ?3
                            AND requests.day = date(?2 / 1000, 'unixepoch', 'localtime'))
                  FROM recent
                  JOIN sessions AS session ON session.id = recent.session_id

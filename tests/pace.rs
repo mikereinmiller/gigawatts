@@ -15,7 +15,7 @@ use gigawatts::pricing::PriceTable;
 use gigawatts::sources::claude_json::Account;
 use gigawatts::sources::get_usage;
 use gigawatts::sources::git::Resolver;
-use gigawatts::store::{LimitPoint, Store};
+use gigawatts::store::{LimitPoint, SeenLogin, Store};
 
 const WORK: &str = "00000000-0000-4000-8000-00000000000a/00000000-0000-4000-8000-0000000000e0";
 
@@ -1127,4 +1127,51 @@ fn a_session_with_only_unpriced_requests_today_is_in_sessions_today_at_0() {
     assert_eq!(today.len(), 1);
     assert_eq!(today[0].session, "s1");
     assert_eq!(today[0].today_usd, 0.0);
+}
+
+#[test]
+fn a_session_that_switched_accounts_counts_only_each_accounts_spend_today() {
+    let other: Account =
+        "00000000-0000-4000-8000-00000000000b/00000000-0000-4000-8000-0000000000e1"
+            .parse()
+            .unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let projects = dir.path().join("projects").join("-work-orchard");
+    fs::create_dir_all(&projects).unwrap();
+    fs::write(
+        projects.join("s1.jsonl"),
+        session_spend_line("s1", "a1", "2026-11-04 09:00:00", 6)
+            + &session_spend_line("s1", "a2", "2026-11-04 11:00:00", 4),
+    )
+    .unwrap();
+    let attribution = Attribution {
+        seen_logins: vec![
+            SeenLogin {
+                from_ms: 0,
+                account: work(),
+            },
+            SeenLogin {
+                from_ms: local_ms("2026-11-04 10:00:00"),
+                account: other.clone(),
+            },
+        ],
+        ..Attribution::default()
+    };
+    let mut store = Store::open(&dir.path().join("history.sqlite3")).unwrap();
+    ingest_tree(
+        &mut store,
+        &dir.path().join("projects"),
+        &PriceTable::built_in(),
+        &attribution,
+        &Resolver::default(),
+    )
+    .unwrap();
+    let now = local_ms("2026-11-04 14:00:00");
+
+    let before = sessions_today(&store, Some(&work()), now).unwrap();
+    let after = sessions_today(&store, Some(&other), now).unwrap();
+
+    assert_eq!(before[0].today_usd, 6.0);
+    assert_eq!(after[0].today_usd, 4.0);
+    assert_eq!(before[0].models[0].share, 1.0);
 }
