@@ -33,7 +33,7 @@ Every response has `schema_version`, currently `2`. New fields don't change it; 
 
 ## How often to call
 
-Calling `gigawatts status --json` once a minute is fine. Each call only reads the local database; it never makes Gigawatts ask Anthropic for new limits. The engine refreshes limits itself every 10 minutes while you're using Claude Code, and leaves them alone while you're idle, so a pane left open overnight costs nothing. Nothing changes faster than once a minute except running sessions' spend.
+Calling `gigawatts status --json` once a minute is fine. Each call only reads the local database; it never makes Gigawatts ask Anthropic for new limits. The engine refreshes limits itself every 10 minutes while you're using Claude Code, and a minute after a 5-hour or weekly limit resets, and leaves them alone while you're idle, so a pane left open overnight costs nothing. Nothing changes faster than once a minute except running sessions' spend.
 
 ## Showing alerts
 

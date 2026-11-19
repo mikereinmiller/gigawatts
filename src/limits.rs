@@ -3,7 +3,7 @@ use std::fmt::{self, Write as _};
 use std::path::PathBuf;
 
 use crate::accounts::{Directory, attribution_for};
-use crate::config::Config;
+use crate::config::{Config, epoch_ms_from_text};
 use crate::contract::{LatestLimits, Limit, LimitSource, LimitsResponse, SCHEMA_VERSION};
 use crate::sources::claude_json::{Account, read_cached_usage, read_login};
 use crate::sources::get_usage::{self, Runner};
@@ -64,6 +64,15 @@ pub const REFRESH_INTERVAL_MS: i64 = 10 * 60_000;
 pub const ADVICE_INTERVAL_MS: i64 = 60 * 60_000;
 pub const LONGEST_RETRY_MS: i64 = 60 * 60_000;
 pub const ACTIVE_FOR_MS: i64 = 10 * 60_000;
+pub const AFTER_RESET_MS: i64 = 60_000;
+
+pub fn next_reset_ms(limits: &[Limit], after_ms: i64) -> Option<i64> {
+    limits
+        .iter()
+        .filter_map(|limit| limit.resets_at.as_deref().and_then(epoch_ms_from_text))
+        .filter(|resets_ms| *resets_ms > after_ms)
+        .min()
+}
 
 #[derive(Debug, Default)]
 pub struct Refresher {
@@ -122,6 +131,21 @@ impl Refresher {
         tracked.next_ms = now_ms + REFRESH_INTERVAL_MS;
         tracked.failures = 0;
         tracked.failing = None;
+    }
+
+    pub fn read_after_reset(&mut self, account: &Account, resets_ms: i64) {
+        let Some(tracked) = self.accounts.get_mut(account) else {
+            return;
+        };
+        if tracked.failures == 0 {
+            tracked.next_ms = tracked.next_ms.min(resets_ms + AFTER_RESET_MS);
+        }
+    }
+
+    pub fn read_after_next_reset(&mut self, account: &Account, reading: &LimitsReading) {
+        if let Some(resets_ms) = next_reset_ms(&reading.limits, reading.fetched_at_ms) {
+            self.read_after_reset(account, resets_ms);
+        }
     }
 
     pub fn failed(&mut self, account: &Account, now_ms: i64, error: &str) {

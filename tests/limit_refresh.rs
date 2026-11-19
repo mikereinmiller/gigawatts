@@ -77,6 +77,113 @@ fn the_backoff_wait_doubles_with_each_failure() {
     assert!(refresher.failing().is_empty());
 }
 
+#[test]
+fn a_reset_inside_the_interval_brings_the_next_read_to_a_minute_after_it() {
+    let mut refresher = Refresher::default();
+    refresher.activity(&account(), START, None);
+    refresher.succeeded(&account(), START);
+
+    refresher.read_after_reset(&account(), START + 3 * MINUTE);
+
+    assert_eq!(refresher.next_due_ms(START), Some(START + 4 * MINUTE));
+    assert_eq!(refresher.due(START + 4 * MINUTE), vec![account()]);
+    refresher.read_after_reset(&account(), START + 30 * MINUTE);
+    assert_eq!(refresher.next_due_ms(START), Some(START + 4 * MINUTE));
+}
+
+#[test]
+fn a_reset_does_not_cut_short_the_wait_after_a_failure() {
+    let mut refresher = Refresher::default();
+    refresher.activity(&account(), START, None);
+    refresher.failed(&account(), START, "Not logged in");
+
+    refresher.read_after_reset(&account(), START + MINUTE);
+
+    assert_eq!(refresher.next_due_ms(START), None);
+    assert_eq!(refresher.retry_after_ms(&account()), Some(10 * MINUTE));
+}
+
+#[test]
+fn a_reading_brings_the_next_read_to_a_minute_after_its_first_reset_since_it_was_fetched() {
+    let at = |text: &str| gigawatts::config::epoch_ms_from_text(text).unwrap();
+    let fetched = at("2026-11-09T09:00:00Z");
+    let limit = |resets_at: &str| gigawatts::contract::Limit {
+        kind: "session".to_string(),
+        group: None,
+        scope: None,
+        percent: 10.0,
+        severity: None,
+        resets_at: Some(resets_at.to_string()),
+        active: true,
+        credits: None,
+    };
+    let reading = gigawatts::store::LimitsReading {
+        fetched_at_ms: fetched,
+        source: LimitSource::GetUsage,
+        limits: vec![limit("2026-11-09T08:55:00Z"), limit("2026-11-09T09:04:00Z")],
+    };
+    let mut refresher = Refresher::default();
+    refresher.activity(&account(), fetched, None);
+    refresher.succeeded(&account(), fetched);
+
+    refresher.read_after_next_reset(&account(), &reading);
+
+    assert_eq!(refresher.next_due_ms(fetched), Some(fetched + 5 * MINUTE));
+}
+
+#[test]
+fn a_reset_from_before_the_reading_leaves_the_regular_interval() {
+    let at = |text: &str| gigawatts::config::epoch_ms_from_text(text).unwrap();
+    let fetched = at("2026-11-09T09:00:00Z");
+    let reading = gigawatts::store::LimitsReading {
+        fetched_at_ms: fetched,
+        source: LimitSource::GetUsage,
+        limits: vec![gigawatts::contract::Limit {
+            kind: "session".to_string(),
+            group: None,
+            scope: None,
+            percent: 10.0,
+            severity: None,
+            resets_at: Some("2026-11-09T08:55:00Z".to_string()),
+            active: true,
+            credits: None,
+        }],
+    };
+    let mut refresher = Refresher::default();
+    refresher.activity(&account(), fetched + MINUTE, None);
+    refresher.succeeded(&account(), fetched);
+
+    refresher.read_after_next_reset(&account(), &reading);
+
+    assert_eq!(refresher.next_due_ms(fetched), Some(fetched + 10 * MINUTE));
+}
+
+#[test]
+fn the_next_reset_is_the_earliest_one_after_the_reading() {
+    let limit = |resets_at: Option<&str>| gigawatts::contract::Limit {
+        kind: "session".to_string(),
+        group: None,
+        scope: None,
+        percent: 10.0,
+        severity: None,
+        resets_at: resets_at.map(str::to_string),
+        active: true,
+        credits: None,
+    };
+    let limits = vec![
+        limit(Some("2026-11-12T03:00:00Z")),
+        limit(None),
+        limit(Some("2026-11-09T12:00:00Z")),
+        limit(Some("2026-11-09T08:00:00Z")),
+    ];
+    let nine_am = gigawatts::config::epoch_ms_from_text("2026-11-09T09:00:00Z").unwrap();
+
+    assert_eq!(
+        limits::next_reset_ms(&limits, nine_am),
+        gigawatts::config::epoch_ms_from_text("2026-11-09T12:00:00Z")
+    );
+}
+
 struct FakeClaude {
     response: String,
     requests: RefCell<Vec<(Option<PathBuf>, String)>>,

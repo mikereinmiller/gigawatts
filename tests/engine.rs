@@ -824,6 +824,51 @@ fn activity_refreshes_limits_through_claude_into_the_snapshot() {
     assert_eq!(kinds, vec!["session", "weekly_all", "weekly_scoped"]);
 }
 
+fn utc_seconds(ms: i64) -> String {
+    rusqlite::Connection::open_in_memory()
+        .unwrap()
+        .query_row(
+            "SELECT strftime('%Y-%m-%dT%H:%M:%SZ', ?1 / 1000, 'unixepoch')",
+            [ms],
+            |row| row.get(0),
+        )
+        .unwrap()
+}
+
+#[test]
+fn activity_after_a_reset_reads_limits_again_before_the_ten_minutes_are_up() {
+    let home = logged_in_home();
+    let now_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as i64;
+    fs::write(
+        home.path.join(".claude.json"),
+        format!(
+            r#"{{"oauthAccount":{{"accountUuid":"00000000-0000-4000-8000-00000000000a","organizationUuid":"00000000-0000-4000-8000-0000000000f0"}},
+"cachedUsageUtilization":{{"accountUuid":"00000000-0000-4000-8000-00000000000a","fetchedAtMs":{},"utilization":{{"limits":[
+{{"kind":"session","group":"session","percent":62,"severity":"normal","resets_at":"{}","scope":null,"is_active":true}}]}}}}}}"#,
+            now_ms - 5 * 60_000,
+            utc_seconds(now_ms - 4 * 60_000)
+        ),
+    )
+    .unwrap();
+    let bin = answering_claude(&home.path.parent().unwrap().join("claude"));
+    let transcript = home.path.join(".claude/projects/p/s1.jsonl");
+    append_request(&transcript, "req_1");
+    let paths = Paths::new(&home.path);
+    gigawatts_with_claude_in(&home.path, &bin, &["engine"]);
+    wait_for_snapshot(&paths.snapshot(), "the cached reading", |value| {
+        value["accounts"][0]["limits"]["source"] == "cached_usage_utilization"
+    });
+
+    append_request(&transcript, "req_2");
+
+    wait_for_snapshot(&paths.snapshot(), "a get_usage reading", |value| {
+        value["accounts"][0]["limits"]["source"] == "get_usage"
+    });
+}
+
 #[test]
 fn a_failing_refresh_shows_as_a_problem() {
     let home = logged_in_home();

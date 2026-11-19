@@ -25,7 +25,7 @@ use crate::sources::claude_json::Account;
 use crate::sources::get_usage::Claude;
 use crate::sources::git::Resolver;
 use crate::sources::transcript::{READER_VERSION, transcript_files};
-use crate::store::{self, Store};
+use crate::store::{self, LimitsReading, Store};
 use control::{Command, Handshake, Request};
 use lock::EngineLock;
 use scheduler::{Schedule, Work, next_deadline};
@@ -389,19 +389,25 @@ impl Engine<'_> {
 
     fn note_activity(&mut self, store: &Store, directories: &[Directory], files: &[PathBuf]) {
         let now_ms = now_ms();
-        let fetched: BTreeMap<Account, i64> = store
+        let readings: BTreeMap<Account, LimitsReading> = store
             .latest_limits()
             .unwrap_or_default()
             .into_iter()
-            .map(|(account, reading)| (account, reading.fetched_at_ms))
             .collect();
         for directory in directories {
             let Some(account) = self.refreshable(directory) else {
                 continue;
             };
             if accounts::has_files_inside(&directory.projects(), files) {
-                self.refresher
-                    .activity(account, now_ms, fetched.get(account).copied());
+                let reading = readings.get(account);
+                self.refresher.activity(
+                    account,
+                    now_ms,
+                    reading.map(|reading| reading.fetched_at_ms),
+                );
+                if let Some(reading) = reading {
+                    self.refresher.read_after_next_reset(account, reading);
+                }
             }
         }
     }
@@ -499,6 +505,14 @@ impl Engine<'_> {
         match refreshed {
             Ok(()) => {
                 self.refresher.succeeded(account, now_ms);
+                let reading = store
+                    .latest_limits()
+                    .unwrap_or_default()
+                    .into_iter()
+                    .find(|(read, _)| read == account);
+                if let Some((_, reading)) = reading {
+                    self.refresher.read_after_next_reset(account, &reading);
+                }
                 Ok(())
             }
             Err(error) => {
