@@ -1,6 +1,6 @@
 # Report charts
 
-The report page needs two charts. Slice 6 adds spend per day, stacked by the top repos or models, for up to a year: 365 days by about 10 series. Slice 7 adds each limit's percent over the range, with its resets marked. Both need hover labels, have to read in light and dark mode, and must work offline. Whatever draws them is built into the binary (6.8 MB today) and copied into every exported file.
+The report page needs two charts. One shows spend per day, stacked by the top repos or models, for up to a year: 365 days by about 10 series. The other shows each limit's percent over the range, with its resets marked. Both need hover labels, have to read in light and dark mode, and must work offline. Whatever draws them is built into the binary (6.8 MB today) and copied into every exported file.
 
 ## Candidates
 
@@ -31,7 +31,7 @@ The draw times come from the bench page, which draws the same generated year wit
 
 **ECharts.** It has the most features and the most active project, under the Apache foundation. It is also 21 times the size of uPlot and 5 times Chart.js, which adds about 1.1 MB to the binary and to every export, for features the page will never use. Its minified file also contains a `new Function` fallback in its map loader, which a strict content security policy would have to allow.
 
-**Hand-drawn SVG.** No third-party code: nothing to vendor, update, or audit. That follows the same reasoning as the plan's choice of no HTTP crate. Colors come from the page's CSS variables, so light and dark need no code. Labels are real text, an export holds the finished SVG, and the page can test exactly what it draws. The cost is that we write and maintain the axes, date ticks, stacking, and hover ourselves, an estimated 300 lines across slices 6 and 7. Thousands of SVG elements also get slow to hover in a way canvas doesn't. The bench's 3,650 bars is the case to time.
+**Hand-drawn SVG.** No third-party code: nothing to vendor, update, or audit. That is the same reason Gigawatts uses no HTTP crate. Colors come from the page's CSS variables, so light and dark need no code. Labels are real text, an export holds the finished SVG, and the page can test exactly what it draws. The cost is that we write and maintain the axes, date ticks, stacking, and hover ourselves, an estimated 300 lines. Thousands of SVG elements also get slow to hover in a way canvas doesn't. The bench's 3,650 bars is the case to time.
 
 ## Recommendation
 

@@ -8,7 +8,7 @@ For a Herdr mod, a status bar, a script, a dashboard, or any other reader: read 
 
 ## Developing Gigawatts
 
-- `docs/overview.md` is the product spec, and the source of truth for behavior. `.claude/plans/beta-roadmap.md` is the current plan, slice by slice.
+- `docs/overview.md` is the product spec, and the source of truth for behavior.
 - Rust comes from `mise.toml`. Where `cargo` isn't on `PATH`, prefix every command with `mise exec --`.
   - Test: `mise exec -- cargo test`
   - Format: `mise exec -- cargo fmt`
@@ -20,4 +20,4 @@ For a Herdr mod, a status bar, a script, a dashboard, or any other reader: read 
   - Adding a field keeps `schema_version`. Removing or renaming one, or changing what it means, raises it.
   - A change readers would notice gets a matching edit to `docs/integrations.md`.
 - Gigawatts reads Claude Code's files and never writes to them, and never reads its login token.
-- Names from the author's own projects, work, and accounts (repos, branches, tickets, custom skills, employers) are replaced with invented ones in tests, fixtures, docs, and plans. Gigawatts' own repo, the public projects the docs cite, and Claude Code's built-in names stay real. Captured data goes through `gigawatts scrub` before it's committed.
+- Names from the author's own projects, work, and accounts (repos, branches, tickets, custom skills, employers) are replaced with invented ones in tests, fixtures, and docs. Gigawatts' own repo, the public projects the docs cite, and Claude Code's built-in names stay real. Captured data goes through `gigawatts scrub` before it's committed.
