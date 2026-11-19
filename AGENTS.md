@@ -14,6 +14,7 @@ For a Herdr mod, a status bar, a script, a dashboard, or any other reader: read 
   - Format: `mise exec -- cargo fmt`
   - Lint: `mise exec -- cargo clippy --all-targets`
   - Cost check on the real corpus: `mise exec -- cargo run --release -- check-costs`
+- A change readers would see in the terminal view or report page: run `mise run screenshots`, which redraws the README images in `docs/images/` from the invented history `examples/demo.rs` writes. It needs macOS with Google Chrome; elsewhere, say the images need redrawing.
 - `mise run install` installs your build and restarts the engine on it. A running engine is replaced only by a different version, so every behavior change bumps the patch version in `Cargo.toml`.
 - The JSON contract (`src/contract.rs`) is what integrations build on:
   - Every field and type `gigawatts schema` publishes (`Snapshot`, `DataResponse`, `LimitsResponse`, `InsightsResponse`, and what they contain) carries a doc comment, and `tests/cli.rs` fails on one without. The other types in the file belong to the report page's private `/api/*` routes.
