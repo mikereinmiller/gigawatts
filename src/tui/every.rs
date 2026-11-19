@@ -69,7 +69,7 @@ pub(crate) fn fit(
     height: u16,
     with_sessions: bool,
 ) -> Fit {
-    let running = Running::every(&snapshot.accounts);
+    let running = Running::every(&snapshot.accounts, now_ms);
     if let Some(overview) = roomy(snapshot, now_ms, local_minute, width) {
         let sessions = sessions::min_height(&running, width, true);
         let below = if with_sessions {
@@ -112,7 +112,12 @@ pub(crate) fn height(
     };
     let sessions = if fit.with_sessions {
         let room = height.saturating_sub(overview + HISTORY_MIN_HEIGHT);
-        sessions::height(&Running::every(&snapshot.accounts), width, room, fit.roomy)
+        sessions::height(
+            &Running::every(&snapshot.accounts, now_ms),
+            width,
+            room,
+            fit.roomy,
+        )
     } else {
         0
     };
@@ -152,7 +157,7 @@ pub(crate) fn draw(
         sessions::draw(
             frame,
             rest,
-            &Running::every(&snapshot.accounts),
+            &Running::every(&snapshot.accounts, now_ms),
             now_ms,
             fit.roomy,
         );
@@ -376,7 +381,7 @@ fn compact_spacing(
     let overview = compact_height(snapshot, now_ms, width);
     let unspaced_room = room.saturating_sub(overview + HISTORY_MIN_HEIGHT);
     let sessions = sessions::height(
-        &Running::every(&snapshot.accounts),
+        &Running::every(&snapshot.accounts, now_ms),
         width,
         unspaced_room,
         false,

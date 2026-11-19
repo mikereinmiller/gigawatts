@@ -323,10 +323,10 @@ impl App {
         }
     }
 
-    fn running(&self) -> sessions::Running<'_> {
+    fn running(&self, now_ms: i64) -> sessions::Running<'_> {
         match (self.stacked, self.shown()) {
-            (false, Some(account)) => sessions::Running::of(account),
-            _ => sessions::Running::every(&self.snapshot.accounts),
+            (false, Some(account)) => sessions::Running::of(account, now_ms),
+            _ => sessions::Running::every(&self.snapshot.accounts, now_ms),
         }
     }
 
@@ -363,7 +363,11 @@ impl App {
         };
         let beside = |gap: bool| {
             if sessions_beside {
-                sessions::two_rows_height(&self.running(), sections::limits_width(body.width), gap)
+                sessions::two_rows_height(
+                    &self.running(now_ms),
+                    sections::limits_width(body.width),
+                    gap,
+                )
             } else {
                 0
             }
@@ -409,7 +413,7 @@ impl App {
             sessions::draw_list(
                 frame,
                 rest,
-                &self.running(),
+                &self.running(now_ms),
                 now_ms,
                 roomy,
                 &self.sessions_first_row,
@@ -419,7 +423,7 @@ impl App {
             let sessions_width = sections::limits_width(rest.width);
             let height = if sessions_beside {
                 history_height.max(sessions::height(
-                    &self.running(),
+                    &self.running(now_ms),
                     sessions_width,
                     rest.height,
                     roomy,
@@ -439,7 +443,7 @@ impl App {
                     Constraint::Fill(1),
                 ])
                 .areas(row);
-                sessions::draw(frame, sessions_area, &self.running(), now_ms, roomy);
+                sessions::draw(frame, sessions_area, &self.running(now_ms), now_ms, roomy);
                 history_area
             } else {
                 row

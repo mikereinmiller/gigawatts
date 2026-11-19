@@ -7,6 +7,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
 use crate::contract::{AccountToday, SessionSpend};
+use crate::pace::FASTEST_WITHIN_MS;
 
 use super::sections::{clip, clip_middle, titled_section};
 use super::style::{BAR, KEY, MUTED, OVER, TITLE};
@@ -30,30 +31,35 @@ pub(crate) struct Running<'a> {
 }
 
 impl<'a> Running<'a> {
-    pub(crate) fn of(account: &'a AccountToday) -> Running<'a> {
+    pub(crate) fn of(account: &'a AccountToday, now_ms: i64) -> Running<'a> {
         Running {
-            sessions: owned(account, None),
+            sessions: owned(account, None, now_ms),
             today_usd: account.cost_usd,
         }
     }
 
-    pub(crate) fn every(accounts: &'a [AccountToday]) -> Running<'a> {
+    pub(crate) fn every(accounts: &'a [AccountToday], now_ms: i64) -> Running<'a> {
         Running {
             sessions: accounts
                 .iter()
-                .flat_map(|account| owned(account, Some(account.account_label.as_str())))
+                .flat_map(|account| owned(account, Some(account.account_label.as_str()), now_ms))
                 .collect(),
             today_usd: accounts.iter().map(|account| account.cost_usd).sum(),
         }
     }
 }
 
-fn owned<'a>(account: &'a AccountToday, owner: Option<&'a str>) -> Vec<Owned<'a>> {
+fn owned<'a>(account: &'a AccountToday, owner: Option<&'a str>, now_ms: i64) -> Vec<Owned<'a>> {
     account
         .active_sessions
         .iter()
+        .filter(|spend| still_running(spend, now_ms))
         .map(|spend| Owned { owner, spend })
         .collect()
+}
+
+fn still_running(spend: &SessionSpend, now_ms: i64) -> bool {
+    spend.last_active_ms == 0 || now_ms - spend.last_active_ms <= FASTEST_WITHIN_MS
 }
 
 #[derive(Clone, Copy)]

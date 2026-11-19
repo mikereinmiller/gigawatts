@@ -2789,6 +2789,19 @@ fn a_session_with_nothing_new_for_five_minutes_says_it_is_idle() {
 }
 
 #[test]
+fn a_session_quiet_for_over_15_minutes_leaves_running_now_even_if_the_snapshot_still_lists_it() {
+    let mut account = personal();
+    account.active_sessions[1].last_active_ms = NOW_MS - 2 * 3_600_000;
+    let app = open(snapshot(vec![account]), None);
+
+    let shown = screen(&app, 100, 40);
+
+    assert!(shown.contains("Running now · 1 session · $8.40"), "{shown}");
+    assert!(shown.contains("Fix the login redirect"), "{shown}");
+    assert!(!shown.contains("Write release notes"), "{shown}");
+}
+
+#[test]
 fn a_session_from_an_engine_that_did_not_record_last_activity_shows_no_idle_time() {
     let mut account = personal();
     account.active_sessions[1].last_active_ms = 0;

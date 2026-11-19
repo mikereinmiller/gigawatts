@@ -86,7 +86,7 @@ pub(crate) fn one_account_height(
     let sessions = if with_sessions {
         let room = height.saturating_sub(panels_height + HISTORY_MIN_HEIGHT);
         sessions::height(
-            &sessions::Running::of(account),
+            &sessions::Running::of(account, now_ms),
             width,
             room,
             panels.side_by_side.is_some(),
@@ -124,7 +124,8 @@ fn overview_panels(
     if width >= COLUMNS_FROM {
         let left = limits_width(width);
         let roomy = panels(account, problems, now_ms, local_minute, width, Some(left));
-        let sessions = sessions::min_height(&sessions::Running::of(account), width, true) as usize;
+        let sessions =
+            sessions::min_height(&sessions::Running::of(account, now_ms), width, true) as usize;
         let below = if with_sessions {
             sessions + HISTORY_MIN_HEIGHT as usize
         } else {
@@ -253,7 +254,7 @@ pub(crate) fn one_account(
         sessions::draw(
             frame,
             sessions_area,
-            &sessions::Running::of(account),
+            &sessions::Running::of(account, now_ms),
             now_ms,
             roomy,
         );
