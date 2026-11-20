@@ -2303,7 +2303,10 @@ function factList() {
 }
 
 function shareList(title, items, total) {
-  const shown = items.filter(item => item.cost > 0).slice(0, PANEL_ROWS);
+  const spent = items.filter(item => item.cost > 0);
+  const hidden = spent.length > PANEL_ROWS + 1 ? spent.slice(PANEL_ROWS) : [];
+  const hidesOther = hidden.some(item => item.color === 'var(--other)');
+  const shown = hidden.length ? [...spent.slice(0, PANEL_ROWS), {label: hidesOther ? 'Other' : `Others (${hidden.length})`, cost: hidden.reduce((sum, item) => sum + item.cost, 0), color: 'var(--other)'}] : spent;
   if (!shown.length) return;
   panel.append(element('h3', title));
   const list = element('div', undefined, 'shares');
@@ -2524,7 +2527,8 @@ async function openDayPanel(day, total, parts) {
   if (average > 0 && active.length > 1) fact('Usual', `${multiple(total / average)} vs the average active day in this range (${money(average)})`);
   panel.append(facts);
   const chartBy = chartGrouping();
-  shareList('By ' + GROUP_NAMES[chartBy].toLowerCase(), parts.map(([label, value, color]) => ({label, cost: value, color})), total);
+  const largestFirst = parts.map(([label, value, color]) => ({label, cost: value, color})).sort((a, b) => (a.color === 'var(--other)') - (b.color === 'var(--other)') || b.cost - a.cost);
+  shareList('By ' + GROUP_NAMES[chartBy].toLowerCase(), largestFirst, total);
   const note = loadingNote();
   const dayParams = () => {
     const params = scopeParams(new URLSearchParams());
