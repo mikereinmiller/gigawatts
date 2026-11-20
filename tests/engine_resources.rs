@@ -119,10 +119,27 @@ fn ps(pid: &str, field: &str) -> String {
 }
 
 fn cpu_time(pid: &str) -> Duration {
+    if cfg!(target_os = "linux") {
+        return linux_cpu_time(pid);
+    }
     let seconds = ps(pid, "time").split(':').fold(0.0, |total: f64, part| {
         total * 60.0 + part.parse::<f64>().unwrap()
     });
     Duration::from_secs_f64(seconds)
+}
+
+// procps `ps -o time` prints whole seconds, too coarse for MAX_IDLE_CPU.
+fn linux_cpu_time(pid: &str) -> Duration {
+    let stat = fs::read_to_string(format!("/proc/{pid}/stat")).unwrap();
+    let (_, after_name) = stat.rsplit_once(')').unwrap();
+    let fields: Vec<&str> = after_name.split_whitespace().collect();
+    let ticks: f64 = fields[11].parse::<f64>().unwrap() + fields[12].parse::<f64>().unwrap();
+    let output = Command::new("getconf").arg("CLK_TCK").output().unwrap();
+    let ticks_per_second: f64 = String::from_utf8_lossy(&output.stdout)
+        .trim()
+        .parse()
+        .unwrap();
+    Duration::from_secs_f64(ticks / ticks_per_second)
 }
 
 fn assert_small_and_idle(config_text: &str) {
