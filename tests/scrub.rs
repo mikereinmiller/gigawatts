@@ -299,3 +299,30 @@ fn keeps_built_in_tool_names_and_renames_mcp_tools() {
         ])
     );
 }
+
+const USAGE: &str = r#"{"accountUuid":"6f1e2d3c-7777-4b8a-9c0d-1e2f3a4b5c6d","subscription_type":"enterprise","behaviors":{"week":{"request_count":120,"agents":[{"name":"acme-deployer","pct":40},{"name":"general-purpose","pct":5}],"skills":[{"name":"acme-refunds","pct":30}],"plugins":[{"name":"acme-plugin","pct":10}],"mcp_servers":[{"name":"acme_billing","pct":15}],"recommendations":[{"key":"long_context","pct":36,"title":"Acme sessions run long","detail":"Split the refund work for jdoe"}],"fix":{"keys":["long_context"],"messages":["Ask jdoe to trim the Acme prompt"]}}}}"#;
+
+#[test]
+fn scrubbed_usage_contains_none_of_the_source_names_or_text() {
+    let source = json(USAGE);
+
+    let scrubbed = Scrubber::for_fixture("enterprise").scrub_usage(&source);
+    let text = scrubbed.to_string();
+
+    for secret in [
+        "6f1e2d3c-7777-4b8a-9c0d-1e2f3a4b5c6d",
+        "acme",
+        "Acme",
+        "jdoe",
+        "refund",
+    ] {
+        assert!(!text.contains(secret), "{secret:?} survived:\n{text}");
+    }
+    let week = &scrubbed["behaviors"]["week"];
+    assert_eq!(week["agents"][1]["name"], "general-purpose");
+    assert_eq!(week["agents"][0]["pct"], 40);
+    assert_eq!(week["recommendations"][0]["key"], "long_context");
+    assert_eq!(week["recommendations"][0]["pct"], 36);
+    assert_eq!(week["fix"]["keys"][0], "long_context");
+    assert_eq!(scrubbed["subscription_type"], "enterprise");
+}
