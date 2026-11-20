@@ -217,16 +217,8 @@ td.name { font-weight: 500; }
 .name-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .name-meta { display: block; margin-top: 2px; color: var(--muted); font-size: var(--text-xs); font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 tr.session td { height: 60px; }
-.chevron { flex: none; display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 5px; color: var(--muted); transition: transform 120ms ease; }
-.chevron svg { width: 12px; height: 12px; }
-tr[aria-expanded="true"] .chevron { transform: rotate(90deg); }
-.chevron.none { visibility: hidden; }
 tbody tr.clickable, .insight-row.clickable, .change-event.clickable, .insight-link.clickable { cursor: pointer; }
 tbody tr.clickable:hover { background: var(--hover); }
-tbody tr.clickable:hover .chevron { color: var(--ink); }
-tbody tr.child td { color: var(--ink-2); font-size: var(--text-sm); }
-tbody tr.child td.name { font-weight: 400; }
-tbody tr.more td { color: var(--accent); font-size: var(--text-sm); height: 36px; }
 tbody tr.loading td { color: var(--muted); font-size: var(--text-sm); height: 36px; }
 
 .share { display: flex; align-items: center; gap: var(--space-3); }
@@ -288,6 +280,8 @@ tbody tr.loading td { color: var(--muted); font-size: var(--text-sm); height: 36
 .change-event.reversed > b, .change-event.reversed > div > span { color: var(--muted); }
 .change-event small { display: block; color: var(--muted); font-size: var(--text-sm); margin-top: 2px; }
 .insight-list { display: grid; margin-bottom: var(--space-4); }
+.link-button.inline { padding: 0; }
+.name-text + .link-button { margin-left: var(--space-2); font-weight: 400; }
 .insight-row { display: grid; grid-template-columns: 11rem minmax(0, 1fr) 4.5rem 7.5rem 8rem; gap: var(--space-4); align-items: baseline; padding: var(--space-3) var(--space-2); margin: 0 calc(-1 * var(--space-2)); border-bottom: 1px solid var(--grid); border-radius: 6px; }
 .insight-row.clickable:hover, .insight-row.clickable:focus-visible { background: var(--hover); outline: none; }
 .insight-header { color: var(--muted); font-size: var(--text-sm); padding-top: 0; }
@@ -458,7 +452,6 @@ b.insight-num { font-weight: 500; }
 <script>
 const RANGES = [['week', 'This week'], ['month', 'This month'], ['lastmonth', 'Last month'], ['all', 'All time'], ['custom', 'Custom']];
 const GROUP_NAMES = {repo: 'Repo', branch: 'Branch', skill: 'Skill', agent: 'Subagent', model: 'Model'};
-const GROUP_PLURALS = {repo: 'repos', branch: 'branches', skill: 'skills', agent: 'subagents', model: 'models'};
 const NEXT = {
   none: ['repo', 'skill', 'agent', 'model'],
   repo: ['branch', 'skill', 'model', 'agent'],
@@ -476,6 +469,7 @@ const ALL = 'all';
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const DAY_MS = 86400000;
 const FOLD_SHARE = 0.01;
+const FOLD_MIN_ROWS = 8;
 const PANEL_ROWS = 6;
 const PANEL_SESSIONS = 5;
 const MIN_CHART_WIDTH = 280;
@@ -488,7 +482,7 @@ const tip = document.getElementById('tip');
 let state = readState();
 let latest = null;
 let loadedHash = null;
-let showTail = false;
+const expanded = new Set();
 let panelToken = 0;
 let breakdownRequest = 0;
 let chartRequest = 0;
@@ -562,7 +556,7 @@ function writeState() {
 
 function navigate() {
   closePanel();
-  showTail = false;
+  expanded.clear();
   history.pushState(null, '', stateHash() || location.pathname);
   load();
 }
@@ -660,14 +654,6 @@ function svg(tag, attributes) {
   return node;
 }
 
-function chevron(open, canOpen) {
-  const box = element('span', undefined, 'chevron' + (canOpen ? '' : ' none'));
-  const icon = svg('svg', {viewBox: '0 0 12 12', 'aria-hidden': 'true'});
-  icon.append(svg('path', {d: 'M4.5 2.5 8 6l-3.5 3.5', fill: 'none', stroke: 'currentColor', 'stroke-width': 1.6, 'stroke-linecap': 'round', 'stroke-linejoin': 'round'}));
-  box.append(icon);
-  return box;
-}
-
 function dollars(value, digits = 2) {
   return '$' + value.toLocaleString(undefined, {minimumFractionDigits: digits, maximumFractionDigits: digits});
 }
@@ -741,7 +727,7 @@ function tabs(options, current, onPick, label, className = 'tabs') {
 }
 
 function resetTree() {
-  showTail = false;
+  expanded.clear();
 }
 
 const ICONS = {
@@ -1659,11 +1645,9 @@ function columns(table, first) {
   for (const name of [first, 'Share', 'Cost', 'Sessions', 'Per session', 'Paid for']) header.append(element('th', name));
 }
 
-function nameCell(text, depth, open, canOpen, meta, tree = true) {
+function nameCell(text, meta) {
   const cell = element('td', undefined, 'name');
   const wrap = element('div', undefined, 'name-wrap');
-  wrap.style.paddingLeft = depth * 20 + 'px';
-  if (tree) wrap.append(chevron(open, canOpen));
   const textBox = element('span', undefined, 'name-text');
   textBox.append(document.createTextNode(text));
   if (meta) textBox.append(element('span', meta, 'name-meta'));
@@ -1723,6 +1707,30 @@ function adviceCard(view) {
   return card;
 }
 
+function foldRows(rows, costOf) {
+  if (rows.length <= FOLD_MIN_ROWS) return {major: rows, tail: []};
+  const total = rows.reduce((sum, row) => sum + (costOf(row) ?? 0), 0);
+  const major = rows.filter(row => (costOf(row) ?? 0) >= total * FOLD_SHARE);
+  const tail = rows.filter(row => !major.includes(row));
+  return tail.length >= 2 ? {major, tail} : {major: rows, tail: []};
+}
+
+function foldRow(body, label, linkText, onClick) {
+  const line = body.insertRow();
+  const cell = element('td', undefined, 'name');
+  const wrap = element('div', undefined, 'name-wrap');
+  if (label) wrap.append(element('span', label, 'name-text'));
+  if (linkText) {
+    const link = element('button', linkText, 'link-button inline');
+    link.type = 'button';
+    link.addEventListener('click', onClick);
+    wrap.append(link);
+  }
+  cell.append(wrap);
+  line.append(cell);
+  return line;
+}
+
 function clickable(line, action) {
   line.classList.add('clickable');
   line.tabIndex = 0;
@@ -1734,7 +1742,7 @@ function breakdown(view, colors) {
   const by = breakdownGrouping();
   const card = element('section', undefined, 'card');
   const head = element('div', undefined, 'card-head');
-  head.append(element('h2', 'Where it went'), tabs(groupings().map(kind => [kind, GROUP_NAMES[kind]]), by, picked => { state.by = picked; showTail = false; loadBreakdown(); }, 'Break down by', 'tabs small'));
+  head.append(element('h2', 'Where it went'), tabs(groupings().map(kind => [kind, GROUP_NAMES[kind]]), by, picked => { state.by = picked; expanded.delete('where'); loadBreakdown(); }, 'Break down by', 'tabs small'));
   card.append(head);
   if (!view.rows.length) {
     card.append(element('p', 'No spend in this range.', 'note'));
@@ -1761,28 +1769,27 @@ function breakdown(view, colors) {
     line.append(mixCell(mix));
   };
 
-  const addRow = (row, color, depth) => {
+  const addRow = (row, color) => {
     const line = body.insertRow();
-    if (depth) line.classList.add('child');
-    line.append(nameCell(rowName(row, view.level), depth, false, false, null, false));
+    line.append(nameCell(rowName(row, view.level)));
     valueCells(line, {...row, color}, view.mix.get(rowId(row)));
     if (row.not_in_transcript) clickable(line, openNotInTranscriptsPanel);
     else if (opensPanel && row.key != null) clickable(line, () => openRowPanel(row, view.level));
   };
 
+  const {major, tail} = foldRows(view.rows, row => row.cost_usd);
+  const toggle = () => { expanded.has('where') ? expanded.delete('where') : expanded.add('where'); fill(); };
+
   const fill = () => {
     body.replaceChildren();
-    const major = view.rows.length > 8 ? view.rows.filter(row => (row.cost_usd ?? 0) >= total * FOLD_SHARE) : view.rows;
-    const tail = view.rows.filter(row => !major.includes(row));
-    const shown = tail.length >= 2 ? major : view.rows;
-    for (const row of shown) addRow(row, sameColors ? colors.get(rowId(row)) ?? 'var(--other)' : null, 0);
-    if (tail.length < 2) return;
-    const line = body.insertRow();
-    line.setAttribute('aria-expanded', String(showTail));
-    line.append(nameCell(`Other ${GROUP_PLURALS[by]} (${tail.length}), each under 1%`, 0, showTail, true));
-    valueCells(line, {cost_usd: cost(tail), color: 'var(--other)'}, foldMix(tail, view.mix));
-    clickable(line, () => { showTail = !showTail; fill(); });
-    if (showTail) for (const row of tail) addRow(row, 'var(--other)', 1);
+    const open = expanded.has('where');
+    for (const row of open ? view.rows : major) addRow(row, tail.includes(row) ? 'var(--other)' : sameColors ? colors.get(rowId(row)) ?? 'var(--other)' : null);
+    if (!tail.length) return;
+    if (open) {
+      foldRow(body, null, 'Show fewer', toggle).cells[0].colSpan = 6;
+      return;
+    }
+    valueCells(foldRow(body, `Others (${tail.length})`, 'Show', toggle), {cost_usd: cost(tail), color: 'var(--other)'}, foldMix(tail, view.mix));
   };
 
   fill();
@@ -1820,17 +1827,16 @@ function staticBreakdown(title, rows, level, mix, previous) {
   const header = table.createTHead().insertRow();
   for (const name of [LEVEL_NAMES[level], 'Share', 'Cost', ...(previous ? ['Change'] : []), 'Sessions', 'Per session', 'Paid for']) header.append(element('th', name));
   const body = table.createTBody();
-  const major = rows.length > 8 ? rows.filter(row => (row.cost_usd ?? 0) >= total * FOLD_SHARE) : rows;
-  const tail = rows.filter(row => !major.includes(row));
-  const shownRows = tail.length >= 2 ? [...major] : rows;
-  if (tail.length >= 2) {
+  const {major, tail} = foldRows(rows, row => row.cost_usd);
+  const shownRows = [...major];
+  if (tail.length) {
     const tailMix = foldMix(tail, mix);
-    shownRows.push({label: `Other (${tail.length}), each under 1%`, key: 'folded tail', cost_usd: cost(tail), folded: true, before: tail.reduce((sum, row) => sum + (previous?.costs.get(rowId(row)) ?? 0), 0)});
+    shownRows.push({label: `Others (${tail.length})`, key: 'folded tail', cost_usd: cost(tail), folded: true, before: tail.reduce((sum, row) => sum + (previous?.costs.get(rowId(row)) ?? 0), 0)});
     mix.set('folded tail', tailMix);
   }
   for (const row of shownRows) {
     const line = body.insertRow();
-    line.append(nameCell(row.folded ? row.label : rowName(row, level), 0, false, false, null, false));
+    line.append(nameCell(row.folded ? row.label : rowName(row, level)));
     const rowMix = mix.get(rowId(row));
     line.append(shareCell(total > 0 ? (row.cost_usd ?? 0) / total : 0));
     line.append(element('td', row.cost_usd == null ? 'no price' : dollars(row.cost_usd)));
@@ -1889,7 +1895,7 @@ function whoDidTheWork(rows, interactive) {
   const body = table.createTBody();
   for (const agent of [...agents.values()].sort((a, b) => b.total - a.total)) {
     const line = body.insertRow();
-    line.append(nameCell(agent.label, 0, false, false, null, false), shareCell(total > 0 ? agent.total / total : 0));
+    line.append(nameCell(agent.label), shareCell(total > 0 ? agent.total / total : 0));
     if (interactive && agent.key === null) clickable(line, openNotInTranscriptsPanel);
     else if (interactive && !scopedKinds().has('agent')) clickable(line, () => openRowPanel({key: agent.key, label: agent.raw}, 'agent'));
     const cell = value => element('td', value >= 0.005 ? dollars(value) : '—', value >= 0.005 ? '' : 'dim');
@@ -2211,7 +2217,7 @@ function biggestSessions(view) {
     const line = body.insertRow();
     line.className = 'session clickable';
     line.tabIndex = 0;
-    line.append(nameCell(session.title ?? 'Untitled session', 0, false, false, sessionMeta(session), false));
+    line.append(nameCell(session.title ?? 'Untitled session', sessionMeta(session)));
     line.append(shareCell(total > 0 ? session.cost_usd / total : 0));
     line.append(element('td', dollars(session.cost_usd)));
     line.append(element('td', session.branch ? `${session.repo} · ${session.branch}` : session.repo, 'dim'));
@@ -3013,7 +3019,7 @@ function capitalized(text) {
 function onAddressChange() {
   if (location.hash === loadedHash) return;
   state = readState();
-  showTail = false;
+  expanded.clear();
   closePanel();
   load();
 }
