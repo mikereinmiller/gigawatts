@@ -135,7 +135,7 @@ impl Scratch {
             &self.projects,
             &PriceTable::built_in(),
             &Attribution::default(),
-            &Resolver::default(),
+            &Resolver,
         )
         .unwrap();
     }

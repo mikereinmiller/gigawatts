@@ -79,7 +79,7 @@ fn store_with(lines: &[Line]) -> (tempfile::TempDir, Store) {
         &projects,
         &PriceTable::built_in(),
         &Attribution::default(),
-        &Resolver::default(),
+        &Resolver,
     )
     .unwrap();
     (dir, store)

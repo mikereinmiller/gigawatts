@@ -341,14 +341,7 @@ fn a_heavy_year_with_90_day_retention_stays_small_and_fast() {
             offset: 1,
         };
         store
-            .save_file(
-                &position,
-                true,
-                &lines,
-                &attribution,
-                &table,
-                &Resolver::default(),
-            )
+            .save_file(&position, true, &lines, &attribution, &table, &Resolver)
             .unwrap();
     }
     let idle = Account {
@@ -376,7 +369,7 @@ fn a_heavy_year_with_90_day_retention_stays_small_and_fast() {
                 &lines,
                 &Attribution::single(Some(idle.clone())),
                 &table,
-                &Resolver::default(),
+                &Resolver,
             )
             .unwrap();
     }
@@ -402,7 +395,7 @@ fn a_heavy_year_with_90_day_retention_stays_small_and_fast() {
             &lines,
             &Attribution::single(Some(dormant.clone())),
             &table,
-            &Resolver::default(),
+            &Resolver,
         )
         .unwrap();
     let last_day_afternoon: i64 = rusqlite::Connection::open_in_memory()

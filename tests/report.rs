@@ -85,7 +85,7 @@ fn ingested(home: &Home) {
         &directories,
         &config,
         &PriceTable::built_in(),
-        &Resolver::default(),
+        &Resolver,
     )
     .unwrap();
 }

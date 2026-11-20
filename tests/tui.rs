@@ -1688,7 +1688,7 @@ fn spending_load_reads_the_range_and_top_skills_from_the_store() {
         )),
         &gigawatts::pricing::PriceTable::built_in(),
         &gigawatts::accounts::Attribution::default(),
-        &gigawatts::sources::git::Resolver::default(),
+        &gigawatts::sources::git::Resolver,
     )
     .unwrap();
     let no_account = AccountToday {

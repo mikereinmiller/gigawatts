@@ -99,7 +99,7 @@ earlier_account = "{PERSON}/{ENTERPRISE_ORG}"
         &directories,
         &config,
         &PriceTable::built_in(),
-        &Resolver::default(),
+        &Resolver,
     )
     .unwrap();
 
@@ -140,7 +140,7 @@ fn ingest_all(home: &mut Home, config: &Config) {
         &directories,
         config,
         &PriceTable::built_in(),
-        &Resolver::default(),
+        &Resolver,
     )
     .unwrap();
 }
@@ -168,7 +168,7 @@ fn a_directory_whose_accounts_are_all_untracked_is_not_read() {
         &directories,
         &config,
         &PriceTable::built_in(),
-        &Resolver::default(),
+        &Resolver,
     )
     .unwrap();
 

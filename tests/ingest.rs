@@ -56,7 +56,7 @@ mod unreadable_files {
             projects,
             &PriceTable::built_in(),
             &Attribution::single(None),
-            &Resolver::default(),
+            &Resolver,
         )
         .map(|_| ())
         .map_err(|error| error.to_string())

@@ -34,7 +34,7 @@ fn ingest(store: &mut Store, projects: &Path) {
         projects,
         &PriceTable::built_in(),
         &Attribution::default(),
-        &Resolver::default(),
+        &Resolver,
     )
     .unwrap();
 }

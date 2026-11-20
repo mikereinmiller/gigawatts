@@ -92,7 +92,7 @@ impl Scratch {
             &self.projects,
             &PriceTable::built_in(),
             &Attribution::default(),
-            &Resolver::default(),
+            &Resolver,
         )
         .unwrap();
     }
@@ -561,7 +561,7 @@ fn ingest_home(store: &mut Store, home: &Path) {
         &directories,
         &config,
         &PriceTable::built_in(),
-        &Resolver::default(),
+        &Resolver,
     )
     .unwrap();
 }

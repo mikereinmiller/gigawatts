@@ -48,7 +48,7 @@ fn store_with_requests_on(days: &[&str]) -> (tempfile::TempDir, Store) {
         &projects,
         &PriceTable::built_in(),
         &Attribution::default(),
-        &Resolver::default(),
+        &Resolver,
     )
     .unwrap();
     (dir, store)
@@ -117,7 +117,7 @@ fn renders_cost_by_model_for_the_fixtures() {
         Path::new(FIXTURES),
         &PriceTable::built_in(),
         &Attribution::default(),
-        &Resolver::default(),
+        &Resolver,
     )
     .unwrap();
 
@@ -146,7 +146,7 @@ fn ingest_switched(store: &mut Store, projects: &Path) {
         projects,
         &PriceTable::built_in(),
         &attribution,
-        &Resolver::default(),
+        &Resolver,
     )
     .unwrap();
 }
@@ -282,7 +282,7 @@ fn ingest_with_ultra_untracked(store: &mut Store, projects: &Path) {
         projects,
         &PriceTable::built_in(),
         &attribution,
-        &Resolver::default(),
+        &Resolver,
     )
     .unwrap();
 }
@@ -486,7 +486,7 @@ fn store_with_unlogged_spend_and_expired_requests() -> (tempfile::TempDir, Store
         &projects,
         &PriceTable::built_in(),
         &Attribution::default(),
-        &Resolver::default(),
+        &Resolver,
     )
     .unwrap();
     store.expire_requests(7, "2026-01-08").unwrap();
@@ -588,7 +588,7 @@ fn spend_past_the_top_n_folds_into_other_on_each_day() {
         &projects,
         &PriceTable::built_in(),
         &Attribution::default(),
-        &Resolver::default(),
+        &Resolver,
     )
     .unwrap();
 

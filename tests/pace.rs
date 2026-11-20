@@ -85,7 +85,7 @@ fn store_with_spend(spends: &[(&str, u64)]) -> (tempfile::TempDir, Store) {
         &projects,
         &PriceTable::built_in(),
         &Attribution::default(),
-        &Resolver::default(),
+        &Resolver,
     )
     .unwrap();
     (dir, store)
@@ -602,7 +602,7 @@ fn the_fastest_session_spent_most_in_the_last_15_minutes_counting_its_subagents(
         &dir.path().join("projects"),
         &PriceTable::built_in(),
         &Attribution::default(),
-        &Resolver::default(),
+        &Resolver,
     )
     .unwrap();
 
@@ -649,7 +649,7 @@ fn an_active_session_counts_what_it_spent_today_apart_from_its_total() {
         &dir.path().join("projects"),
         &PriceTable::built_in(),
         &Attribution::default(),
-        &Resolver::default(),
+        &Resolver,
     )
     .unwrap();
 
@@ -694,7 +694,7 @@ fn an_active_session_names_the_skill_or_subagent_and_the_models_that_spent_most_
         &dir.path().join("projects"),
         &PriceTable::built_in(),
         &Attribution::default(),
-        &Resolver::default(),
+        &Resolver,
     )
     .unwrap();
 
@@ -750,7 +750,7 @@ fn active_sessions_are_every_session_written_in_the_last_15_minutes_fastest_firs
         &dir.path().join("projects"),
         &PriceTable::built_in(),
         &Attribution::default(),
-        &Resolver::default(),
+        &Resolver,
     )
     .unwrap();
 
@@ -801,7 +801,7 @@ fn a_session_with_only_unpriced_requests_in_the_last_15_minutes_counts_as_spendi
         &dir.path().join("projects"),
         &PriceTable::built_in(),
         &Attribution::default(),
-        &Resolver::default(),
+        &Resolver,
     )
     .unwrap();
 
@@ -918,7 +918,7 @@ fn an_active_session_counts_its_last_15_minutes_its_total_and_when_it_was_last_a
         &dir.path().join("projects"),
         &PriceTable::built_in(),
         &Attribution::default(),
-        &Resolver::default(),
+        &Resolver,
     )
     .unwrap();
 
@@ -971,7 +971,7 @@ fn store_with_sessions(files: &[(&str, String)]) -> (tempfile::TempDir, Store) {
         &dir.path().join("projects"),
         &PriceTable::built_in(),
         &Attribution::default(),
-        &Resolver::default(),
+        &Resolver,
     )
     .unwrap();
     (dir, store)
@@ -1163,7 +1163,7 @@ fn a_session_that_switched_accounts_counts_only_each_accounts_spend_today() {
         &dir.path().join("projects"),
         &PriceTable::built_in(),
         &attribution,
-        &Resolver::default(),
+        &Resolver,
     )
     .unwrap();
     let now = local_ms("2026-11-04 14:00:00");

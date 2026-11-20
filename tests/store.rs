@@ -24,7 +24,7 @@ fn ingest(store: &mut Store, projects: &Path) -> Summary {
         projects,
         &PriceTable::built_in(),
         &Attribution::default(),
-        &Resolver::default(),
+        &Resolver,
     )
     .expect("ingest")
 }

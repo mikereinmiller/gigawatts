@@ -1,8 +1,6 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-use serde::Deserialize;
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Place {
     Repo {
@@ -33,9 +31,7 @@ impl Place {
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct Resolver {
-    pub capture_runs: Option<PathBuf>,
-}
+pub struct Resolver;
 
 impl Resolver {
     pub fn place(&self, cwd: &Path) -> Place {
@@ -54,11 +50,9 @@ impl Resolver {
                 Place::repo(main_checkout(Path::new(&common_dir)), remote)
             })
         } else {
-            self.captured_place(cwd).or_else(|| {
-                cwd.ancestors()
-                    .take_while(|folder| !folder.exists())
-                    .find_map(|folder| self.sibling_checkout(folder))
-            })
+            cwd.ancestors()
+                .take_while(|folder| !folder.exists())
+                .find_map(|folder| self.sibling_checkout(folder))
         };
         found.unwrap_or_else(|| {
             if is_temporary(cwd) {
@@ -109,37 +103,6 @@ impl Resolver {
             }
         })
     }
-
-    fn captured_place(&self, cwd: &Path) -> Option<Place> {
-        let mut runs: Vec<PathBuf> = std::fs::read_dir(self.capture_runs.as_ref()?)
-            .ok()?
-            .filter_map(|entry| entry.ok().map(|entry| entry.path()))
-            .collect();
-        runs.sort();
-        runs.iter().rev().find_map(|run| {
-            let text = std::fs::read_to_string(run.join("repos.jsonl")).ok()?;
-            text.lines()
-                .filter_map(|line| serde_json::from_str::<CapturedRepo>(line).ok())
-                .find(|captured| {
-                    Path::new(&captured.cwd) == cwd && !captured.git_common_dir.is_empty()
-                })
-                .map(|captured| {
-                    Place::repo(
-                        main_checkout(Path::new(&captured.git_common_dir)),
-                        Some(without_credentials(&captured.remote)),
-                    )
-                })
-        })
-    }
-}
-
-#[derive(Deserialize)]
-struct CapturedRepo {
-    cwd: String,
-    #[serde(default)]
-    git_common_dir: String,
-    #[serde(default)]
-    remote: String,
 }
 
 fn git_output(cwd: &Path, args: &[&str]) -> std::io::Result<Option<String>> {

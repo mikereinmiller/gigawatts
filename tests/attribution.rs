@@ -121,7 +121,7 @@ impl Scratch {
             &self.dir.path().join("projects"),
             table,
             &Attribution::default(),
-            &Resolver::default(),
+            &Resolver,
         )
         .unwrap();
     }

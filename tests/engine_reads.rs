@@ -45,14 +45,7 @@ fn a_file_event_reads_only_that_file_under_the_path_the_full_scan_used() {
     let config = Config::parse("", &home).unwrap();
     let table = PriceTable::built_in();
     let directories = accounts::discover(&home, &config);
-    accounts::ingest(
-        &mut store,
-        &directories,
-        &config,
-        &table,
-        &Resolver::default(),
-    )
-    .unwrap();
+    accounts::ingest(&mut store, &directories, &config, &table, &Resolver).unwrap();
     let before = store.request_count().unwrap();
     append(&changed, &request_line("req_new_1"));
     append(
@@ -66,7 +59,7 @@ fn a_file_event_reads_only_that_file_under_the_path_the_full_scan_used() {
         &directories,
         &config,
         &table,
-        &Resolver::default(),
+        &Resolver,
         std::slice::from_ref(&event_path),
     )
     .unwrap();
@@ -94,7 +87,7 @@ fn a_file_gone_before_its_event_is_read_is_skipped() {
         &directories,
         &config,
         &PriceTable::built_in(),
-        &Resolver::default(),
+        &Resolver,
         &[gone],
     )
     .unwrap();
@@ -123,7 +116,7 @@ fn an_unreadable_file_in_a_batch_doesnt_stop_the_files_after_it() {
         &directories,
         &config,
         &PriceTable::built_in(),
-        &Resolver::default(),
+        &Resolver,
         &[locked, readable],
     );
 

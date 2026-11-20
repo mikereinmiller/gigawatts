@@ -269,14 +269,7 @@ fn seed(home: &Path) -> Result<(), String> {
             offset: 1,
         };
         store
-            .save_file(
-                &position,
-                true,
-                &lines,
-                &attribution,
-                &table,
-                &Resolver::default(),
-            )
+            .save_file(&position, true, &lines, &attribution, &table, &Resolver)
             .map_err(|error| error.to_string())?;
     }
     spent.sort_by_key(|(at_ms, ..)| *at_ms);

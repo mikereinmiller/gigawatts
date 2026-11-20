@@ -51,7 +51,7 @@ fn the_history_store_matches_the_transcripts_by_model() {
         &root,
         &table,
         &Attribution::default(),
-        &Resolver::default(),
+        &Resolver,
     )
     .expect("ingest");
 

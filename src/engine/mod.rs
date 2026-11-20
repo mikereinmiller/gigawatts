@@ -92,9 +92,7 @@ impl Paths {
     }
 
     pub fn resolver(&self) -> Resolver {
-        Resolver {
-            capture_runs: Some(self.home.join("gigawatts-enterprise-capture").join("runs")),
-        }
+        Resolver
     }
 }
 

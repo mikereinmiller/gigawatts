@@ -121,14 +121,7 @@ impl History {
             offset: 1,
         };
         self.store
-            .save_file(
-                &position,
-                true,
-                &lines,
-                attribution,
-                table,
-                &Resolver::default(),
-            )
+            .save_file(&position, true, &lines, attribution, table, &Resolver)
             .unwrap();
     }
 

@@ -51,7 +51,7 @@ fn a_worktree_folder_resolves_to_its_main_checkout() {
     let nested = worktree.join("src");
     fs::create_dir_all(&nested).unwrap();
 
-    let place = Resolver::default().place(&nested);
+    let place = Resolver.place(&nested);
 
     assert_eq!(
         place,
@@ -69,81 +69,28 @@ fn a_folder_outside_git_counts_as_itself() {
     let folder = dir.path().join("notes");
     fs::create_dir_all(&folder).unwrap();
 
-    assert_eq!(Resolver::default().place(&folder), Place::Itself(folder));
+    assert_eq!(Resolver.place(&folder), Place::Itself(folder));
 }
 
 #[test]
 fn folders_under_tmp_are_temporary() {
     assert_eq!(
-        Resolver::default().place(Path::new("/tmp/gigawatts-no-such-folder")),
+        Resolver.place(Path::new("/tmp/gigawatts-no-such-folder")),
         Place::Temporary
     );
     assert_eq!(
-        Resolver::default().place(Path::new("/private/tmp/gigawatts-no-such-folder")),
+        Resolver.place(Path::new("/private/tmp/gigawatts-no-such-folder")),
         Place::Temporary
     );
 }
 
 #[test]
-fn a_missing_folder_with_no_captures_counts_as_itself() {
+fn a_missing_folder_outside_any_checkout_counts_as_itself() {
     let missing = Path::new("/Users/nobody/gone/folder");
 
     assert_eq!(
-        Resolver::default().place(missing),
+        Resolver.place(missing),
         Place::Itself(missing.to_path_buf())
-    );
-}
-
-fn write_run(runs: &Path, time: &str, lines: &[&str]) {
-    let run = runs.join(time);
-    fs::create_dir_all(&run).unwrap();
-    fs::write(run.join("repos.jsonl"), lines.join("\n") + "\n").unwrap();
-}
-
-#[test]
-fn a_missing_folder_resolves_from_the_newest_capture_that_knows_it() {
-    let dir = tempfile::tempdir().unwrap();
-    let runs = dir.path().join("runs");
-    write_run(
-        &runs,
-        "2026-10-01T09-00-00Z",
-        &[
-            r#"{"cwd":"/work/old-name-wt","git_common_dir":"/work/old-name/.git","remote":"git@example.com:corp/old-name.git","branch":"main"}"#,
-            r#"{"cwd":"/work/blank","git_common_dir":"/work/kept/.git","remote":"https://ci:secret@example.com/corp/kept.git","branch":"main"}"#,
-        ],
-    );
-    write_run(
-        &runs,
-        "2026-10-20T09-00-00Z",
-        &[
-            r#"{"cwd":"/work/old-name-wt","git_common_dir":"/work/new-name/.git","remote":"git@example.com:corp/new-name.git","branch":"main"}"#,
-            r#"{"cwd":"/work/blank","git_common_dir":"","remote":"","branch":""}"#,
-            r#"{"cwd":"/work/never","git_common_dir":"","remote":"","branch":""}"#,
-        ],
-    );
-    let resolver = Resolver {
-        capture_runs: Some(runs),
-    };
-
-    assert_eq!(
-        resolver.place(Path::new("/work/old-name-wt")),
-        Place::Repo {
-            name: "new-name".to_string(),
-            path: PathBuf::from("/work/new-name"),
-            remote: Some("git@example.com:corp/new-name.git".to_string()),
-        }
-    );
-    assert_eq!(
-        resolver.place(Path::new("/work/blank")),
-        Place::Repo {
-            name: "kept".to_string(),
-            path: PathBuf::from("/work/kept"),
-            remote: Some("https://example.com/corp/kept.git".to_string()),
-        }
-    );
-    assert_eq!(
-        resolver.place(Path::new("/work/never")),
-        Place::Itself(PathBuf::from("/work/never"))
     );
 }
 
@@ -172,10 +119,7 @@ fn head_resolves_to_the_branch_being_rebased() {
         "the rebase should stop on a conflict"
     );
 
-    assert_eq!(
-        Resolver::default().head_branch(&main),
-        Some("ab/rebasing".to_string())
-    );
+    assert_eq!(Resolver.head_branch(&main), Some("ab/rebasing".to_string()));
 }
 
 #[test]
@@ -184,11 +128,8 @@ fn head_is_detached_when_git_cant_name_a_branch() {
     let (main, _worktree) = repo_with_worktree(dir.path());
     git(&main, &["checkout", "-q", "--detach"]);
 
-    assert_eq!(Resolver::default().head_branch(&main), None);
-    assert_eq!(
-        Resolver::default().head_branch(Path::new("/Users/nobody/gone")),
-        None
-    );
+    assert_eq!(Resolver.head_branch(&main), None);
+    assert_eq!(Resolver.head_branch(Path::new("/Users/nobody/gone")), None);
 }
 
 #[test]
@@ -216,7 +157,7 @@ fn a_rebase_started_from_a_detached_head_is_detached() {
         "the rebase should stop on a conflict"
     );
 
-    assert_eq!(Resolver::default().head_branch(&main), None);
+    assert_eq!(Resolver.head_branch(&main), None);
 }
 
 fn main_checkout(root: &Path, name: &str) -> PathBuf {
@@ -243,7 +184,7 @@ fn a_missing_folder_named_after_a_sibling_checkout_resolves_to_the_longest_match
     main_checkout(&root, "inventory");
     main_checkout(&root, "inventory-cloud");
     fs::create_dir_all(root.join("check")).unwrap();
-    let place = |name: &str| Resolver::default().place(&root.join(name));
+    let place = |name: &str| Resolver.place(&root.join(name));
     let repo = |name: &str| Place::Repo {
         name: name.to_string(),
         path: root.join(name),
@@ -273,7 +214,7 @@ fn a_missing_folder_beside_a_worktree_of_another_repo_counts_as_itself() {
     let root = fs::canonicalize(dir.path()).unwrap();
     repo_with_worktree(&root);
 
-    let place = Resolver::default().place(&root.join("rel42-carts-old"));
+    let place = Resolver.place(&root.join("rel42-carts-old"));
 
     assert_eq!(place, Place::Itself(root.join("rel42-carts-old")));
 }
@@ -284,7 +225,7 @@ fn a_missing_subfolder_of_a_deleted_worktree_resolves_through_its_parent() {
     let root = fs::canonicalize(dir.path()).unwrap();
     main_checkout(&root, "dotfiles");
 
-    let place = Resolver::default().place(&root.join("dotfiles-ab-fixup/claude/skills/deployer"));
+    let place = Resolver.place(&root.join("dotfiles-ab-fixup/claude/skills/deployer"));
 
     assert_eq!(
         place,

@@ -258,7 +258,7 @@ fn ingest(store: &mut Store, projects: &std::path::Path, table: &PriceTable, acc
         projects,
         table,
         &Attribution::single(Some(account)),
-        &Resolver::default(),
+        &Resolver,
     )
     .unwrap();
 }
