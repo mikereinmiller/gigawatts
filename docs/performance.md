@@ -4,7 +4,7 @@ Measured results, so a slow drift shows up when someone looks. Each run of `test
 
 ## Heavy year
 
-`tests/heavy_year.rs` builds a year of 5,000 requests a day with 90-day request retention. The size limit is strict. The time limits are set at about twice the typical time, so they catch a regression of 2× or more, such as a lost index. They don't prove an exact speed: the same query varies by half again from run to run on a busy machine.
+`tests/heavy_year.rs` builds a year of 5,000 requests a day with 90-day request retention. The size limit is strict. The time limits are set at about twice the typical time, so they catch a regression of 2× or more, such as a lost index. They don't prove an exact speed: the same query varies by half again from run to run on a busy machine. When `CI` is set, the time limits are 4 times the ones below, because GitHub's runners measure these queries 2 to 3 times slower than the Mac, so CI catches a regression of about 3× or more.
 
 Measured 2026-11-11 on the Mac (Apple Silicon), across six runs: four debug, two release.
 
