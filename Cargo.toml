@@ -3,6 +3,7 @@ name = "gigawatts"
 version = "0.1.57"
 edition = "2024"
 license = "MIT"
+rust-version = "1.95"
 
 [dependencies]
 clap = { version = "4.6.7", features = ["derive"] }
