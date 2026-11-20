@@ -1893,16 +1893,37 @@ function whoDidTheWork(rows, interactive) {
   if (rest.length) header.append(element('th', 'Other models'));
   header.append(element('th', 'Total'));
   const body = table.createTBody();
-  for (const agent of [...agents.values()].sort((a, b) => b.total - a.total)) {
+  const cell = value => element('td', value >= 0.005 ? dollars(value) : '—', value >= 0.005 ? '' : 'dim');
+  const valueCells = (line, models, sum) => {
+    line.append(shareCell(total > 0 ? sum / total : 0));
+    for (const model of shown) line.append(cell(models.get(model) || 0));
+    if (rest.length) line.append(cell(rest.reduce((acc, model) => acc + (models.get(model) || 0), 0)));
+    line.append(element('td', dollars(sum)));
+  };
+  const addRow = agent => {
     const line = body.insertRow();
-    line.append(nameCell(agent.label), shareCell(total > 0 ? agent.total / total : 0));
+    line.append(nameCell(agent.label));
     if (interactive && agent.key === null) clickable(line, openNotInTranscriptsPanel);
     else if (interactive && !scopedKinds().has('agent')) clickable(line, () => openRowPanel({key: agent.key, label: agent.raw}, 'agent'));
-    const cell = value => element('td', value >= 0.005 ? dollars(value) : '—', value >= 0.005 ? '' : 'dim');
-    for (const model of shown) line.append(cell(agent.models.get(model) || 0));
-    if (rest.length) line.append(cell(rest.reduce((sum, model) => sum + (agent.models.get(model) || 0), 0)));
-    line.append(element('td', dollars(agent.total)));
-  }
+    valueCells(line, agent.models, agent.total);
+  };
+  const ordered = [...agents.values()].sort((a, b) => b.total - a.total);
+  const {major, tail} = foldRows(ordered, agent => agent.total);
+  const toggle = () => { expanded.has('who') ? expanded.delete('who') : expanded.add('who'); fill(); };
+  const fill = () => {
+    body.replaceChildren();
+    const open = interactive && expanded.has('who');
+    for (const agent of open ? ordered : major) addRow(agent);
+    if (!tail.length) return;
+    if (open) {
+      foldRow(body, null, 'Show fewer', toggle).cells[0].colSpan = 3 + modelColumns;
+      return;
+    }
+    const models = new Map();
+    for (const agent of tail) for (const [model, value] of agent.models) models.set(model, (models.get(model) || 0) + value);
+    valueCells(foldRow(body, `Others (${tail.length})`, interactive ? 'Show' : null, toggle), models, tail.reduce((sum, agent) => sum + agent.total, 0));
+  };
+  fill();
   const foot = table.createTFoot().insertRow();
   foot.append(element('td', 'Total'), element('td', ''));
   for (const model of shown) foot.append(element('td', dollars(modelTotals.get(model))));
