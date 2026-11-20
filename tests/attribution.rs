@@ -92,7 +92,7 @@ struct Scratch {
 
 impl Scratch {
     fn new() -> Scratch {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir_in("/var/tmp").unwrap();
         let projects = dir.path().join("projects").join("p");
         fs::create_dir_all(&projects).unwrap();
         let store = Store::open(&dir.path().join("history.sqlite3")).unwrap();

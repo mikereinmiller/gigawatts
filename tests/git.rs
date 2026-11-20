@@ -179,7 +179,7 @@ fn main_checkout(root: &Path, name: &str) -> PathBuf {
 
 #[test]
 fn a_missing_folder_named_after_a_sibling_checkout_resolves_to_the_longest_match() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = tempfile::tempdir_in("/var/tmp").unwrap();
     let root = fs::canonicalize(dir.path()).unwrap();
     main_checkout(&root, "inventory");
     main_checkout(&root, "inventory-cloud");
@@ -210,7 +210,7 @@ fn a_missing_folder_named_after_a_sibling_checkout_resolves_to_the_longest_match
 
 #[test]
 fn a_missing_folder_beside_a_worktree_of_another_repo_counts_as_itself() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = tempfile::tempdir_in("/var/tmp").unwrap();
     let root = fs::canonicalize(dir.path()).unwrap();
     repo_with_worktree(&root);
 
