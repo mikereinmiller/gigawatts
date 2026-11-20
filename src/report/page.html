@@ -2184,7 +2184,7 @@ function suggestionsTab(card, ordered) {
   for (const [row, note] of shown) list.append(insightLine(row, note));
   card.append(list);
   if (ordered.length > INSIGHT_ROWS) {
-    const more = element('button', insightsShowAll ? 'Show fewer' : 'Show all', 'button');
+    const more = element('button', insightsShowAll ? 'Show fewer' : `Show ${ordered.length - INSIGHT_ROWS} more`, 'link-button inline');
     more.type = 'button';
     more.addEventListener('click', () => { insightsShowAll = !insightsShowAll; render(); });
     card.append(more);
