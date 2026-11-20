@@ -1,0 +1,39 @@
+name: Bug report
+description: Something in Gigawatts is wrong or broken
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what you expected
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+  - type: input
+    id: version
+    attributes:
+      label: Gigawatts version
+      description: Output of `gigawatts --version`
+    validations:
+      required: true
+  - type: input
+    id: claude
+    attributes:
+      label: Claude Code version
+      description: Output of `claude --version`
+  - type: input
+    id: os
+    attributes:
+      label: OS and version
+      placeholder: macOS 26.1, Ubuntu 24.04, ...
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Output of `gigawatts doctor`
+      description: It can include account labels, emails, or Claude account and organization IDs, folder paths under your home directory, and error text from `claude`. Edit out anything you'd rather not share.
+      render: text
