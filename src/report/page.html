@@ -490,6 +490,8 @@ let latest = null;
 let loadedHash = null;
 let showTail = false;
 let panelToken = 0;
+let breakdownRequest = 0;
+let chartRequest = 0;
 let insightsRequest = null;
 let insightsAnswer = null;
 let insightsError = null;
@@ -1365,7 +1367,7 @@ function spendChart(view, chartBy, entries, interactive) {
   const card = element('section', undefined, 'card');
   const head = element('div', undefined, 'card-head');
   head.append(element('h2', 'Spend per day'));
-  if (interactive && !state.scope.length) head.append(tabs(CHART_BY, chartBy, chart => { state.chart = chart; load(); }, 'Color by', 'tabs small'));
+  if (interactive && !state.scope.length) head.append(tabs(CHART_BY, chartBy, chart => { state.chart = chart; loadChart(); }, 'Color by', 'tabs small'));
   else head.append(element('span', 'By ' + GROUP_NAMES[chartBy].toLowerCase(), 'hint'));
   card.append(head);
   const {order, colors, totals, labels} = seriesColors(entries);
@@ -1732,7 +1734,7 @@ function breakdown(view, colors) {
   const by = breakdownGrouping();
   const card = element('section', undefined, 'card');
   const head = element('div', undefined, 'card-head');
-  head.append(element('h2', 'Where it went'), tabs(groupings().map(kind => [kind, GROUP_NAMES[kind]]), by, picked => { state.by = picked; showTail = false; load(); }, 'Break down by', 'tabs small'));
+  head.append(element('h2', 'Where it went'), tabs(groupings().map(kind => [kind, GROUP_NAMES[kind]]), by, picked => { state.by = picked; showTail = false; loadBreakdown(); }, 'Break down by', 'tabs small'));
   card.append(head);
   if (!view.rows.length) {
     card.append(element('p', 'No spend in this range.', 'note'));
@@ -2830,11 +2832,15 @@ async function load() {
   loadedHash = location.hash;
   const content = document.getElementById('content');
   content.style.opacity = '0.55';
+  breakdownRequest++;
+  chartRequest++;
   const scoped = state.scope.length > 0;
+  const by = breakdownGrouping();
+  const chart = chartGrouping();
   const dataQuery = scopeParams(rangeParams());
-  dataQuery.set('by', breakdownGrouping());
+  dataQuery.set('by', by);
   const seriesQuery = scopeParams(rangeParams());
-  seriesQuery.set('by', chartGrouping());
+  seriesQuery.set('by', chart);
   seriesQuery.set('top', '20');
   const sessionsQuery = scopeParams(rangeParams());
   sessionsQuery.set('limit', '10');
@@ -2864,13 +2870,49 @@ async function load() {
     ]);
     latest = {now, data, mix, series, agents, month, sessions, history, first, last, previous, previousData, lastMonth, lastMonthData, accountData, advice, limits, insights: insightsAnswer};
     render();
+    if (breakdownGrouping() !== by) loadBreakdown();
+    if (chartGrouping() !== chart) loadChart();
     if (!scoped) loadInsights();
   } catch (error) {
-    const source = document.getElementById('source');
-    source.className = 'source error';
-    source.textContent = `Can't load the report: ${error.message}`;
+    showLoadError(error);
   } finally {
     content.style.opacity = '';
+  }
+}
+
+function showLoadError(error) {
+  const source = document.getElementById('source');
+  source.className = 'source error';
+  source.textContent = `Can't load the report: ${error.message}`;
+}
+
+async function loadBreakdown() {
+  const request = ++breakdownRequest;
+  const query = scopeParams(rangeParams());
+  query.set('by', breakdownGrouping());
+  try {
+    const [data, mix] = await Promise.all([fetchJson('/api/data?' + query), fetchJson('/api/mix?' + query)]);
+    if (request !== breakdownRequest || !latest) return;
+    latest.data = data;
+    latest.mix = mix;
+    render();
+  } catch (error) {
+    showLoadError(error);
+  }
+}
+
+async function loadChart() {
+  const request = ++chartRequest;
+  const query = scopeParams(rangeParams());
+  query.set('by', chartGrouping());
+  query.set('top', '20');
+  try {
+    const series = await fetchJson('/api/series?' + query);
+    if (request !== chartRequest || !latest) return;
+    latest.series = series;
+    render();
+  } catch (error) {
+    showLoadError(error);
   }
 }
 
