@@ -148,6 +148,10 @@ rm -rf ~/.local/share/gigawatts ~/.config/gigawatts   # deletes your history and
 
 [`docs/overview.md`](docs/overview.md) is the full design: where each number comes from and how costs are priced.
 
+## Contributing
+
+Bug reports and feature requests are welcome as issues. Pull requests come from collaborators only. See [`CONTRIBUTING.md`](CONTRIBUTING.md).
+
 ## License
 
 MIT. See [`LICENSE`](LICENSE).

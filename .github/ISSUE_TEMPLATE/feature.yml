@@ -1,0 +1,20 @@
+name: Feature request
+description: Something Gigawatts doesn't do yet
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What you're trying to do, and what gets in the way
+      description: Describe the problem, not the code that would fix it.
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why it matters to you
+      description: How often you hit it and what it costs you.
+  - type: textarea
+    id: workaround
+    attributes:
+      label: What you do today instead
