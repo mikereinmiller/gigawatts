@@ -122,7 +122,7 @@ fn the_engine_keeps_the_snapshot_current_until_stopped() {
     let started = gigawatts(&home.path, &["engine"]);
     assert_eq!(
         stdout(&started),
-        "Started the engine. The flux capacitor is warming up.\n",
+        "Started the engine. Reading your Claude Code history in the background, this could take a few seconds.\n",
         "{started:?}"
     );
     wait_for_requests(&paths.snapshot(), 1);
@@ -146,6 +146,14 @@ fn the_engine_keeps_the_snapshot_current_until_stopped() {
     assert!(!paths.socket().exists());
     let stopped_again = gigawatts(&home.path, &["stop"]);
     assert_eq!(stdout(&stopped_again), "The engine isn't running.\n");
+
+    let restarted = gigawatts(&home.path, &["engine"]);
+    assert_eq!(
+        stdout(&restarted),
+        "Started the engine. The flux capacitor is warming up.\n",
+        "{restarted:?}"
+    );
+    gigawatts(&home.path, &["stop"]);
 }
 
 #[test]
@@ -159,7 +167,7 @@ fn a_second_foreground_engine_exits_while_one_runs() {
     fs::create_dir_all(home.path.join(".claude").join("projects")).unwrap();
     assert_eq!(
         stdout(&gigawatts(&home.path, &["engine"])),
-        "Started the engine. The flux capacitor is warming up.\n"
+        "Started the engine. Reading your Claude Code history in the background, this could take a few seconds.\n"
     );
 
     let second = gigawatts(&home.path, &["engine", "--foreground"]);
@@ -288,7 +296,7 @@ fn a_projects_folder_made_after_the_engine_started_is_read() {
     let paths = Paths::new(&home.path);
     assert_eq!(
         stdout(&gigawatts(&home.path, &["engine"])),
-        "Started the engine. The flux capacitor is warming up.\n"
+        "Started the engine. Reading your Claude Code history in the background, this could take a few seconds.\n"
     );
     wait_for_requests(&paths.snapshot(), 0);
 
@@ -803,7 +811,7 @@ fn activity_refreshes_limits_through_claude_into_the_snapshot() {
     let started = gigawatts_with_claude_in(&home.path, &bin, &["engine"]);
     assert_eq!(
         stdout(&started),
-        "Started the engine. The flux capacitor is warming up.\n",
+        "Started the engine. Reading your Claude Code history in the background, this could take a few seconds.\n",
         "{started:?}"
     );
     wait_for_requests(&paths.snapshot(), 1);
@@ -995,7 +1003,7 @@ fn data_limits_asks_a_running_engine_for_fresh_readings() {
     let started = gigawatts_with_claude_in(&home.path, &bin, &["engine"]);
     assert_eq!(
         stdout(&started),
-        "Started the engine. The flux capacitor is warming up.\n",
+        "Started the engine. Reading your Claude Code history in the background, this could take a few seconds.\n",
         "{started:?}"
     );
 

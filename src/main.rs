@@ -1171,8 +1171,12 @@ fn executable() -> PathBuf {
 }
 
 fn start_engine() -> ExitCode {
+    let first_run = !paths().snapshot().exists();
     match engine::ensure_running(&paths(), &executable()) {
         Ok(engine::Started::AlreadyRunning) => println!("The engine is already running."),
+        Ok(engine::Started::Started) if first_run => println!(
+            "Started the engine. Reading your Claude Code history in the background, this could take a few seconds."
+        ),
         Ok(engine::Started::Started) => {
             println!("Started the engine. The flux capacitor is warming up.")
         }
