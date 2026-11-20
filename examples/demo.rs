@@ -345,7 +345,7 @@ fn earlier_sessions(
                 id: session_id(days_ago as u64, n),
                 title: random.pick(&TITLES).to_string(),
                 repo,
-                branch: random.pick(branches),
+                branch: random.pick::<&str>(branches),
                 skill: *random.pick(&SKILLS),
                 model: if random.below(6) == 0 { FABLE } else { OPUS },
                 start_ms,
@@ -590,13 +590,10 @@ fn render_tui(home: &Path, columns: u16, rows: u16, out: &Path) -> Result<(), St
             .map(|time| time.chars().take(16).collect())
             .unwrap_or_default()
     };
-    let mut terminal =
-        Terminal::new(TestBackend::new(columns, rows)).map_err(|error| error.to_string())?;
+    let Ok(mut terminal) = Terminal::new(TestBackend::new(columns, rows));
     for _ in 0..3 {
         gigawatts::tui::history::load(&mut app, &store);
-        terminal
-            .draw(|frame| app.draw(frame, now_ms, &local_minute))
-            .map_err(|error| error.to_string())?;
+        let Ok(_) = terminal.draw(|frame| app.draw(frame, now_ms, &local_minute));
     }
     std::fs::write(out, html(terminal.backend().buffer())).map_err(|error| error.to_string())
 }
