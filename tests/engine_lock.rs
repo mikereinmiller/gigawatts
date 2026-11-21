@@ -44,7 +44,7 @@ fn a_starting_engine_waits_out_a_check_that_holds_the_lock_for_a_moment() {
         drop(checker);
     });
 
-    let engine = EngineLock::acquire(&path).unwrap();
+    let engine = EngineLock::acquire_within(&path, std::time::Duration::from_secs(10)).unwrap();
 
     released.join().unwrap();
     assert!(engine.is_some());

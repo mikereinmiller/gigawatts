@@ -12,8 +12,12 @@ pub struct EngineLock {
 
 impl EngineLock {
     pub fn acquire(path: &Path) -> io::Result<Option<EngineLock>> {
+        Self::acquire_within(path, CHECK_WAIT)
+    }
+
+    pub fn acquire_within(path: &Path, wait: Duration) -> io::Result<Option<EngineLock>> {
         let mut file = open(path)?;
-        let deadline = Instant::now() + CHECK_WAIT;
+        let deadline = Instant::now() + wait;
         loop {
             match file.try_lock() {
                 Ok(()) => {
