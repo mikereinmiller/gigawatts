@@ -699,6 +699,12 @@ function shortDate(day) {
   return new Date(day + 'T00:00:00Z').toLocaleDateString(undefined, {month: 'short', day: 'numeric', timeZone: 'UTC'});
 }
 
+function updatedLine(at) {
+  const time = at.toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'});
+  if (at.toDateString() === new Date().toDateString()) return `Updated ${time}`;
+  return `Updated ${at.toLocaleDateString([], {month: 'short', day: 'numeric'})}, ${time}`;
+}
+
 function longDate(ms) {
   return new Date(ms).toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'});
 }
@@ -2899,7 +2905,7 @@ async function load() {
       previous ? fetchJson('/api/data?' + scopeParams(new URLSearchParams(previous.params))) : null,
       fetchJson(`/api/data?since=${lastMonth.since}&until=${lastMonth.sameDay}&by=model`),
     ]);
-    latest = {now, data, mix, series, agents, month, sessions, history, first, last, previous, previousData, lastMonth, lastMonthData, accountData, advice, limits, insights: insightsAnswer};
+    latest = {now, data, mix, series, agents, month, sessions, history, first, last, previous, previousData, lastMonth, lastMonthData, accountData, advice, limits, insights: insightsAnswer, fetchedAt: new Date()};
     render();
     if (breakdownGrouping() !== by) loadBreakdown();
     if (chartGrouping() !== chart) loadChart();
@@ -2992,7 +2998,7 @@ function render() {
   drawControls(latest.now.accounts, view);
   const source = document.getElementById('source');
   source.className = 'source';
-  source.textContent = `From the history database at ${new Date().toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'})} · reload for newer numbers`;
+  source.textContent = updatedLine(latest.fetchedAt);
   drawnWidth = chartWidth();
   const chart = spendChart(view, chartGrouping(), view.series, true);
   const sections = [];
