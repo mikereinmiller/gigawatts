@@ -159,6 +159,33 @@ fn dollar_pace_compares_today_with_the_median_of_the_last_20_workdays_by_this_cl
 }
 
 #[test]
+fn on_a_weekend_dollar_pace_compares_today_only_with_earlier_weekend_days() {
+    let (_dir, store) = store_with_spend(&[
+        ("2026-10-24 13:00:00", 6),
+        ("2026-10-24 15:00:00", 10),
+        ("2026-10-25 13:00:00", 4),
+        ("2026-10-30 13:00:00", 50),
+        ("2026-10-31 09:00:00", 3),
+    ]);
+
+    let pace = dollar_pace(&store, None, local_ms("2026-10-31 14:00:00")).unwrap();
+
+    assert_eq!(
+        pace,
+        DollarPace {
+            today_usd: 3.0,
+            usual_usd: Some(5.0),
+            usual_days: 2,
+            clock: "14:00".to_string(),
+            weekend: true,
+            earlier_days_usd: vec![6.0, 4.0],
+            earlier_day_totals_usd: vec![16.0, 4.0],
+            earlier_days: vec!["2026-10-24".to_string(), "2026-10-25".to_string()],
+        }
+    );
+}
+
+#[test]
 fn monthly_credits_pace_from_the_credit_reset_setting_and_stay_provisional_until_it_is_set() {
     let credits = enterprise_credits();
     assert_eq!(credits.percent, 20.0);
