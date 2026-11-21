@@ -53,6 +53,17 @@ fn local_ms(store_day: &str, clock: &str) -> i64 {
         .unwrap()
 }
 
+fn is_weekend(store_day: &str) -> bool {
+    rusqlite::Connection::open_in_memory()
+        .unwrap()
+        .query_row(
+            "SELECT strftime('%w', ?1) IN ('0', '6')",
+            [store_day],
+            |row| row.get(0),
+        )
+        .unwrap()
+}
+
 fn utc_text(ms: i64) -> String {
     rusqlite::Connection::open_in_memory()
         .unwrap()
@@ -111,6 +122,7 @@ fn the_snapshot_carries_each_tracked_accounts_spend_today_and_the_engines_proble
     )
     .unwrap();
     let week_ago = days_before(&today, 7);
+    let weekend = is_weekend(&today);
     let now_ms = local_ms(&today, "12:10:00");
     let two_days_ms = 2 * 24 * 3_600_000;
     let weekly = Limit {
@@ -190,7 +202,7 @@ fn the_snapshot_carries_each_tracked_accounts_spend_today_and_the_engines_proble
                         usual_usd: Some(0.014),
                         usual_days: 1,
                         clock: "12:10".to_string(),
-                        weekend: false,
+                        weekend,
                         earlier_days_usd: vec![0.014],
                         earlier_day_totals_usd: vec![0.014],
                         earlier_days: vec![week_ago.clone()],
@@ -232,7 +244,7 @@ fn the_snapshot_carries_each_tracked_accounts_spend_today_and_the_engines_proble
                         usual_usd: Some(0.014),
                         usual_days: 1,
                         clock: "12:10".to_string(),
-                        weekend: false,
+                        weekend,
                         earlier_days_usd: vec![0.014],
                         earlier_day_totals_usd: vec![0.014],
                         earlier_days: vec![week_ago.clone()],
