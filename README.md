@@ -22,7 +22,7 @@ Gigawatts is in beta. Expect rough edges, and please report what breaks.
 git clone https://github.com/mikereinmiller/gigawatts.git
 cd gigawatts
 mise trust          # lets mise use this repo's mise.toml
-mise install        # installs Rust stable
+mise install        # installs the pinned Rust version
 mise run install    # builds, installs, and starts the engine
 ```
 

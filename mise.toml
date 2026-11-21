@@ -1,5 +1,5 @@
 [tools]
-rust = "stable"
+rust = "1.100.0"
 
 [tasks.install]
 description = "Build and install gigawatts, then restart the engine on the new binary"
