@@ -437,7 +437,7 @@ b.insight-num { font-weight: 500; }
     <div class="popover end" id="export-menu" role="menu">
       <p class="menu-note">A summary of this view: totals, models, skills, and subagents, without repo, branch, or session names.</p>
       <button class="rich" type="button" role="menuitem" data-export="markdown"><span>Markdown</span><small>Text and tables, for Slack, GitHub, Linear, or an agent</small></button>
-      <button class="rich" type="button" role="menuitem" data-export="pdf"><span>PDF</span><small>With charts. Opens the print dialog; choose Save as PDF</small></button>
+      <button class="rich" type="button" role="menuitem" data-export="pdf"><span>PDF</span><small>With charts, through the print dialog</small></button>
     </div>
   </div>
 </header>
@@ -1436,7 +1436,6 @@ function spendChart(view, chartBy, entries, interactive) {
   chart.append(legend);
   card.append(chart);
   if (!entries.length) card.append(element('p', 'No spend in this range.', 'note'));
-  else if (interactive) card.append(element('p', 'Click a day for its details.', 'note'));
   return {card, colors};
 }
 
@@ -1798,7 +1797,7 @@ function breakdown(view, colors) {
   const distinct = view.sessionCount ?? sessions;
   const partial = view.keptFrom && view.keptFrom > view.first;
   const hint = distinct ? `${distinct.toLocaleString()} sessions in this range${partial ? `, counted from ${shortDate(view.keptFrom)}, when session detail starts` : ''}. ` : '';
-  card.append(element('p', `${hint}"Paid for" splits each row's cost by token type at list price; hover a bar for the shares. Click a row for its details, and focus the page on it from there.`, 'note'));
+  card.append(element('p', `${hint}"Paid for" splits each row's cost by token type at list price.`, 'note'));
   return card;
 }
 
@@ -2027,7 +2026,7 @@ function weeklyBars(row, markWeeks, splitWeek) {
     col.addEventListener('blur', hideTip);
     cols.append(col);
   }
-  chart.append(top, cols, element('p', 'Under each date, that week\'s runs. Hover a week for its numbers.', 'week-note'));
+  chart.append(top, cols, element('p', 'Under each date, that week\'s runs.', 'week-note'));
   return chart;
 }
 
@@ -2088,7 +2087,7 @@ function insightsPanel(row, isSubagent, note) {
       await navigator.clipboard.writeText(prompt);
       button.textContent = 'Copied';
     } catch {
-      button.textContent = 'Select the text above to copy it';
+      button.textContent = "Couldn't copy";
     }
   });
 }
@@ -2172,7 +2171,7 @@ function changesTab(card, events, ordered) {
     list.append(line);
   }
   card.append(list);
-  card.append(element('p', 'Each change in cost per run of 30% or more, listed once with every skill and subagent it moved, and sized by the one it moved most. Savings and costs are against the two weeks before each change. A rise that a later change set back is folded into that later line. Click a change to see it week by week.', 'note'));
+  card.append(element('p', 'Each change in cost per run of 30% or more, listed once with every skill and subagent it moved, and sized by the one it moved most. Savings and costs are against the two weeks before each change. A rise that a later change set back is folded into that later line.', 'note'));
 }
 
 function suggestionsTab(card, ordered) {
@@ -2189,7 +2188,7 @@ function suggestionsTab(card, ordered) {
     more.addEventListener('click', () => { insightsShowAll = !insightsShowAll; render(); });
     card.append(more);
   }
-  card.append(element('p', 'Each row is one skill or subagent, the most at stake first. A skill\'s cost includes the subagents it launched, so a skill and one of its subagents can count the same dollars; don\'t add rows together. Click a row for its cost per run week by week, its takeaways and changes, and a prompt to ask Claude for edits. Costs are at list price.', 'note'));
+  card.append(element('p', 'Each row is one skill or subagent, the most at stake first. A skill\'s cost includes the subagents it launched, so a skill and one of its subagents can count the same dollars; don\'t add rows together. Costs are at list price.', 'note'));
 }
 
 function insightsCard() {
@@ -2215,7 +2214,8 @@ function insightsCard() {
 function biggestSessions(view) {
   const card = element('section', undefined, 'card');
   const head = element('div', undefined, 'card-head');
-  head.append(element('h2', 'Biggest sessions'), element('span', view.keptFrom ? `Session detail is kept from ${shortDate(view.keptFrom)}` : 'Click one for its details', 'hint'));
+  head.append(element('h2', 'Biggest sessions'));
+  if (view.keptFrom) head.append(element('span', `Session detail is kept from ${shortDate(view.keptFrom)}`, 'hint'));
   card.append(head);
   if (!view.sessions.length) {
     card.append(element('p', 'No sessions with request detail in this range.', 'note'));
