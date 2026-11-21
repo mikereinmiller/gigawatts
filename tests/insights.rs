@@ -95,6 +95,17 @@ fn row<'a>(rows: &'a [InsightRow], name: &str) -> &'a InsightRow {
         .unwrap_or_else(|| panic!("no row {name} in {rows:#?}"))
 }
 
+fn local_time_in_utc(day: &str, clock: &str) -> String {
+    rusqlite::Connection::open_in_memory()
+        .unwrap()
+        .query_row(
+            "SELECT strftime('%Y-%m-%dT%H:%M:%fZ', ?1 || 'T' || ?2, 'utc')",
+            [day, clock],
+            |row| row.get(0),
+        )
+        .unwrap()
+}
+
 fn at(minute: u32) -> String {
     format!("2026-01-06T12:{minute:02}:00.000Z")
 }
@@ -177,21 +188,24 @@ fn a_subagent_working_inside_a_skill_neither_breaks_its_run_nor_hides_its_cost()
 
 #[test]
 fn each_subagent_id_is_one_run_in_the_week_it_started() {
+    let sunday_noon = local_time_in_utc("2026-01-11", "12:00:00");
+    let monday_noon = local_time_in_utc("2026-01-12", "12:00:00");
+    let monday_one = local_time_in_utc("2026-01-12", "13:00:00");
     let (_dir, store) = store_with(&[
         Line {
-            timestamp: "2026-01-11T12:00:00.000Z",
+            timestamp: &sunday_noon,
             agent: Some("Explore"),
             agent_id: Some("a1"),
             ..Line::default()
         },
         Line {
-            timestamp: "2026-01-12T12:00:00.000Z",
+            timestamp: &monday_noon,
             agent: Some("Explore"),
             agent_id: Some("a1"),
             ..Line::default()
         },
         Line {
-            timestamp: "2026-01-12T13:00:00.000Z",
+            timestamp: &monday_one,
             agent: Some("Explore"),
             agent_id: Some("a2"),
             ..Line::default()
