@@ -16,6 +16,7 @@ mod alert;
 pub mod announced;
 mod digits;
 mod every;
+mod extras;
 pub mod history;
 pub mod palette;
 mod sections;
@@ -356,7 +357,7 @@ impl App {
         let sessions_beside =
             !sessions_open && self.shown().is_some() && body.width >= SESSIONS_BESIDE_SPENDING_FROM;
         let with_sessions = !sessions_beside && !sessions_open;
-        let below_tabs = Rect {
+        let body = Rect {
             y: body.y + 1,
             height: body.height.saturating_sub(1),
             ..body
@@ -373,17 +374,6 @@ impl App {
             }
         };
         let top_height = self.top_height(body, now_ms, local_minute, with_sessions, beside(false));
-        let below_tabs_top = self.top_height(
-            below_tabs,
-            now_ms,
-            local_minute,
-            with_sessions,
-            beside(false),
-        );
-        let spare_row = below_tabs.height >= top_height + HISTORY_MIN_HEIGHT
-            && below_tabs_top == top_height
-            && !self.sessions_need_the_spare_row(below_tabs, now_ms, local_minute, beside);
-        let body = if spare_row { below_tabs } else { body };
         let compact = body.height < top_height + HISTORY_MIN_HEIGHT;
         self.compact.set(compact);
         let roomy = self.roomy(body, compact, now_ms, local_minute, with_sessions);
@@ -426,7 +416,7 @@ impl App {
                     &self.sessions_today(now_ms),
                     sessions_width,
                     rest.height,
-                    roomy,
+                    sessions::Cards::Fit { roomy },
                 ))
             } else {
                 history_height
@@ -437,18 +427,32 @@ impl App {
             ])
             .areas(rest);
             let history_area = if sessions_beside {
-                let [sessions_area, _, history_area] = Layout::horizontal([
-                    Constraint::Length(sessions_width),
-                    Constraint::Length(sections::COLUMN_GAP),
-                    Constraint::Fill(1),
-                ])
-                .areas(row);
+                let [sessions_area, history_area] = if self.stacked {
+                    let [sessions_area, _, history_area] = Layout::horizontal([
+                        Constraint::Length(sessions_width),
+                        Constraint::Length(sections::COLUMN_GAP),
+                        Constraint::Fill(1),
+                    ])
+                    .areas(row);
+                    [sessions_area, history_area]
+                } else {
+                    let [history_area, _, sessions_area] = Layout::horizontal([
+                        Constraint::Length(
+                            row.width
+                                .saturating_sub(sessions_width + sections::COLUMN_GAP),
+                        ),
+                        Constraint::Length(sections::COLUMN_GAP),
+                        Constraint::Fill(1),
+                    ])
+                    .areas(row);
+                    [sessions_area, history_area]
+                };
                 sessions::draw(
                     frame,
                     sessions_area,
                     &self.sessions_today(now_ms),
                     now_ms,
-                    roomy,
+                    sessions::Cards::Fit { roomy },
                 );
                 history_area
             } else {
@@ -508,25 +512,6 @@ impl App {
             }
             _ => false,
         }
-    }
-
-    fn sessions_need_the_spare_row(
-        &self,
-        below_tabs: Rect,
-        now_ms: i64,
-        local_minute: &dyn Fn(i64) -> String,
-        beside: impl Fn(bool) -> u16,
-    ) -> bool {
-        if beside(false) == 0 {
-            return false;
-        }
-        let untrimmed = self.top_height(below_tabs, now_ms, local_minute, false, 0);
-        let compact = below_tabs.height < untrimmed + HISTORY_MIN_HEIGHT;
-        let roomy = self.roomy(below_tabs, compact, now_ms, local_minute, false);
-        let short = beside(roomy).saturating_sub(below_tabs.height.saturating_sub(untrimmed));
-        let pane_top_rows = if self.stacked && roomy { 2 } else { 0 };
-        let blank_rows = 1 + u16::from(roomy) + pane_top_rows;
-        (1..=blank_rows).contains(&short)
     }
 
     fn top_height(

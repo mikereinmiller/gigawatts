@@ -1,28 +1,35 @@
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::text::Line;
+use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
-use crate::contract::{AccountToday, Snapshot};
+use crate::contract::{AccountToday, Problem, Snapshot};
 use crate::limits::age;
 
 use super::HISTORY_MIN_HEIGHT;
+use super::digits;
+use super::extras::{Extras, Step, cards_height, grow};
 use super::sections::{
-    COLUMN_GAP, LimitLayout, LocalMinute, estimate_width, limit_lines, limits_width, section,
-    source_and_age, today_lines, today_panel,
+    COLUMN_GAP, LimitLayout, LocalMinute, SIDE_BY_SIDE_FROM, limit_lines, limit_rows, limits_width,
+    section, source_and_age, spent_emphasis, spent_notes, styled_spans, titled_section,
+    today_lines, today_panel, usual_notes_width,
 };
 use super::sessions::{self, SessionsToday};
+use super::style::{MUTED, TITLE};
 
 const ROOMY_FROM: u16 = 100;
 const THREE_COLUMNS_FROM: u16 = 150;
 const BORDER_ROWS: usize = 2;
 const BORDER_AND_PADDING_COLUMNS: u16 = 4;
-const COMPACT_TOP_GAP: u16 = 1;
 const PANE_TOP_GAPS: u16 = 2;
+const TODAY_MIN_WIDTH: usize = 34;
+const TODAY_MAX_WIDTH: usize = 44;
+const DIVIDER: &str = " │ ";
 
 pub(crate) struct Fit {
     pub(crate) roomy: bool,
     with_sessions: bool,
+    extras: Extras,
 }
 
 struct Pane {
@@ -70,25 +77,48 @@ pub(crate) fn fit(
     with_sessions: bool,
 ) -> Fit {
     let running = SessionsToday::every(&snapshot.accounts, now_ms);
+    let boxes_rows = |extras: Extras, with_sessions: bool| {
+        boxes_height(snapshot, now_ms, local_minute, width)
+            + cards_height(&running, width, with_sessions, extras)
+            + if extras.spending {
+                HISTORY_MIN_HEIGHT
+            } else {
+                0
+            }
+    };
+    let boxes_with_sessions = with_sessions && boxes_rows(Extras::default(), true) <= height;
+    let boxes = if boxes_with_sessions {
+        grow(
+            Extras::default(),
+            &[Step::Spending, Step::CardsGap, Step::SecondRow],
+            |extras| boxes_rows(extras, true) <= height,
+        )
+    } else {
+        Extras::default()
+    };
     if let Some(overview) = roomy(snapshot, now_ms, local_minute, width) {
-        let sessions = sessions::min_height(&running, width, true);
-        let below = if with_sessions {
-            sessions + HISTORY_MIN_HEIGHT
+        let most_the_boxes_show = if with_sessions {
+            sessions::rows_reserved(2, true)
         } else {
-            sessions.max(HISTORY_MIN_HEIGHT)
+            0
         };
-        if overview.height() + below <= height {
+        if overview.height() + most_the_boxes_show + HISTORY_MIN_HEIGHT <= height {
             return Fit {
                 roomy: true,
                 with_sessions,
+                extras: Extras {
+                    spending: true,
+                    cards_gap: true,
+                    second_row: true,
+                    ..Extras::default()
+                },
             };
         }
     }
-    let needed =
-        compact_height(snapshot, now_ms, width) + sessions::min_height(&running, width, false);
     Fit {
         roomy: false,
-        with_sessions: with_sessions && needed <= height,
+        with_sessions: boxes_with_sessions,
+        extras: boxes,
     }
 }
 
@@ -104,24 +134,10 @@ pub(crate) fn height(
     let fit = fit(snapshot, now_ms, local_minute, width, height, with_sessions);
     let overview = match roomy(snapshot, now_ms, local_minute, width) {
         Some(overview) if fit.roomy => make_room(overview, height, beside).height(),
-        _ => {
-            compact_height(snapshot, now_ms, width)
-                + compact_spacing(snapshot, now_ms, width, height, fit.with_sessions)
-                    .rows(snapshot.accounts.len() as u16)
-        }
+        _ => boxes_height(snapshot, now_ms, local_minute, width),
     };
-    let sessions = if fit.with_sessions {
-        let room = height.saturating_sub(overview + HISTORY_MIN_HEIGHT);
-        sessions::height(
-            &SessionsToday::every(&snapshot.accounts, now_ms),
-            width,
-            room,
-            fit.roomy,
-        )
-    } else {
-        0
-    };
-    overview + sessions
+    let running = SessionsToday::every(&snapshot.accounts, now_ms);
+    overview + cards_height(&running, width, fit.with_sessions, fit.extras)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -145,12 +161,10 @@ pub(crate) fn draw(
     );
     let rest = match roomy(snapshot, now_ms, local_minute, area.width) {
         Some(overview) if fit.roomy => draw_roomy(frame, area, make_room(overview, room, beside)),
-        _ => draw_compact(
+        _ => draw_boxes(
             frame,
             area,
-            snapshot,
-            now_ms,
-            compact_spacing(snapshot, now_ms, area.width, room, fit.with_sessions),
+            account_boxes(snapshot, now_ms, local_minute, area.width),
         ),
     };
     if fit.with_sessions {
@@ -159,7 +173,7 @@ pub(crate) fn draw(
             rest,
             &SessionsToday::every(&snapshot.accounts, now_ms),
             now_ms,
-            fit.roomy,
+            fit.extras.cards(),
         );
     }
 }
@@ -195,13 +209,7 @@ fn roomy(
             width,
             today: Pane {
                 title: format!("{} · today", account.account_label),
-                lines: padded(today_panel(
-                    account,
-                    &snapshot.problems,
-                    now_ms,
-                    inner(width),
-                    false,
-                )),
+                lines: padded(today_panel(account, &snapshot.problems, inner(width))),
             },
             limits: Pane {
                 title: limits_title(account, now_ms, inner(width)),
@@ -212,7 +220,6 @@ fn roomy(
                     local_minute,
                     inner(width),
                     LimitLayout::Roomy,
-                    0,
                 )),
             },
         })
@@ -306,129 +313,160 @@ fn render(frame: &mut Frame, pane: Pane, area: Rect) {
     frame.render_widget(Paragraph::new(pane.lines).block(section(&pane.title)), area);
 }
 
-fn compact_lines(
+struct AccountBox {
+    title: Line<'static>,
+    lines: Vec<Line<'static>>,
+}
+
+fn account_boxes(
     snapshot: &Snapshot,
     now_ms: i64,
+    local_minute: LocalMinute,
     width: u16,
-    before_today: bool,
-) -> Vec<(&AccountToday, Vec<Line<'static>>)> {
-    let inner_width = inner(width);
-    let estimate_width = snapshot
-        .accounts
-        .iter()
-        .map(|account| estimate_width(account, now_ms))
-        .max()
-        .unwrap_or(0);
+) -> Vec<AccountBox> {
+    let today_width = today_width(snapshot);
     snapshot
         .accounts
         .iter()
         .map(|account| {
-            let mut lines = limit_lines(
+            account_box(
                 account,
                 &snapshot.problems,
                 now_ms,
-                &|_| String::new(),
-                inner_width,
-                LimitLayout::Stacked,
-                estimate_width,
-            );
-            if before_today {
-                lines.push(Line::default());
-            }
-            lines.extend(today_lines(account, &snapshot.problems, inner_width, true));
-            (account, lines)
+                local_minute,
+                width,
+                today_width,
+            )
         })
         .collect()
 }
 
-fn compact_height(snapshot: &Snapshot, now_ms: i64, width: u16) -> u16 {
-    let blocks: usize = compact_lines(snapshot, now_ms, width, false)
+fn today_width(snapshot: &Snapshot) -> u16 {
+    snapshot
+        .accounts
         .iter()
-        .map(|(_, lines)| lines.len() + BORDER_ROWS)
-        .sum();
-    blocks as u16 + COMPACT_TOP_GAP
+        .map(usual_notes_width)
+        .max()
+        .unwrap_or(0)
+        .clamp(TODAY_MIN_WIDTH, TODAY_MAX_WIDTH) as u16
 }
 
-#[derive(Clone, Copy, Default)]
-struct Spacing {
-    between_boxes: bool,
-    before_today: bool,
-}
-
-impl Spacing {
-    fn rows(self, accounts: u16) -> u16 {
-        let between = if self.between_boxes {
-            accounts.saturating_sub(1)
-        } else {
-            0
-        };
-        let before = if self.before_today { accounts } else { 0 };
-        between + before
-    }
-}
-
-fn compact_spacing(
-    snapshot: &Snapshot,
+fn account_box(
+    account: &AccountToday,
+    problems: &[Problem],
     now_ms: i64,
+    local_minute: LocalMinute,
     width: u16,
-    room: u16,
-    with_sessions: bool,
-) -> Spacing {
-    if !with_sessions {
-        return Spacing::default();
+    today_width: u16,
+) -> AccountBox {
+    let inner_width = inner(width);
+    let title = box_title(account, now_ms, inner_width);
+    let layout = LimitLayout::Full;
+    if width < SIDE_BY_SIDE_FROM {
+        let mut lines = today_lines(account, problems, inner_width);
+        lines.extend(
+            limit_rows(account, problems, now_ms, local_minute, inner_width, layout).lines(0),
+        );
+        return AccountBox { title, lines };
     }
-    let accounts = snapshot.accounts.len() as u16;
-    let overview = compact_height(snapshot, now_ms, width);
-    let unspaced_room = room.saturating_sub(overview + HISTORY_MIN_HEIGHT);
-    let sessions = sessions::height(
-        &SessionsToday::every(&snapshot.accounts, now_ms),
-        width,
-        unspaced_room,
-        false,
-    );
-    let base = overview + sessions + HISTORY_MIN_HEIGHT;
-    [
-        Spacing {
-            between_boxes: true,
-            before_today: true,
-        },
-        Spacing {
-            between_boxes: true,
-            before_today: false,
-        },
-    ]
-    .into_iter()
-    .find(|spacing| base + spacing.rows(accounts) <= room)
-    .unwrap_or_default()
+    let today = today_column(account, problems, today_width);
+    let limits_width = inner_width.saturating_sub(today_width + DIVIDER.chars().count() as u16);
+    let limits = limit_rows(
+        account,
+        problems,
+        now_ms,
+        local_minute,
+        limits_width,
+        layout,
+    )
+    .spread(0, today.len());
+    let rows = today.len().max(limits.len());
+    let lines = (0..rows)
+        .map(|row| {
+            let left = today.get(row).cloned().unwrap_or_default();
+            let pad = (today_width as usize).saturating_sub(left.width());
+            let mut spans = styled_spans(left);
+            spans.push(Span::raw(" ".repeat(pad)));
+            spans.push(Span::styled(DIVIDER, MUTED));
+            spans.extend(styled_spans(limits.get(row).cloned().unwrap_or_default()));
+            Line::from(spans)
+        })
+        .collect();
+    AccountBox { title, lines }
 }
 
-fn draw_compact(
-    frame: &mut Frame,
-    area: Rect,
-    snapshot: &Snapshot,
-    now_ms: i64,
-    spacing: Spacing,
-) -> Rect {
-    let blocks = compact_lines(snapshot, now_ms, area.width, spacing.before_today);
-    let gap = u16::from(spacing.between_boxes);
+fn small_spent(account: &AccountToday) -> Option<[String; digits::SMALL_ROWS]> {
+    let [first, second, third] = digits::small(&format!("{:.2}", account.cost_usd))?;
+    Some([
+        format!("$ {first}"),
+        format!("  {second}"),
+        format!("  {third}"),
+    ])
+}
+
+fn today_column(account: &AccountToday, problems: &[Problem], width: u16) -> Vec<Line<'static>> {
+    let emphasis = spent_emphasis(account);
+    let small = small_spent(account).filter(|rows| rows[0].chars().count() <= width as usize);
+    let mut lines = if let Some(rows) = small {
+        let mut lines = vec![Line::default()];
+        lines.extend(rows.into_iter().map(|row| Line::styled(row, emphasis)));
+        lines
+    } else {
+        vec![Line::from(vec![
+            Span::styled(format!("${:.2}", account.cost_usd), emphasis),
+            Span::styled(" today", MUTED),
+        ])]
+    };
+    lines.extend(spent_notes(account, problems, width));
+    lines
+}
+
+fn box_title(account: &AccountToday, now_ms: i64, width: u16) -> Line<'static> {
+    let label = account.account_label.clone();
+    let room = (width as usize).saturating_sub(label.chars().count());
+    let source = account
+        .limits
+        .as_ref()
+        .filter(|limits| !limits.limits.is_empty())
+        .map(|limits| {
+            let full = format!(" · limits {}", source_and_age(limits, now_ms));
+            let short = format!(" · limits read {}", age(now_ms - limits.fetched_at_ms));
+            [full, short]
+                .into_iter()
+                .find(|text| text.chars().count() <= room)
+                .unwrap_or_default()
+        })
+        .unwrap_or_default();
+    Line::from(vec![
+        Span::styled(format!(" {label}"), TITLE),
+        Span::styled(source, MUTED),
+        Span::raw(" "),
+    ])
+}
+
+fn boxes_height(snapshot: &Snapshot, now_ms: i64, local_minute: LocalMinute, width: u16) -> u16 {
+    account_boxes(snapshot, now_ms, local_minute, width)
+        .iter()
+        .map(|account| account.lines.len() + BORDER_ROWS)
+        .sum::<usize>() as u16
+}
+
+fn draw_boxes(frame: &mut Frame, area: Rect, boxes: Vec<AccountBox>) -> Rect {
     let bottom = area.bottom();
     let row = |y: u16, height: u16| Rect {
         y,
         height: height.min(bottom.saturating_sub(y)),
         ..area
     };
-    let mut y = area.y + COMPACT_TOP_GAP;
-    for (index, (account, lines)) in blocks.into_iter().enumerate() {
-        if index > 0 {
-            y += gap;
-        }
-        let block = row(y, (lines.len() + BORDER_ROWS) as u16);
+    let mut y = area.y;
+    for account in boxes {
+        let block = row(y, (account.lines.len() + BORDER_ROWS) as u16);
         if block.height == 0 {
             break;
         }
         y += block.height;
         frame.render_widget(
-            Paragraph::new(lines).block(section(&account.account_label)),
+            Paragraph::new(account.lines).block(titled_section(account.title)),
             block,
         );
     }

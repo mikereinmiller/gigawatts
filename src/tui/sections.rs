@@ -13,25 +13,17 @@ use crate::status::{STALE_AFTER_MS, has_reset, resets_ms};
 
 use super::HISTORY_MIN_HEIGHT;
 use super::digits;
+use super::extras::{Extras, Step, cards_height, grow};
 use super::sessions;
-use super::style::{
-    BAR, EVEN, KEY, MUTED, NORMAL, OVER, PROBLEM, STALE, STALE_TRACK, TITLE, UNDER, UNPACED,
-};
+use super::style::{BAR, EVEN, KEY, MUTED, OVER, PROBLEM, STALE, STALE_BAR, TITLE, UNDER, UNPACED};
 
 const USUAL_EVEN_FROM: f64 = 0.9;
 const USUAL_EVEN_TO: f64 = 1.1;
 const MONTHS: [&str; 12] = [
     "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 ];
-const NAME_WIDTH: usize = 20;
-const COLUMNS_FROM: u16 = 100;
+pub(crate) const SIDE_BY_SIDE_FROM: u16 = 90;
 pub(crate) const COLUMN_GAP: u16 = 1;
-const PERCENT_WIDTH: usize = 6;
-const STACKED_BAR_MAX: usize = 60;
-const STACKED_BAR_MIN: usize = 12;
-const BAR_MIN: usize = 8;
-const STATUS_GAP: usize = 2;
-const STATUS_WIDTH: usize = "resets 21d 14h".len();
 const SEPARATOR: &str = " · ";
 const DAY_MS: i64 = 24 * 3_600_000;
 const LIMITS_SHARE: u32 = 56;
@@ -51,7 +43,7 @@ pub(crate) fn roomy(
     height: u16,
     with_sessions: bool,
 ) -> bool {
-    overview_panels(
+    one_account_layout(
         account,
         problems,
         now_ms,
@@ -60,8 +52,8 @@ pub(crate) fn roomy(
         height,
         with_sessions,
     )
-    .side_by_side
-    .is_some()
+    .extras
+    .spacing
 }
 
 pub(crate) fn one_account_height(
@@ -73,7 +65,7 @@ pub(crate) fn one_account_height(
     height: u16,
     with_sessions: bool,
 ) -> u16 {
-    let panels = overview_panels(
+    let layout = one_account_layout(
         account,
         problems,
         now_ms,
@@ -82,19 +74,13 @@ pub(crate) fn one_account_height(
         height,
         with_sessions,
     );
-    let panels_height = panels.height() as u16;
-    let sessions = if with_sessions {
-        let room = height.saturating_sub(panels_height + HISTORY_MIN_HEIGHT);
-        sessions::height(
+    layout.panels.height() as u16
+        + cards_height(
             &sessions::SessionsToday::of(account, now_ms),
             width,
-            room,
-            panels.side_by_side.is_some(),
+            with_sessions,
+            layout.extras,
         )
-    } else {
-        0
-    };
-    panels_height + sessions
 }
 
 struct Panels {
@@ -112,7 +98,12 @@ impl Panels {
     }
 }
 
-fn overview_panels(
+struct OneAccountLayout {
+    panels: Panels,
+    extras: Extras,
+}
+
+fn one_account_layout(
     account: &AccountToday,
     problems: &[Problem],
     now_ms: i64,
@@ -120,24 +111,33 @@ fn overview_panels(
     width: u16,
     height: u16,
     with_sessions: bool,
-) -> Panels {
-    if width >= COLUMNS_FROM {
-        let left = limits_width(width);
-        let roomy = panels(account, problems, now_ms, local_minute, width, Some(left));
-        let sessions =
-            sessions::min_height(&sessions::SessionsToday::of(account, now_ms), width, true)
-                as usize;
-        let below = if with_sessions {
-            sessions + HISTORY_MIN_HEIGHT as usize
+) -> OneAccountLayout {
+    let build = |extras: Extras| panels(account, problems, now_ms, local_minute, width, extras);
+    let fits = |extras: Extras| {
+        let panels = build(extras).height() as u16;
+        let cards = cards_height(
+            &sessions::SessionsToday::of(account, now_ms),
+            width,
+            with_sessions,
+            extras,
+        );
+        let spending = if extras.spending {
+            HISTORY_MIN_HEIGHT
         } else {
-            sessions.max(HISTORY_MIN_HEIGHT as usize)
+            0
         };
-        let needed = roomy.height() + below;
-        if needed <= height as usize {
-            return roomy;
-        }
+        panels + cards + spending <= height
+    };
+    let mut steps = vec![Step::Spending, Step::Spacing, Step::CardsGap];
+    if width >= SIDE_BY_SIDE_FROM {
+        steps.push(Step::Chart);
     }
-    panels(account, problems, now_ms, local_minute, width, None)
+    steps.push(Step::SecondRow);
+    let extras = grow(Extras::default(), &steps, fits);
+    OneAccountLayout {
+        panels: build(extras),
+        extras,
+    }
 }
 
 fn panels(
@@ -146,42 +146,53 @@ fn panels(
     now_ms: i64,
     local_minute: LocalMinute,
     width: u16,
-    side_by_side: Option<u16>,
+    extras: Extras,
 ) -> Panels {
-    let Some(left) = side_by_side else {
+    let top = vec![Line::default(); usize::from(extras.spacing)];
+    let gap = usize::from(extras.spacing);
+    if width < SIDE_BY_SIDE_FROM {
         let inner = width.saturating_sub(4);
+        let rows = limit_rows(
+            account,
+            problems,
+            now_ms,
+            local_minute,
+            inner,
+            LimitLayout::Full,
+        );
         return Panels {
-            limits: limit_lines(
-                account,
-                problems,
-                now_ms,
-                local_minute,
-                inner,
-                LimitLayout::Compact,
-                estimate_width(account, now_ms),
-            ),
-            today: today_lines(account, problems, inner, false),
-            side_by_side,
+            limits: [top.clone(), rows.lines(gap)].concat(),
+            today: [top, today_lines(account, problems, inner)].concat(),
+            side_by_side: None,
         };
-    };
+    }
+    let left = limits_width(width);
     let limits_inner = left.saturating_sub(4);
     let today_inner = (width - left).saturating_sub(4 + COLUMN_GAP);
-    let mut limits = limit_lines(
+    let emphasis = spent_emphasis(account);
+    let mut today = top.clone();
+    today.extend(large_spent(account, today_inner, emphasis));
+    if extras.chart {
+        today.push(Line::default());
+    }
+    today.extend(spent_notes(account, problems, today_inner));
+    if extras.chart {
+        let budget = daily_credit_budget(account, now_ms);
+        today.extend(daily_chart(&account.pace, budget, today_inner, emphasis));
+    }
+    let rows = limit_rows(
         account,
         problems,
         now_ms,
         local_minute,
         limits_inner,
-        LimitLayout::Roomy,
-        0,
+        LimitLayout::Full,
     );
-    let mut today = today_panel(account, problems, now_ms, today_inner, true);
-    limits.insert(0, Line::default());
-    today.insert(0, Line::default());
+    let limits = [top, rows.spread(gap, today.len() - gap)].concat();
     Panels {
         limits,
         today,
-        side_by_side,
+        side_by_side: Some(left),
     }
 }
 
@@ -203,7 +214,7 @@ pub(crate) fn one_account(
         room,
         with_sessions,
     } = fit;
-    let panels = overview_panels(
+    let OneAccountLayout { panels, extras } = one_account_layout(
         account,
         problems,
         now_ms,
@@ -219,8 +230,8 @@ pub(crate) fn one_account(
     .areas(area);
     let (limits_area, today_area) = match panels.side_by_side {
         Some(left) => {
-            let [limits_area, _, today_area] = Layout::horizontal([
-                Constraint::Length(left),
+            let [today_area, _, limits_area] = Layout::horizontal([
+                Constraint::Length(area.width.saturating_sub(left + COLUMN_GAP)),
                 Constraint::Length(COLUMN_GAP),
                 Constraint::Fill(1),
             ])
@@ -228,8 +239,8 @@ pub(crate) fn one_account(
             (limits_area, today_area)
         }
         None => {
-            let [limits_area, today_area] = Layout::vertical([
-                Constraint::Length(panels.limits.len() as u16 + 2),
+            let [today_area, limits_area] = Layout::vertical([
+                Constraint::Length(panels.today.len() as u16 + 2),
                 Constraint::Fill(1),
             ])
             .areas(panels_area);
@@ -238,7 +249,12 @@ pub(crate) fn one_account(
     };
     let limits_title = match &account.limits {
         Some(limits) if !limits.limits.is_empty() => {
-            format!("Limits · {}", source_and_age(limits, now_ms))
+            let full = format!("Limits · {}", source_and_age(limits, now_ms));
+            if full.chars().count() <= limits_area.width.saturating_sub(4) as usize {
+                full
+            } else {
+                format!("Limits · read {}", age(now_ms - limits.fetched_at_ms))
+            }
         }
         _ => "Limits".to_string(),
     };
@@ -251,13 +267,12 @@ pub(crate) fn one_account(
         today_area,
     );
     if with_sessions {
-        let roomy = panels.side_by_side.is_some();
         sessions::draw(
             frame,
             sessions_area,
             &sessions::SessionsToday::of(account, now_ms),
             now_ms,
-            roomy,
+            extras.cards(),
         );
     }
 }
@@ -285,8 +300,43 @@ pub(crate) fn source_and_age(limits: &AccountLimits, now_ms: i64) -> String {
 #[derive(Clone, Copy, PartialEq)]
 pub(crate) enum LimitLayout {
     Roomy,
-    Compact,
-    Stacked,
+    Full,
+}
+
+pub(crate) struct LimitRows {
+    before: Vec<Line<'static>>,
+    groups: Vec<Vec<Line<'static>>>,
+    after: Vec<Line<'static>>,
+}
+
+impl LimitRows {
+    pub(crate) fn height(&self, gap: usize) -> usize {
+        self.before.len()
+            + self.groups.iter().map(Vec::len).sum::<usize>()
+            + gap * self.groups.len().saturating_sub(1)
+            + self.after.len()
+    }
+
+    pub(crate) fn lines(self, gap: usize) -> Vec<Line<'static>> {
+        let mut lines = self.before;
+        for (index, group) in self.groups.into_iter().enumerate() {
+            if index > 0 {
+                lines.extend(vec![Line::default(); gap]);
+            }
+            lines.extend(group);
+        }
+        lines.extend(self.after);
+        lines
+    }
+
+    pub(crate) fn spread(self, gap: usize, rows: usize) -> Vec<Line<'static>> {
+        let gap = if self.height(gap.max(1)) <= rows {
+            gap.max(1)
+        } else {
+            gap
+        };
+        self.lines(gap)
+    }
 }
 
 pub(crate) fn limit_lines(
@@ -296,74 +346,48 @@ pub(crate) fn limit_lines(
     local_minute: LocalMinute,
     width: u16,
     layout: LimitLayout,
-    estimate_width: usize,
 ) -> Vec<Line<'static>> {
-    let stacked = layout == LimitLayout::Stacked;
-    let mut lines = Vec::new();
+    let gap = usize::from(layout == LimitLayout::Roomy);
+    limit_rows(account, problems, now_ms, local_minute, width, layout).lines(gap)
+}
+
+pub(crate) fn limit_rows(
+    account: &AccountToday,
+    problems: &[Problem],
+    now_ms: i64,
+    local_minute: LocalMinute,
+    width: u16,
+    layout: LimitLayout,
+) -> LimitRows {
+    let mut before = Vec::new();
+    let mut groups = Vec::new();
     match &account.limits {
         Some(limits) if !limits.limits.is_empty() => {
             let stale = now_ms - limits.fetched_at_ms > STALE_AFTER_MS;
-            if stacked {
-                lines.push(Line::styled(
-                    format!("Limits · {}", source_and_age(limits, now_ms)),
-                    MUTED,
-                ));
-            }
-            for (index, shown) in limits.limits.iter().enumerate() {
-                if index > 0 && layout == LimitLayout::Roomy {
-                    lines.push(Line::default());
-                }
-                lines.extend(match layout {
-                    LimitLayout::Roomy => limit_row(shown, stale, now_ms, local_minute, width),
-                    LimitLayout::Compact => named_limit_row(
-                        shown,
-                        stale,
-                        has_reset(shown, now_ms),
-                        None,
-                        forecast(shown, now_ms, local_minute),
-                        &detail(shown, now_ms, local_minute),
-                        width,
-                        (elsewhere_estimate(shown, now_ms), estimate_width),
-                        false,
-                    ),
-                    LimitLayout::Stacked => {
-                        let mut rows = named_limit_row(
-                            shown,
-                            stale,
-                            has_reset(shown, now_ms),
-                            status(shown, now_ms),
-                            forecast(shown, now_ms, local_minute),
-                            &flags(shown, now_ms, local_minute),
-                            width,
-                            (elsewhere_estimate(shown, now_ms), estimate_width),
-                            true,
-                        );
-                        let budget = credit_budget(shown, now_ms);
-                        rows.extend(
-                            pack(&budget, (width as usize).saturating_sub(NAME_WIDTH))
-                                .into_iter()
-                                .map(|packed| {
-                                    Line::from(vec![
-                                        Span::raw(" ".repeat(NAME_WIDTH)),
-                                        Span::styled(packed, MUTED),
-                                    ])
-                                }),
-                        );
-                        rows
+            for shown in &limits.limits {
+                groups.push(match layout {
+                    LimitLayout::Roomy => {
+                        limit_row(shown, stale, now_ms, local_minute, width, false)
                     }
+                    LimitLayout::Full => limit_row(shown, stale, now_ms, local_minute, width, true),
                 });
             }
         }
-        _ => lines.extend(wrapped(
+        _ => before.extend(wrapped(
             "No readings yet. The engine reads them while Claude Code is active.",
             width,
             MUTED,
         )),
     }
-    for text in limit_markers(account, problems) {
-        lines.extend(wrapped(&text, width, PROBLEM));
+    let after = limit_markers(account, problems)
+        .iter()
+        .flat_map(|text| wrapped(text, width, PROBLEM))
+        .collect();
+    LimitRows {
+        before,
+        groups,
+        after,
     }
-    lines
 }
 
 pub(crate) fn wrapped(text: &str, width: u16, style: Style) -> Vec<Line<'static>> {
@@ -389,6 +413,7 @@ fn limit_row(
     now_ms: i64,
     local_minute: LocalMinute,
     width: u16,
+    details_on_name_line: bool,
 ) -> Vec<Line<'static>> {
     let reset = has_reset(shown, now_ms);
     let color = if stale || reset {
@@ -406,20 +431,6 @@ fn limit_row(
         .map(|estimate| format!(" {estimate}"))
         .unwrap_or_default();
     let reading_width = reading.chars().count() + estimate.chars().count();
-    let name = clip(
-        &limit_name(&shown.limit),
-        width.saturating_sub(reading_width + 1).max(1),
-    );
-    let gap = width.saturating_sub(name.chars().count() + reading_width);
-    let mut lines = vec![
-        Line::from(vec![
-            Span::styled(name, Modifier::BOLD),
-            Span::raw(" ".repeat(gap)),
-            Span::styled(reading, Style::new().fg(color).add_modifier(Modifier::BOLD)),
-            Span::styled(estimate, elsewhere_style(color)),
-        ]),
-        Line::from(bar(shown, width, color, stale, reset)),
-    ];
     let forecast = forecast(shown, now_ms, local_minute);
     let mut budget = credit_budget(shown, now_ms);
     let mut details = if budget.is_empty() {
@@ -427,12 +438,40 @@ fn limit_row(
     } else {
         detail_after_credits(shown, now_ms, local_minute)
     };
-    let first_line = if budget.is_empty() {
+    let forecast_leads = if details_on_name_line || budget.is_empty() {
         &mut details
     } else {
         &mut budget
     };
-    first_line.splice(0..0, forecast.iter().cloned());
+    forecast_leads.splice(0..0, forecast.iter().cloned());
+    let name = clip(
+        &limit_name(&shown.limit),
+        width.saturating_sub(reading_width + 1).max(1),
+    );
+    let mut used = name.chars().count();
+    let mut head = vec![Span::styled(name, Modifier::BOLD)];
+    while let Some(part) = details.first().filter(|_| details_on_name_line) {
+        let wanted = SEPARATOR.chars().count() + part.chars().count();
+        if used + wanted + 1 + reading_width > width {
+            break;
+        }
+        let part = details.remove(0);
+        head.push(Span::styled(SEPARATOR, MUTED));
+        head.extend(detail_spans(&part, forecast.as_deref(), MUTED, stale));
+        used += wanted;
+    }
+    head.push(Span::raw(
+        " ".repeat(width.saturating_sub(used + reading_width)),
+    ));
+    head.push(Span::styled(
+        reading,
+        Style::new().fg(color).add_modifier(Modifier::BOLD),
+    ));
+    head.push(Span::styled(estimate, elsewhere_style(color)));
+    let mut lines = vec![
+        Line::from(head),
+        Line::from(bar(shown, width, color, stale, reset)),
+    ];
     for packed in pack(&budget, width)
         .into_iter()
         .chain(pack(&details, width))
@@ -445,120 +484,6 @@ fn limit_row(
                 stale,
             )));
         }
-    }
-    lines
-}
-
-#[allow(clippy::too_many_arguments)]
-fn named_limit_row(
-    shown: &PacedLimit,
-    stale: bool,
-    reset: bool,
-    status: Option<String>,
-    forecast: Option<String>,
-    parts: &[String],
-    width: u16,
-    (estimate, estimate_width): (Option<String>, usize),
-    status_beside: bool,
-) -> Vec<Line<'static>> {
-    let color = if stale || reset {
-        STALE
-    } else {
-        pace_color(shown)
-    };
-    let room_beside_name = (width as usize).saturating_sub(NAME_WIDTH + PERCENT_WIDTH);
-    let estimate_width = if room_beside_name >= BAR_MIN + estimate_width {
-        estimate_width
-    } else {
-        0
-    };
-    let room = room_beside_name - estimate_width;
-    let status_fits = room >= STACKED_BAR_MIN + STATUS_GAP + STATUS_WIDTH;
-    let bar_width = match (status_beside, status_fits) {
-        (false, _) => room,
-        (true, true) => (room - STATUS_GAP - STATUS_WIDTH).min(STACKED_BAR_MAX),
-        (true, false) => room.min(STACKED_BAR_MAX),
-    };
-    let beside = status.is_some() && status_beside && status_fits;
-    let bar_width = bar_width.max(BAR_MIN);
-    let mut spans = vec![Span::raw(format!(
-        "{:<NAME_WIDTH$}",
-        clip(&limit_name(&shown.limit), NAME_WIDTH - 1)
-    ))];
-    spans.extend(bar(shown, bar_width, color, stale, reset));
-    let reading = if reset {
-        format!("{:>PERCENT_WIDTH$}", "reset")
-    } else {
-        format!("{:>5}%", percent(shown.limit.percent))
-    };
-    spans.push(Span::styled(
-        reading,
-        Style::new().fg(color).add_modifier(Modifier::BOLD),
-    ));
-    if estimate_width > 0 {
-        spans.push(Span::styled(
-            format!(" {:<1$}", estimate.unwrap_or_default(), estimate_width - 1),
-            elsewhere_style(color),
-        ));
-    }
-    let style = if stale { MUTED } else { NORMAL };
-    let forecast_style = forecast_style(stale);
-    let mut lines = Vec::new();
-    let mut extras_inline = false;
-    match status {
-        Some(status) if beside => {
-            let extras_width: usize = forecast
-                .iter()
-                .map(|text| text.chars().count() + 3)
-                .chain(
-                    parts
-                        .iter()
-                        .map(|text| SEPARATOR.chars().count() + text.chars().count()),
-                )
-                .sum();
-            extras_inline = NAME_WIDTH
-                + bar_width
-                + PERCENT_WIDTH
-                + estimate_width
-                + STATUS_GAP
-                + status.chars().count()
-                + extras_width
-                <= width as usize;
-            spans.push(Span::raw(" ".repeat(STATUS_GAP)));
-            spans.push(Span::styled(status, style));
-            if extras_inline {
-                if let Some(forecast) = &forecast {
-                    spans.push(Span::styled(format!(" ({forecast})"), forecast_style));
-                }
-                for part in parts {
-                    spans.push(Span::styled(SEPARATOR, style));
-                    spans.extend(detail_spans(part, None, style, stale));
-                }
-            }
-            lines.push(Line::from(spans));
-        }
-        Some(status) => {
-            lines.push(Line::from(spans));
-            for packed in wrapped(
-                &status,
-                (width as usize).saturating_sub(NAME_WIDTH) as u16,
-                style,
-            ) {
-                lines.push(Line::from(
-                    [vec![Span::raw(" ".repeat(NAME_WIDTH))], packed.spans].concat(),
-                ));
-            }
-        }
-        None => lines.push(Line::from(spans)),
-    }
-    if extras_inline {
-        return lines;
-    }
-    let details: Vec<String> = forecast.iter().chain(parts).cloned().collect();
-    for packed in pack(&details, (width as usize).saturating_sub(NAME_WIDTH)) {
-        let mut spans = vec![Span::raw(" ".repeat(NAME_WIDTH))];
-        spans.extend(detail_spans(&packed, forecast.as_deref(), style, stale));
-        lines.push(Line::from(spans));
     }
     lines
 }
@@ -604,7 +529,7 @@ fn bar(
     stale: bool,
     reset: bool,
 ) -> Vec<Span<'static>> {
-    let track = if stale || reset { STALE_TRACK } else { BAR };
+    let color = if stale || reset { STALE_BAR } else { color };
     let filled = if reset {
         0
     } else {
@@ -627,7 +552,7 @@ fn bar(
         } else if index < filled {
             (BAR, Style::new().fg(color).add_modifier(Modifier::DIM))
         } else {
-            (track, MUTED)
+            (BAR, MUTED)
         };
         spans.push(Span::styled(symbol, style));
     }
@@ -689,17 +614,6 @@ fn elsewhere(shown: &PacedLimit) -> String {
         .unwrap_or_default()
 }
 
-pub(crate) fn estimate_width(account: &AccountToday, now_ms: i64) -> usize {
-    account
-        .limits
-        .iter()
-        .flat_map(|limits| &limits.limits)
-        .filter_map(|shown| elsewhere_estimate(shown, now_ms))
-        .map(|estimate| estimate.chars().count() + 1)
-        .max()
-        .unwrap_or(0)
-}
-
 fn elsewhere_estimate(shown: &PacedLimit, now_ms: i64) -> Option<String> {
     if has_reset(shown, now_ms) {
         return None;
@@ -743,13 +657,6 @@ fn detail_spans(
     }
     spans.push(Span::styled(rest.to_string(), style));
     spans
-}
-
-fn status(shown: &PacedLimit, now_ms: i64) -> Option<String> {
-    if has_reset(shown, now_ms) {
-        return None;
-    }
-    resets_ms(shown).map(|resets_ms| format!("resets {}", duration(resets_ms - now_ms)))
 }
 
 fn credit_budget(shown: &PacedLimit, now_ms: i64) -> Vec<String> {
@@ -798,13 +705,6 @@ fn money(amount: f64, currency: &str, cents: bool) -> String {
     } else {
         format!("{grouped}{fraction} {currency}")
     }
-}
-
-fn flags(shown: &PacedLimit, now_ms: i64, local_minute: LocalMinute) -> Vec<String> {
-    if has_reset(shown, now_ms) {
-        return vec![reset_detail(shown, now_ms, local_minute)];
-    }
-    unusual_severity(&shown.limit).into_iter().collect()
 }
 
 fn forecast_style(stale: bool) -> Style {
@@ -866,12 +766,8 @@ pub(crate) fn today_lines(
     account: &AccountToday,
     problems: &[Problem],
     width: u16,
-    stacked: bool,
 ) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
-    if stacked {
-        lines.push(Line::styled("Today", MUTED));
-    }
     let mut spans = vec![Span::styled(
         format!("${:.2}", account.cost_usd),
         Modifier::BOLD,
@@ -888,21 +784,37 @@ pub(crate) fn today_lines(
 pub(crate) fn today_panel(
     account: &AccountToday,
     problems: &[Problem],
-    now_ms: i64,
     width: u16,
-    with_chart: bool,
 ) -> Vec<Line<'static>> {
-    let spent = format!("${:.2}", account.cost_usd);
-    let emphasis = Style::new()
-        .fg(usual_color(&account.pace).unwrap_or(Color::Reset))
-        .add_modifier(Modifier::BOLD);
-    let mut lines = Vec::new();
-    match digits::large(&spent).filter(|rows| rows[0].chars().count() <= width as usize) {
-        Some(rows) => lines.extend(rows.into_iter().map(|row| Line::styled(row, emphasis))),
-        None => lines.push(Line::styled(spent, emphasis)),
-    }
+    let mut lines = large_spent(account, width, spent_emphasis(account));
     lines.push(Line::default());
-    lines.push(Line::from(against_usual(&account.pace)));
+    lines.extend(spent_notes(account, problems, width));
+    lines
+}
+
+pub(crate) fn spent_emphasis(account: &AccountToday) -> Style {
+    Style::new()
+        .fg(usual_color(&account.pace).unwrap_or(Color::Reset))
+        .add_modifier(Modifier::BOLD)
+}
+
+fn large_spent(account: &AccountToday, width: u16, emphasis: Style) -> Vec<Line<'static>> {
+    let spent = format!("${:.2}", account.cost_usd);
+    match digits::large(&spent).filter(|rows| rows[0].chars().count() <= width as usize) {
+        Some(rows) => rows
+            .into_iter()
+            .map(|row| Line::styled(row, emphasis))
+            .collect(),
+        None => vec![Line::styled(spent, emphasis)],
+    }
+}
+
+pub(crate) fn spent_notes(
+    account: &AccountToday,
+    problems: &[Problem],
+    width: u16,
+) -> Vec<Line<'static>> {
+    let mut lines = vec![Line::from(against_usual(&account.pace))];
     if let Some(projected) = projected_day_usd(account) {
         lines.push(Line::styled(
             format!("on pace for ~${projected:.0} today"),
@@ -912,11 +824,22 @@ pub(crate) fn today_panel(
     for text in spend_markers(account, problems) {
         lines.extend(wrapped(&text, width, PROBLEM));
     }
-    if with_chart {
-        let budget = daily_credit_budget(account, now_ms);
-        lines.extend(daily_chart(&account.pace, budget, width, emphasis));
-    }
     lines
+        .into_iter()
+        .flat_map(|line| wrapped_line(line, width as usize))
+        .collect()
+}
+
+pub(crate) fn usual_notes_width(account: &AccountToday) -> usize {
+    let usual: usize = against_usual(&account.pace).iter().map(Span::width).sum();
+    let pace = projected_day_usd(account)
+        .map(|projected| {
+            format!("on pace for ~${projected:.0} today")
+                .chars()
+                .count()
+        })
+        .unwrap_or(0);
+    usual.max(pace)
 }
 
 fn projected_day_usd(account: &AccountToday) -> Option<f64> {
@@ -1148,7 +1071,11 @@ pub(crate) fn help(frame: &mut Frame, area: Rect, report_port: Option<u16>) {
             Span::styled("▇▇▇ ", Style::new().fg(OVER)),
             Span::raw("over your pace"),
         ]),
-        color("▇▇▇", Style::new().fg(STALE), "a reading over an hour old"),
+        color(
+            "▇▇▇",
+            Style::new().fg(STALE_BAR),
+            "a reading over an hour old",
+        ),
         color(
             "▇",
             Style::new().add_modifier(Modifier::BOLD),
@@ -1216,4 +1143,54 @@ pub(crate) fn spend_markers(account: &AccountToday, problems: &[Problem]) -> Vec
         })
         .map(|problem| problem.affects.clone());
     estimated.chain(adjusted).chain(unread).collect()
+}
+
+pub(crate) fn styled_spans(line: Line<'static>) -> Vec<Span<'static>> {
+    let base = line.style;
+    line.spans
+        .into_iter()
+        .map(|span| Span::styled(span.content, base.patch(span.style)))
+        .collect()
+}
+
+fn wrapped_line(line: Line<'static>, width: usize) -> Vec<Line<'static>> {
+    if line.width() <= width {
+        return vec![line];
+    }
+    let cells: Vec<(char, Style)> = styled_spans(line)
+        .into_iter()
+        .flat_map(|span| {
+            let style = span.style;
+            span.content
+                .chars()
+                .map(move |c| (c, style))
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    let mut rows: Vec<Vec<(char, Style)>> = Vec::new();
+    let words = cells
+        .split(|(c, _)| *c == ' ')
+        .filter(|word| !word.is_empty())
+        .flat_map(|word| word.chunks(width.max(1)));
+    for word in words {
+        match rows.last_mut() {
+            Some(row) if row.len() + 1 + word.len() <= width => {
+                row.push((' ', Style::new()));
+                row.extend_from_slice(word);
+            }
+            _ => rows.push(word.to_vec()),
+        }
+    }
+    rows.into_iter()
+        .map(|row| {
+            let mut spans: Vec<Span<'static>> = Vec::new();
+            for (c, style) in row {
+                match spans.last_mut() {
+                    Some(span) if span.style == style => span.content.to_mut().push(c),
+                    _ => spans.push(Span::styled(c.to_string(), style)),
+                }
+            }
+            Line::from(spans)
+        })
+        .collect()
 }

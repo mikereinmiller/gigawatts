@@ -26,6 +26,12 @@ pub(crate) const FAST_PER_HOUR: f64 = 20.0;
 const IDLE_FROM_MS: i64 = 5 * 60_000;
 const MINUTES_UNTIL_HOURS: i64 = 60;
 
+#[derive(Clone, Copy)]
+pub(crate) enum Cards {
+    Fit { roomy: bool },
+    Rows { rows: usize, gap: bool },
+}
+
 pub(crate) struct SessionsToday<'a> {
     sessions: Vec<Owned<'a>>,
     today_usd: f64,
@@ -124,7 +130,7 @@ fn rows_that_fit(room: u16, gap: u16) -> usize {
     ((room + RULE_ROWS) / (SESSION_ROWS + RULE_ROWS)).max(1) as usize
 }
 
-fn plan<'a>(today: &SessionsToday<'a>, width: u16, room: u16, roomy: bool) -> Plan<'a> {
+fn plan<'a>(today: &SessionsToday<'a>, width: u16, room: u16, cards: Cards) -> Plan<'a> {
     let columns = columns(inner_width(width));
     let (mut titled, background): (Vec<Owned>, Vec<Owned>) = today
         .sessions
@@ -137,8 +143,11 @@ fn plan<'a>(today: &SessionsToday<'a>, width: u16, room: u16, roomy: bool) -> Pl
         .filter(|session| session.tier != Tier::Finished)
         .count();
     let rows_wanted = live.div_ceil(columns).max(1);
-    let gap = gap(roomy, room, rows_wanted);
-    let rows = rows_that_fit(room, gap).min(rows_wanted);
+    let (gap, most) = match cards {
+        Cards::Fit { roomy } => (gap(roomy, room, rows_wanted), usize::MAX),
+        Cards::Rows { rows, gap } => (u16::from(gap), rows),
+    };
+    let rows = rows_that_fit(room, gap).min(rows_wanted).min(most);
     let slots = (rows * columns).min(titled.len());
     let shown = titled[..slots].to_vec();
     let hidden = titled[slots..].to_vec();
@@ -187,22 +196,32 @@ fn is_background(session: &Owned) -> bool {
     session.spend.repo == BACKGROUND_REPO && session.tier != Tier::Fast
 }
 
-pub(crate) fn min_height(today: &SessionsToday, width: u16, roomy: bool) -> u16 {
-    plan(today, width, 0, roomy).height()
+pub(crate) fn one_row_height(gap: bool) -> u16 {
+    rows_reserved(1, gap)
+}
+
+pub(crate) fn rows_reserved(rows: u16, gap: bool) -> u16 {
+    BORDER_ROWS + u16::from(gap) + rows_height(rows)
 }
 
 pub(crate) fn two_rows_height(today: &SessionsToday, width: u16, roomy: bool) -> u16 {
-    let mut plan = plan(today, width, u16::MAX, roomy);
+    let mut plan = plan(today, width, u16::MAX, Cards::Fit { roomy });
     plan.shown.truncate(2 * plan.columns);
     plan.height()
 }
 
-pub(crate) fn height(today: &SessionsToday, width: u16, room: u16, roomy: bool) -> u16 {
-    plan(today, width, room, roomy).height()
+pub(crate) fn height(today: &SessionsToday, width: u16, room: u16, cards: Cards) -> u16 {
+    plan(today, width, room, cards).height()
 }
 
-pub(crate) fn draw(frame: &mut Frame, area: Rect, today: &SessionsToday, now_ms: i64, roomy: bool) {
-    let plan = plan(today, area.width, area.height, roomy);
+pub(crate) fn draw(
+    frame: &mut Frame,
+    area: Rect,
+    today: &SessionsToday,
+    now_ms: i64,
+    cards: Cards,
+) {
+    let plan = plan(today, area.width, area.height, cards);
     let mut lines = card_lines(&plan, today, area.width, now_ms);
     let mut block = titled_section(title(today));
     if plan.has_summary() {

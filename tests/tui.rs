@@ -397,7 +397,7 @@ fn a_limit_anthropic_marks_with_a_severity_shows_it() {
     let shown = screen(&app, 120, 24);
 
     assert!(
-        shown.contains("│                     resets in 2d 17h · warning "),
+        shown.contains("│ Weekly, all models · resets in 2d 17h · warning "),
         "{shown}"
     );
     assert!(!shown.contains("normal"), "{shown}");
@@ -417,7 +417,10 @@ fn the_every_account_view_keeps_a_limits_severity_and_credits_at_80_columns() {
         stacked.contains("$437.60 of $2,200 · $82 / day"),
         "{stacked}"
     );
-    assert!(stacked.contains("20%  resets 21d 14h"), "{stacked}");
+    assert!(
+        line_with(&stacked, "Credits ").ends_with(" 20% │\""),
+        "{stacked}"
+    );
 }
 
 #[test]
@@ -456,7 +459,7 @@ fn a_problem_marks_only_the_account_it_belongs_to_and_one_with_no_account_marks_
         "{stacked}"
     );
     assert!(
-        stacked.find("limits: refresh failing") < stacked.find("Limits · from cachedUsage"),
+        stacked.find("limits: refresh failing") < stacked.find("limits from cachedUsage"),
         "{stacked}"
     );
     assert!(
@@ -776,7 +779,7 @@ fn a_credit_limit_beside_today_shows_a_daily_budget() {
 }
 
 #[test]
-fn a_blank_row_separates_the_account_tabs_from_the_panes_when_the_window_has_room() {
+fn a_blank_row_separates_the_account_tabs_from_the_panes_even_in_a_small_window() {
     let app = open(
         snapshot(vec![personal(), work()]),
         Some(PERSONAL.to_string()),
@@ -796,7 +799,7 @@ fn a_blank_row_separates_the_account_tabs_from_the_panes_when_the_window_has_roo
     let tight = screen(&app, 80, 24);
 
     assert!(gap_under_tabs(&roomy), "{roomy}");
-    assert!(!gap_under_tabs(&tight), "{tight}");
+    assert!(gap_under_tabs(&tight), "{tight}");
 }
 
 #[test]
@@ -879,14 +882,11 @@ fn the_header_says_how_long_ago_the_engine_last_wrote_and_nothing_when_unknown()
 fn each_limit_counts_down_to_its_reset_and_leaves_its_pace_to_the_color() {
     let app = open(snapshot(vec![personal()]), None);
 
-    let shown = screen(&app, 120, 24);
+    let shown = screen(&app, 80, 24);
 
+    assert!(shown.contains("│ Session · resets in 2h 40m "), "{shown}");
     assert!(
-        shown.contains("│                     resets in 2h 40m "),
-        "{shown}"
-    );
-    assert!(
-        shown.contains("│                     resets in 2d 17h "),
+        shown.contains("│ Weekly, all models · resets in 2d 17h "),
         "{shown}"
     );
     assert!(!shown.contains("pace"), "{shown}");
@@ -901,7 +901,10 @@ fn a_limit_over_even_pace_shows_it_only_in_the_over_color() {
 
     let shown = screen(&app, 150, 40);
 
-    assert!(shown.contains("│ resets in 2h 40m at 12:00 "), "{shown}");
+    assert!(
+        shown.contains("│ Session · resets in 2h 40m at 12:00 "),
+        "{shown}"
+    );
     assert!(!shown.contains("over pace"), "{shown}");
     assert_eq!(
         cell_at(&app, 150, 40, "5% ").fg,
@@ -1003,20 +1006,19 @@ fn a_forecast_under_a_roomy_bar_shares_the_reset_line() {
 fn a_forecast_beside_a_named_bar_shares_the_reset_line() {
     let app = open(snapshot(vec![filling_fast()]), None);
 
-    let shown = screen(&app, 120, 24);
+    let shown = screen(&app, 80, 24);
 
     assert!(
-        shown
-            .contains("│                     100% in 1h 20m at 10:40 · resets in 2h 40m at 12:00 "),
+        shown.contains("│ Session · 100% in 1h 20m at 10:40 · resets in 2h 40m at 12:00 "),
         "{shown}"
     );
     assert_eq!(
-        cell_at(&app, 120, 24, "100% in").fg,
+        cell_at(&app, 80, 24, "100% in").fg,
         ratatui::style::Color::LightRed
     );
     assert_eq!(
-        cell_at(&app, 120, 24, "resets in 2h 40m").fg,
-        ratatui::style::Color::Reset
+        cell_at(&app, 80, 24, "resets in 2h 40m").fg,
+        ratatui::style::Color::DarkGray
     );
 }
 
@@ -1058,7 +1060,7 @@ fn a_forecast_from_the_last_30_minutes_reads_like_any_other() {
     });
     let app = open(snapshot(vec![account]), None);
 
-    let shown = screen(&app, 120, 24);
+    let shown = screen(&app, 80, 24);
 
     assert!(
         shown.contains("100% in 1h 20m at 10:40 · resets"),
@@ -1075,7 +1077,7 @@ fn the_every_account_view_says_when_a_limit_will_fill() {
     let shown = screen(&app, 80, 24);
 
     assert!(
-        shown.contains("│                     100% in 1h 20m      "),
+        shown.contains("│ Session · 100% in 1h 20m at 10:40 · resets in 2h 40m at 12:00 "),
         "{shown}"
     );
 }
@@ -1093,7 +1095,7 @@ fn a_forecast_time_already_past_says_by_when() {
 
     app.handle(KeyCode::Char('3').into());
 
-    assert!(screen(&app, 80, 24).contains("100% by now"));
+    assert!(screen(&app, 80, 24).contains("100% by 09:10"));
 }
 
 #[test]
@@ -1132,7 +1134,7 @@ fn a_limit_that_reset_since_its_reading_shows_no_forecast() {
 fn a_limit_is_colored_by_its_pace() {
     let app = open(snapshot(vec![personal()]), None);
 
-    let even = cell_at(&app, 120, 24, " 5%");
+    let even = cell_at(&app, 120, 24, "5% │");
     let over = cell_at(&app, 120, 24, "63%");
     let under = cell_at(&app, 120, 24, "20%");
 
@@ -1322,15 +1324,20 @@ fn the_every_account_view_marks_a_limit_that_reset_since_its_reading() {
         .find(|line| line.contains("Session"))
         .unwrap();
 
-    assert!(session_row.contains(" reset "), "{stacked}");
+    assert!(session_row.contains(" reset │"), "{stacked}");
     assert!(!session_row.contains("5%"), "{stacked}");
     assert_eq!(
-        cell_at(&app, 80, 40, " reset ").fg,
+        cell_at(&app, 80, 40, "reset │").fg,
         ratatui::style::Color::DarkGray
     );
-    assert!(!session_row.contains('▇'), "{stacked}");
     assert!(
-        stacked.contains("reset 20m ago, not read since"),
+        bar_cells(&app, 80, 40, "Session ")
+            .iter()
+            .all(|cell| cell.fg == ratatui::style::Color::DarkGray),
+        "{stacked}"
+    );
+    assert!(
+        stacked.contains("reset at 09:00, not read since"),
         "{stacked}"
     );
 }
@@ -1988,7 +1995,7 @@ fn the_every_account_view_names_each_limits_source_the_way_one_account_does() {
     let stacked = screen(&app, 80, 40);
 
     assert!(
-        stacked.contains("Limits · from get_usage, read 3 minutes ago"),
+        stacked.contains("╭ personal · limits from get_usage, read 3 minutes ago"),
         "{stacked}"
     );
 }
@@ -2027,7 +2034,7 @@ fn at_100_columns_and_wider_limits_and_today_sit_side_by_side() {
 }
 
 #[test]
-fn each_limit_gets_a_name_row_a_full_width_thick_bar_and_its_details_below() {
+fn each_limit_gets_a_name_row_with_its_details_and_a_full_width_thick_bar() {
     let app = open(snapshot(vec![personal()]), None);
 
     let shown = screen(&app, 150, 40);
@@ -2043,7 +2050,7 @@ fn each_limit_gets_a_name_row_a_full_width_thick_bar_and_its_details_below() {
 
     assert!(bar_cells >= 60, "{shown}");
     assert!(
-        lines[name_row + 2].contains("│ resets in 2h 40m at 12:00 "),
+        lines[name_row].contains("│ Session · resets in 2h 40m at 12:00 "),
         "{shown}"
     );
 }
@@ -2335,7 +2342,7 @@ fn with_the_terminals_colors_known_every_muted_part_shares_one_soft_shade() {
     gruvbox(&mut app);
     let muted = ratatui::style::Color::Rgb(0x63, 0x5e, 0x51);
 
-    let track = cell_at(&app, 150, 40, "▇ │ │");
+    let track = cell_at(&app, 150, 40, "▇ │");
     let border = cell_at(&app, 150, 40, "╭ Limits");
     let details = cell_at(&app, 150, 40, "resets in 2h 40m at 12:00");
     let label = cell_at(&app, 150, 40, "Last 19 workdays");
@@ -2350,7 +2357,7 @@ fn with_the_terminals_colors_known_every_muted_part_shares_one_soft_shade() {
 fn without_the_terminals_colors_muted_parts_fall_back_to_dark_gray() {
     let app = open(snapshot(vec![personal()]), None);
 
-    let track = cell_at(&app, 150, 40, "▇ │ │");
+    let track = cell_at(&app, 150, 40, "▇ │");
     let details = cell_at(&app, 150, 40, "resets in 2h 40m at 12:00");
 
     assert_eq!(track.fg, ratatui::style::Color::DarkGray);
@@ -2403,12 +2410,12 @@ fn side_by_side_limits_sit_one_blank_row_apart() {
 
     assert_eq!(
         row("│ Weekly, all models ") - row("│ Session "),
-        4,
+        3,
         "{shown}"
     );
     assert_eq!(
         row("│ Weekly, Fable ") - row("│ Weekly, all models "),
-        4,
+        3,
         "{shown}"
     );
 }
@@ -2478,6 +2485,7 @@ fn spending_bars_are_a_fixed_30_cells_and_spare_width_stays_after_the_last_colum
         .unwrap();
 
     let spending = &row[row.find("▸ orchard").unwrap()..];
+    let spending = &spending[..spending.find(" │").unwrap()];
     assert_eq!(spending.matches('▇').count(), 29, "{shown}");
     assert!(row.contains("▸ orchard             $30.00  "), "{shown}");
 }
@@ -2997,13 +3005,16 @@ fn with_limits_and_today_side_by_side_the_spending_heading_has_a_blank_row_under
 }
 
 #[test]
-fn with_limits_and_today_stacked_no_pane_heading_has_a_blank_row_under_it() {
+fn when_rows_are_tight_no_pane_heading_has_a_blank_row_under_it() {
     let app = with_spending(open(
         snapshot(vec![personal(), work()]),
         Some(PERSONAL.to_string()),
     ));
 
-    let shown = screen(&app, 100, 34);
+    let shown = (20..60)
+        .map(|height| screen(&app, 100, height))
+        .find(|shown| shown.contains("╭ Spending"))
+        .unwrap();
     let lines: Vec<&str> = shown.lines().collect();
     let below = |heading: &str| {
         let at = lines
@@ -3029,7 +3040,6 @@ fn every_account_screen(width: u16, height: u16) -> String {
 
 #[test]
 fn with_room_the_all_view_gives_each_account_a_column_with_its_today_over_its_limits() {
-    let one = screen(&open(snapshot(vec![personal()]), None), 100, 56);
     let shown = every_account_screen(100, 56);
     let lines: Vec<&str> = shown.lines().collect();
     let column = |line: &str, text: &str| line[..line.find(text).unwrap()].chars().count();
@@ -3041,7 +3051,6 @@ fn with_room_the_all_view_gives_each_account_a_column_with_its_today_over_its_li
         .iter()
         .position(|line| line.contains("╭ personal · limits"))
         .unwrap();
-    let single_today = one.lines().find(|line| line.contains("╭ Today")).unwrap();
 
     assert!(
         line_with(&shown, " 3 all ")
@@ -3051,8 +3060,8 @@ fn with_room_the_all_view_gives_each_account_a_column_with_its_today_over_its_li
     );
     assert!(lines[today].contains("╭ work · today"), "{shown}");
     assert_eq!(
-        column(lines[today], "╭ work · today"),
-        column(single_today, "╭ Today"),
+        column(lines[today], "╭ work · today") - column(lines[today], "╭ personal · today"),
+        56 + 1,
         "{shown}"
     );
     assert!(lines[limits].contains("╭ work · limits"), "{shown}");
@@ -3089,7 +3098,6 @@ fn three_accounts_get_three_columns_from_150_columns_and_the_compact_boxes_below
 
 #[test]
 fn with_room_each_accounts_limits_sit_side_by_side_where_limits_and_today_split() {
-    let one = screen(&open(snapshot(vec![personal()]), None), 100, 56);
     let every = every_account_screen(100, 56);
     let column = |shown: &str, text: &str| {
         let line = shown.lines().find(|line| line.contains(text)).unwrap();
@@ -3098,13 +3106,13 @@ fn with_room_each_accounts_limits_sit_side_by_side_where_limits_and_today_split(
     let lines: Vec<&str> = every.lines().collect();
     let heading = lines
         .iter()
-        .position(|line| line.contains("╭ personal · limits from get_usage, read 3 minutes ago"))
+        .position(|line| line.contains("╭ personal · limits"))
         .unwrap();
 
     assert!(lines[heading].contains("╭ work · limits "), "{every}");
     assert_eq!(
-        column(&every, "╭ work · limits"),
-        column(&one, "╭ Today"),
+        column(&every, "╭ work · limits") - column(&every, "╭ personal · limits"),
+        56 + 1,
         "{every}"
     );
     assert!(lines[heading + 2].contains("│ Session "), "{every}");
@@ -3178,16 +3186,19 @@ fn a_limit_detail_longer_than_its_pane_wraps_instead_of_being_cut() {
 }
 
 #[test]
-fn a_window_wider_than_1170_columns_still_splits_limits_and_today() {
+fn a_window_wider_than_1170_columns_still_splits_today_and_limits() {
     let app = with_spending(open(snapshot(vec![personal()]), None));
 
     let shown = screen(&app, 1_200, 44);
 
-    let top = shown.lines().find(|line| line.contains("╭ Today")).unwrap();
+    let top = shown
+        .lines()
+        .find(|line| line.contains("╭ Limits"))
+        .unwrap();
     let top = top.trim_start_matches('"');
     assert_eq!(
-        top[..top.find("╭ Today").unwrap()].chars().count(),
-        672 + 1,
+        top[..top.find("╭ Limits").unwrap()].chars().count(),
+        1_200 - 672,
         "{top}"
     );
 }
@@ -3207,24 +3218,14 @@ fn line_with<'a>(shown: &'a str, text: &str) -> &'a str {
 }
 
 #[test]
-fn stacked_limits_show_their_reset_beside_a_bar_of_at_most_60_cells() {
-    let shown = three_accounts_screen(150, 47);
-    let session = line_with(&shown, "Session ");
+fn a_stale_bar_keeps_its_full_height_and_fills_in_gray() {
+    let mut app = open(snapshot(vec![personal(), work()]), None);
+    app.handle(KeyCode::Char('3').into());
 
-    assert!(session.contains("5%  resets 2h 40m"), "{shown}");
-    let cells = session.chars().filter(|c| "▇▂".contains(*c)).count();
-    assert_eq!(cells, 60, "{shown}");
-}
+    let cells = bar_cells(&app, 80, 40, "Credits ");
 
-#[test]
-fn stacked_bars_draw_a_full_height_track_unless_the_reading_is_stale() {
-    let shown = three_accounts_screen(150, 47);
-    let fresh = line_with(&shown, "Session ");
-    let stale = line_with(&shown, "Credits ");
-
-    assert!(fresh.contains('▇'), "{shown}");
-    assert!(!fresh.contains('▂'), "{shown}");
-    assert!(stale.contains('▂'), "{shown}");
+    assert!(cells.iter().all(|cell| cell.symbol() == "▇"), "{cells:?}");
+    assert_eq!(cells[0].fg, ratatui::style::Color::Gray, "{cells:?}");
 }
 
 #[test]
@@ -3248,31 +3249,15 @@ fn stacked_limit_bars_line_up_across_accounts() {
 }
 
 #[test]
-fn a_stacked_limit_too_narrow_for_its_status_puts_it_on_the_next_row() {
-    let shown = three_accounts_screen(50, 40);
-
-    assert!(!line_with(&shown, "Session ").contains("resets"), "{shown}");
-    assert!(
-        shown.contains("│                     resets 2h 40m"),
-        "{shown}"
-    );
-}
-
-#[test]
-fn stacked_accounts_get_a_blank_row_between_them_when_the_window_has_room() {
-    let roomy = three_accounts_screen(149, 49);
-    let tight = three_accounts_screen(80, 39);
-    let gap_before = |shown: &str, label: &str| {
+fn account_boxes_never_have_a_blank_row_between_them() {
+    for (width, height) in [(80, 40), (120, 30), (120, 70), (149, 70)] {
+        let shown = three_accounts_screen(width, height);
         let lines: Vec<&str> = shown.lines().collect();
-        let at = lines.iter().position(|line| line.contains(label)).unwrap();
-        lines[at - 1]
-            .trim_matches(|c| c == '"' || c == ' ')
-            .is_empty()
-    };
-
-    assert!(gap_before(&roomy, "╭ work "), "{roomy}");
-    assert!(gap_before(&roomy, "╭ side "), "{roomy}");
-    assert!(!gap_before(&tight, "╭ work "), "{tight}");
+        for label in ["╭ work ", "╭ side "] {
+            let at = lines.iter().position(|line| line.contains(label)).unwrap();
+            assert!(lines[at - 1].contains('╰'), "{width}x{height}\n{shown}");
+        }
+    }
 }
 
 #[test]
@@ -3300,126 +3285,18 @@ fn stacked_limit_bars_leave_a_gap_above_so_bars_on_next_rows_stay_apart() {
         "Weekly, Fable",
         "Credits ",
     ] {
-        let row = line_with(&stacked, name);
-        assert!(row.contains('▇'), "{stacked}");
-        assert!(!row.contains(['█', '░', '▌']), "{stacked}");
+        let lines: Vec<&str> = stacked.lines().collect();
+        let at = lines.iter().position(|line| line.contains(name)).unwrap();
+        assert!(lines[at + 1].contains('▇'), "{stacked}");
+        assert!(!lines[at + 1].contains(['░', '▌']), "{stacked}");
     }
-    assert!(line_with(&one, "Session ").contains('▇'), "{one}");
-    assert!(
-        !line_with(&one, "Session ").contains(['█', '░', '▌']),
-        "{one}"
-    );
-}
-
-fn with_a_filling_limit_screen(width: u16, height: u16) -> String {
-    let mut fast = filling_fast();
-    fast.account = Some(NEW.to_string());
-    fast.account_label = "side".to_string();
-    let mut app = with_spending(open(snapshot(vec![personal(), work(), fast]), None));
-    app.handle(KeyCode::Char('4').into());
-    answer(&mut app);
-    screen(&app, width, height)
-}
-
-#[test]
-fn stacked_limits_with_room_add_their_forecast_to_the_reset_in_parentheses() {
-    let shown = with_a_filling_limit_screen(170, 46);
-    let side: String = shown
-        .lines()
-        .skip_while(|line| !line.contains("╭ side "))
-        .collect::<Vec<_>>()
-        .join("\n");
-
-    assert!(
-        line_with(&side, "Session ").contains("60%  resets 2h 40m (100% in 1h 20m)"),
-        "{shown}"
-    );
-    assert_eq!(shown.matches("100% in 1h 20m").count(), 1, "{shown}");
-}
-
-#[test]
-fn stacked_limits_without_room_put_their_forecast_on_the_next_row() {
-    let shown = with_a_filling_limit_screen(80, 40);
-
-    assert!(!shown.contains("(100% in"), "{shown}");
-    assert!(
-        shown.contains("│                     100% in 1h 20m "),
-        "{shown}"
-    );
-}
-
-#[test]
-fn stacked_credits_put_their_budget_on_its_own_row_at_any_width() {
-    for width in [80, 170] {
-        let shown = with_a_filling_limit_screen(width, 46);
-
-        assert!(
-            line_with(&shown, "Credits ")
-                .trim_end_matches(['"', '│', ' '])
-                .ends_with("resets 21d 14h"),
-            "{shown}"
-        );
-        assert!(
-            shown.contains("│                     $437.60 of $2,200 · $82 / day"),
-            "{shown}"
-        );
-    }
-}
-
-#[test]
-fn stacked_today_has_its_own_header_and_starts_at_the_left_edge() {
-    let mut young = personal();
-    young.pace.usual_days = 8;
-    let mut app = open(snapshot(vec![young, work()]), None);
-    app.handle(KeyCode::Char('3').into());
-    let shown = screen(&app, 80, 40);
-    let lines: Vec<&str> = shown.lines().collect();
-    let header = lines
+    let one_lines: Vec<&str> = one.lines().collect();
+    let session = one_lines
         .iter()
-        .position(|line| line.contains("│ Today  "))
-        .unwrap_or_else(|| panic!("{shown}"));
-
-    assert!(lines[header + 1].contains("│ $14.20 · 2.0×"), "{shown}");
-    let work_box = lines
-        .iter()
-        .position(|line| line.contains("╭ work "))
+        .position(|line| line.contains("│ Session "))
         .unwrap();
-    assert!(
-        lines[work_box..]
-            .iter()
-            .any(|line| line.contains("│ Today  ")),
-        "{shown}"
-    );
-    assert!(!shown.contains("provisional"), "{shown}");
-}
-
-#[test]
-fn stacked_today_gets_a_blank_row_above_it_only_after_the_boxes_have_their_gaps() {
-    let today_gap = |shown: &str| {
-        let lines: Vec<&str> = shown.lines().collect();
-        let at = lines
-            .iter()
-            .position(|line| line.contains("│ Today"))
-            .unwrap();
-        lines[at - 1]
-            .trim_matches(|c| c == '"' || c == ' ' || c == '│')
-            .is_empty()
-    };
-    let box_gap = |shown: &str| {
-        let lines: Vec<&str> = shown.lines().collect();
-        let at = lines
-            .iter()
-            .position(|line| line.contains("╭ work "))
-            .unwrap();
-        lines[at - 1]
-            .trim_matches(|c| c == '"' || c == ' ')
-            .is_empty()
-    };
-    let roomy = with_a_filling_limit_screen(100, 57);
-    let tighter = with_a_filling_limit_screen(100, 55);
-
-    assert!(today_gap(&roomy) && box_gap(&roomy), "{roomy}");
-    assert!(!today_gap(&tighter) && box_gap(&tighter), "{tighter}");
+    assert!(one_lines[session + 1].contains('▇'), "{one}");
+    assert!(!one_lines[session + 1].contains(['█', '░', '▌']), "{one}");
 }
 
 fn reset_session_screen(width: u16, height: u16) -> String {
@@ -3437,7 +3314,7 @@ fn a_stacked_limit_that_reset_lines_up_with_the_limits_around_it() {
         let shown = reset_session_screen(width, 40);
         let column = |name: &str, reading: &str| {
             let line = line_with(&shown, name);
-            line[..line.find(reading).unwrap()].chars().count()
+            line[..line.rfind(reading).unwrap()].chars().count()
         };
 
         assert_eq!(
@@ -3445,11 +3322,6 @@ fn a_stacked_limit_that_reset_lines_up_with_the_limits_around_it() {
             column("Weekly, all models", "%") + 1,
             "{shown}"
         );
-        let cells = line_with(&shown, "Session ")
-            .chars()
-            .filter(|c| "▇▂".contains(*c))
-            .count();
-        assert!(cells <= 60, "{shown}");
     }
 }
 
@@ -3467,9 +3339,15 @@ fn bar_cells(app: &App, width: u16, height: u16, name: &str) -> Vec<ratatui::buf
             row.contains(name)
         })
         .unwrap();
-    (22..buffer.area.width)
-        .map(|x| buffer[(x, y)].clone())
-        .take_while(|cell| cell.symbol() != " ")
+    let bar_row = (y..=y + 1)
+        .find(|y| (2..buffer.area.width).any(|x| buffer[(x, *y)].symbol() == "▇"))
+        .unwrap();
+    let start = (2..buffer.area.width)
+        .find(|x| buffer[(*x, bar_row)].symbol() == "▇")
+        .unwrap();
+    (start..buffer.area.width)
+        .map(|x| buffer[(x, bar_row)].clone())
+        .take_while(|cell| cell.symbol() == "▇")
         .collect()
 }
 
@@ -3497,17 +3375,21 @@ fn work_credits_screen(width: u16, change: impl FnOnce(&mut PacedLimit)) -> Stri
 }
 
 #[test]
-fn a_stacked_credit_budget_too_long_for_its_row_wraps() {
+fn a_credit_budget_sits_under_the_bar_and_wraps_when_too_long() {
     let shown = work_credits_screen(50, |_| {});
+    let narrow = work_credits_screen(34, used_elsewhere);
 
     assert!(
-        shown.contains("│                     $437.60 of $2,200 "),
+        shown.contains("│ $437.60 of $2,200 · $82 / day "),
         "{shown}"
     );
-    assert!(
-        shown.contains("│                     $82 / day "),
-        "{shown}"
-    );
+    assert!(shown.contains("│ Credits · resets in 21d 14h "), "{shown}");
+    let lines: Vec<&str> = narrow.lines().collect();
+    let budget = lines
+        .iter()
+        .position(|line| line.contains("│ $494.00 of $2,200 ($84 "))
+        .unwrap_or_else(|| panic!("{narrow}"));
+    assert!(lines[budget + 1].contains("│ elsewhere) "), "{narrow}");
 }
 
 #[test]
@@ -3516,10 +3398,7 @@ fn credits_with_no_cap_show_only_what_was_used() {
         limit.limit.credits.as_mut().unwrap().limit = None;
     });
 
-    assert!(
-        shown.contains("│                     $437.60 used "),
-        "{shown}"
-    );
+    assert!(shown.contains("$437.60 used "), "{shown}");
     assert!(!shown.contains("/ day"), "{shown}");
 }
 
@@ -3568,40 +3447,6 @@ fn credits_in_the_millions_group_every_three_digits() {
 }
 
 #[test]
-fn stacked_spacing_never_hides_a_running_session_card() {
-    let mut busy = personal();
-    busy.sessions_today = (0..8)
-        .map(|n| session(&format!("Task {n}"), "orchard", "main", 0.1, 1.0 + n as f64))
-        .collect();
-    let mut side = personal();
-    side.account = Some(NEW.to_string());
-    side.account_label = "side".to_string();
-    side.sessions_today = Vec::new();
-    let mut app = with_spending(open(snapshot(vec![busy, work(), side]), None));
-    app.handle(KeyCode::Char('4').into());
-    answer(&mut app);
-
-    let shown = screen(&app, 100, 51);
-    let lines: Vec<&str> = shown.lines().collect();
-    let work_box = lines
-        .iter()
-        .position(|line| line.contains("╭ work "))
-        .unwrap();
-
-    assert_eq!(
-        shown.matches("personal · orchard · main").count(),
-        4,
-        "{shown}"
-    );
-    assert!(
-        !lines[work_box - 1]
-            .trim_matches(|c| c == '"' || c == ' ')
-            .is_empty(),
-        "{shown}"
-    );
-}
-
-#[test]
 fn help_explains_the_every_account_bar_too() {
     let mut app = open(snapshot(vec![personal(), work()]), None);
     app.handle(KeyCode::Char('?').into());
@@ -3612,7 +3457,7 @@ fn help_explains_the_every_account_bar_too() {
 }
 
 #[test]
-fn stacked_spacing_never_hides_a_session_card_beside_the_spending_table() {
+fn spacing_beside_the_spending_table_never_hides_a_session_card() {
     let mut busy = personal();
     busy.sessions_today = (0..8)
         .map(|n| session(&format!("Task {n}"), "orchard", "main", 0.1, 1.0 + n as f64))
@@ -3629,20 +3474,28 @@ fn stacked_spacing_never_hides_a_session_card_beside_the_spending_table() {
     app.handle(KeyCode::Char('5').into());
     answer(&mut app);
 
-    for height in 50..80 {
+    let state = |height: u16| {
         let shown = screen(&app, 200, height);
-        let lines: Vec<&str> = shown.lines().collect();
-        let work_box = lines
-            .iter()
-            .position(|line| line.contains("╭ work "))
-            .unwrap();
-        assert!(
-            !lines[work_box - 1]
-                .trim_matches(|c| c == '"' || c == ' ')
-                .is_empty(),
-            "height {height}\n{shown}"
-        );
-    }
+        (shown.contains("│ $ "), shown.matches("│ Task ").count())
+    };
+    let states: Vec<(u16, bool, usize)> = (40..90)
+        .filter(|height| screen(&app, 200, *height).contains("╭ Spending"))
+        .map(|height| {
+            let (digits, cards) = state(height);
+            (height, digits, cards)
+        })
+        .collect();
+
+    assert!(
+        states
+            .windows(2)
+            .filter(|pair| pair[0].1 == pair[1].1)
+            .all(|pair| pair[0].2 <= pair[1].2),
+        "{states:?}"
+    );
+    let tall = screen(&app, 200, 89);
+    assert!(tall.contains("│ $ ▀█ "), "{tall}");
+    assert!(!tall.contains("▄█▀"), "{tall}");
 }
 
 #[test]
@@ -3936,9 +3789,12 @@ fn the_line_that_adds_up_the_rest_sits_in_the_bottom_border_so_a_second_row_of_c
         card_session("Session D", 6.0, 0.5),
         card_session("Session E", 0.5, 0.5),
     ];
-    let app = open(snapshot(vec![account]), None);
+    let app = with_spending(open(snapshot(vec![account]), None));
 
-    let shown = screen(&app, 100, 36);
+    let shown = (30..80)
+        .map(|height| screen(&app, 100, height))
+        .find(|shown| shown.contains("Session C"))
+        .unwrap();
 
     for card in ["Session A", "Session B", "Session C", "Session D"] {
         assert!(shown.contains(&format!("│ {card} ")), "{shown}");
@@ -3969,7 +3825,7 @@ fn blank_inside(line: &str) -> bool {
 }
 
 #[test]
-fn blank_rows_give_way_one_at_a_time_so_a_second_row_of_session_cards_fits() {
+fn blank_rows_inside_the_panes_give_way_one_at_a_time_so_a_second_row_of_session_cards_fits() {
     let app = four_sessions_on_the_all_tab();
     let pane_top = |lines: &[&str], title: &str| {
         let at = lines.iter().position(|line| line.contains(title)).unwrap();
@@ -3979,18 +3835,17 @@ fn blank_rows_give_way_one_at_a_time_so_a_second_row_of_session_cards_fits() {
                 .is_empty()
     };
 
-    for (height, under_tabs, running_gap, limits_gap, today_gap) in [
-        (44, true, true, true, true),
-        (43, false, true, true, true),
-        (42, false, false, true, true),
-        (41, false, false, false, true),
-        (40, false, false, false, false),
+    for (height, running_gap, limits_gap, today_gap) in [
+        (44, true, true, true),
+        (43, false, true, true),
+        (42, false, false, true),
+        (41, false, false, false),
     ] {
         let shown = screen(&app, 212, height);
         let lines: Vec<&str> = shown.lines().collect();
 
         assert!(shown.contains("Session D"), "{height}: {shown}");
-        assert_eq!(blank_inside(lines[2]), under_tabs, "{height}: {shown}");
+        assert!(blank_inside(lines[2]), "{height}: {shown}");
         assert_eq!(
             pane_top(&lines, "╭ Sessions today"),
             running_gap,
@@ -4007,11 +3862,11 @@ fn blank_rows_give_way_one_at_a_time_so_a_second_row_of_session_cards_fits() {
             "{height}: {shown}"
         );
     }
-    assert!(!screen(&app, 212, 39).contains("Session D"));
+    assert!(!screen(&app, 212, 40).contains("Session D"));
 }
 
 #[test]
-fn the_row_under_the_tabs_stays_unless_giving_it_up_wins_a_second_row_of_cards() {
+fn the_row_under_the_tabs_stays_when_giving_it_up_would_win_a_second_row_of_cards() {
     let mut accounts = Vec::new();
     for n in 0..4 {
         let mut account = personal();
@@ -4031,68 +3886,18 @@ fn the_row_under_the_tabs_stays_unless_giving_it_up_wins_a_second_row_of_cards()
     answer(&mut app);
     let first_box_row = |shown: &str| shown.lines().position(|line| line.contains('╭')).unwrap();
 
-    for (height, row_under_tabs, second_row_of_cards) in
-        [(51, true, false), (52, false, true), (53, true, true)]
-    {
+    let second_row_from = (30..80)
+        .find(|height| screen(&app, 212, *height).contains("Session D"))
+        .unwrap();
+
+    for height in [second_row_from - 1, second_row_from] {
         let shown = screen(&app, 212, height);
-
-        assert_eq!(
-            first_box_row(&shown) == 4,
-            row_under_tabs,
-            "{height}: {shown}"
-        );
-        assert_eq!(
-            shown.contains("Session D"),
-            second_row_of_cards,
-            "{height}: {shown}"
-        );
+        assert_eq!(first_box_row(&shown), 3, "{height}: {shown}");
     }
 }
 
 #[test]
-fn on_one_account_the_row_under_the_tabs_then_the_running_gap_give_way_for_a_second_row() {
-    let mut account = personal();
-    account.sessions_today = vec![
-        card_session("Session A", 9.0, 0.5),
-        card_session("Session B", 8.0, 0.5),
-        card_session("Session C", 7.0, 0.5),
-        card_session("Session D", 6.0, 0.5),
-    ];
-    let app = with_spending(open(snapshot(vec![account]), None));
-
-    for (height, row_under_tabs, running_gap, second_row_of_cards) in [
-        (36, true, true, true),
-        (35, false, true, true),
-        (34, false, false, true),
-        (33, true, true, false),
-    ] {
-        let shown = screen(&app, 200, height);
-        let lines: Vec<&str> = shown.lines().collect();
-        let running = lines
-            .iter()
-            .position(|line| line.contains("╭ Sessions today"))
-            .unwrap();
-
-        assert_eq!(blank_inside(lines[2]), row_under_tabs, "{height}: {shown}");
-        assert_eq!(
-            lines[running + 1]
-                .chars()
-                .skip(2)
-                .take(40)
-                .all(|c| c == ' '),
-            running_gap,
-            "{height}: {shown}"
-        );
-        assert_eq!(
-            shown.contains("Session D"),
-            second_row_of_cards,
-            "{height}: {shown}"
-        );
-    }
-}
-
-#[test]
-fn under_180_columns_the_running_gap_gives_way_for_a_second_row_too() {
+fn on_one_account_the_running_gap_gives_way_for_a_second_row_but_the_row_under_the_tabs_stays() {
     let mut account = personal();
     account.sessions_today = vec![
         card_session("Session A", 9.0, 0.5),
@@ -4103,19 +3908,23 @@ fn under_180_columns_the_running_gap_gives_way_for_a_second_row_too() {
     let app = with_spending(open(snapshot(vec![account]), None));
 
     for (height, running_gap, second_row_of_cards) in
-        [(44, true, true), (43, false, true), (42, true, false)]
+        [(36, true, true), (35, false, true), (34, true, false)]
     {
-        let shown = screen(&app, 120, height);
+        let shown = screen(&app, 200, height);
         let lines: Vec<&str> = shown.lines().collect();
         let running = lines
             .iter()
             .position(|line| line.contains("╭ Sessions today"))
             .unwrap();
 
+        let left = lines[running][..lines[running].find("╭ Sessions today").unwrap()]
+            .chars()
+            .count();
+        assert!(blank_inside(lines[2]), "{height}: {shown}");
         assert_eq!(
             lines[running + 1]
                 .chars()
-                .skip(2)
+                .skip(left + 2)
                 .take(40)
                 .all(|c| c == ' '),
             running_gap,
@@ -4130,7 +3939,7 @@ fn under_180_columns_the_running_gap_gives_way_for_a_second_row_too() {
 }
 
 #[test]
-fn a_filling_credit_limit_leads_the_line_under_its_bar_with_the_countdown() {
+fn a_filling_credit_limit_leads_its_details_with_the_countdown() {
     let app = open(snapshot(vec![work_credits_filling_in(120)]), None);
     let shown = screen(&app, 100, 40);
     let lines: Vec<&str> = shown.lines().collect();
@@ -4139,12 +3948,7 @@ fn a_filling_credit_limit_leads_the_line_under_its_bar_with_the_countdown() {
         .position(|line| line.contains("│ Credits "))
         .unwrap_or_else(|| panic!("{shown}"));
 
-    assert!(
-        lines[name + 2]
-            .trim_start_matches(['"', '│', ' '])
-            .starts_with("100% in 2h 0m"),
-        "{shown}"
-    );
+    assert!(lines[name].contains("│ Credits · 100% in 2h 0m"), "{shown}");
 }
 
 #[test]
@@ -4190,7 +3994,7 @@ fn credits_used_elsewhere_follow_the_cap_in_the_money_line() {
     let shown = work_credits_screen(80, used_elsewhere);
 
     assert!(
-        shown.contains("│                     $494.00 of $2,200 ($84 elsewhere) · $"),
+        shown.contains("$494.00 of $2,200 ($84 elsewhere) · $"),
         "{shown}"
     );
 }
@@ -4203,9 +4007,7 @@ fn a_lone_credit_account_shows_what_was_used_elsewhere_at_80_columns() {
     let shown = screen(&app, 80, 40);
 
     assert!(
-        shown.contains(
-            "│                     $494.00 of $2,200 ($84 elsewhere) · resets in 21d 14h "
-        ),
+        shown.contains("│ $494.00 of $2,200 ($84 elsewhere) · $79 / day "),
         "{shown}"
     );
 }
@@ -4238,11 +4040,11 @@ fn the_credit_bar_shades_the_part_used_elsewhere_at_the_end_of_what_is_filled() 
         })
         .collect();
 
-    assert_eq!(cells.len(), 34, "{cells:?}");
+    assert_eq!(cells.len(), 76, "{cells:?}");
     let filled = shades.iter().filter(|(filled, _)| *filled).count();
     let elsewhere: Vec<usize> = (0..cells.len()).filter(|i| shades[*i].1).collect();
-    assert_eq!(filled, 8, "{shades:?}");
-    assert_eq!(elsewhere, vec![7], "{shades:?}");
+    assert_eq!(filled, 17, "{shades:?}");
+    assert_eq!(elsewhere, vec![14, 15, 16], "{shades:?}");
 }
 
 fn weekly_used_elsewhere(account: &mut AccountToday) {
@@ -4285,12 +4087,8 @@ fn bars_stay_the_same_length_when_one_limit_has_an_elsewhere_estimate() {
     let app = open(snapshot(vec![account]), Some(PERSONAL.to_string()));
     let shown = screen(&app, 80, 40);
 
-    let bar = |name: &str| {
-        line_with(&shown, name)
-            .chars()
-            .filter(|c| "▇▂".contains(*c))
-            .count()
-    };
+    let bar = |name: &str| bar_cells(&app, 80, 40, name).len();
+    assert!(bar("Session ") > 0, "{shown}");
     assert_eq!(bar("Session "), bar("Weekly, all"), "{shown}");
 }
 
@@ -4335,7 +4133,7 @@ fn every_account_lines_up_its_bars_when_one_account_has_an_estimate() {
 }
 
 #[test]
-fn a_window_too_narrow_for_the_estimate_leaves_it_out_instead_of_cutting_it_off() {
+fn a_narrow_window_shows_the_estimate_whole_instead_of_cutting_it_off() {
     let mut account = personal();
     weekly_used_elsewhere(&mut account);
     let app = open(snapshot(vec![account]), Some(PERSONAL.to_string()));
@@ -4343,10 +4141,9 @@ fn a_window_too_narrow_for_the_estimate_leaves_it_out_instead_of_cutting_it_off(
     let shown = screen(&app, 44, 30);
 
     assert!(
-        line_with(&shown, "Weekly, all").contains("24% │"),
+        line_with(&shown, "Weekly, all").contains("24% (~13%) │"),
         "{shown}"
     );
-    assert!(!shown.contains("(~"), "{shown}");
 }
 
 #[test]
@@ -4369,16 +4166,47 @@ fn the_weekly_bar_shades_the_estimate_used_elsewhere_at_the_end_of_what_is_fille
         .filter(|i| cells[*i].modifier.contains(Modifier::DIM))
         .collect();
 
-    assert_eq!(cells.len(), 27, "{cells:?}");
-    assert_eq!(dim, vec![2, 3, 4, 5], "{cells:?}");
+    assert_eq!(cells.len(), 76, "{cells:?}");
+    assert_eq!(dim, (8..18).collect::<Vec<usize>>(), "{cells:?}");
 }
 
-fn reset_account_screen(width: u16, height: u16) -> String {
+fn reset_account_app() -> App {
     let mut reset = personal();
     reset.limits.as_mut().unwrap().limits[0].limit.resets_at =
         Some("2026-11-09T09:00:00Z".to_string());
-    let app = open(snapshot(vec![reset, work()]), None);
-    screen(&app, width, height)
+    open(snapshot(vec![reset, work()]), None)
+}
+
+fn reset_account_screen(width: u16, height: u16) -> String {
+    screen(&reset_account_app(), width, height)
+}
+
+fn session_bar_cells(app: &App, width: u16, height: u16) -> Vec<ratatui::buffer::Cell> {
+    let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+    terminal
+        .draw(|frame| app.draw(frame, NOW_MS, &utc_minute))
+        .unwrap();
+    let buffer = terminal.backend().buffer().clone();
+    let row = |y: u16| -> String {
+        (0..buffer.area.width)
+            .map(|x| buffer[(x, y)].symbol())
+            .collect()
+    };
+    let name = (0..buffer.area.height)
+        .find(|y| row(*y).contains("Session"))
+        .unwrap();
+    let start = (0..buffer.area.width)
+        .find(|x| buffer[(*x, name)].symbol() == "S")
+        .unwrap();
+    (name..=name + 1)
+        .flat_map(|y| {
+            (start..buffer.area.width)
+                .map(move |x| (x, y))
+                .take_while(|(x, y)| buffer[(*x, *y)].symbol() != "│")
+        })
+        .map(|(x, y)| buffer[(x, y)].clone())
+        .filter(|cell| cell.symbol() == "▇")
+        .collect()
 }
 
 #[test]
@@ -4393,12 +4221,14 @@ fn a_limit_past_its_reset_shows_an_empty_gray_bar_and_when_it_reset_at_any_width
             .iter()
             .position(|line| line.contains("Session"))
             .unwrap();
-        let bar = lines[name..=name + 1]
-            .iter()
-            .find(|line| line.contains('▂'))
-            .unwrap();
-        let session_bar = &bar[..bar.find("│ ╭").unwrap_or(bar.len())];
-        assert!(!session_bar.contains('▇'), "{shown}");
+        let cells = session_bar_cells(&reset_account_app(), width, 40);
+        assert!(!cells.is_empty(), "{shown}");
+        assert!(
+            cells
+                .iter()
+                .all(|cell| cell.fg == ratatui::style::Color::DarkGray),
+            "{width}: {cells:?}"
+        );
         assert!(lines[name].contains("reset"), "{shown}");
         assert!(!lines[name].contains("5%"), "{shown}");
     }
@@ -4415,7 +4245,8 @@ fn a_reset_limits_bar_is_gray_and_has_no_pace_mark() {
 
     assert!(!cells.is_empty());
     for cell in &cells {
-        assert_eq!(cell.symbol(), "▂", "{cells:?}");
+        assert_eq!(cell.symbol(), "▇", "{cells:?}");
+        assert_eq!(cell.fg, ratatui::style::Color::DarkGray, "{cells:?}");
         assert!(
             !cell.modifier.contains(ratatui::style::Modifier::BOLD),
             "{cells:?}"
@@ -4631,4 +4462,724 @@ fn with_nothing_running_finished_cards_take_one_row() {
     assert!(shown.contains("│ Finished 1 "), "{shown}");
     assert!(!shown.contains("Finished 2"), "{shown}");
     assert!(shown.contains("+ 1 more · $7.00 today"), "{shown}");
+}
+
+#[test]
+fn from_90_columns_a_short_window_puts_a_large_today_beside_one_line_limits() {
+    let app = open(snapshot(vec![personal()]), None);
+    let both_titles_on_one_row = |shown: &str| {
+        shown
+            .lines()
+            .any(|line| line.contains("╭ Limits") && line.contains("╭ Today"))
+    };
+
+    let split = screen(&app, 90, 24);
+    let stacked = screen(&app, 89, 24);
+
+    assert!(both_titles_on_one_row(&split), "{split}");
+    assert!(split.contains("▄█▄"), "{split}");
+    assert!(line_with(&split, "│ Session ").contains("5% │"), "{split}");
+    assert!(!both_titles_on_one_row(&stacked), "{stacked}");
+    assert!(
+        stacked.find("╭ Today").unwrap() < stacked.find("╭ Limits").unwrap(),
+        "{stacked}"
+    );
+}
+
+#[test]
+fn help_shows_a_stale_reading_in_the_stale_bars_fill_color() {
+    let mut app = open(snapshot(vec![personal(), work()]), None);
+    app.handle(KeyCode::Char('?').into());
+    let mut terminal = Terminal::new(TestBackend::new(80, 40)).unwrap();
+    terminal
+        .draw(|frame| app.draw(frame, NOW_MS, &utc_minute))
+        .unwrap();
+    let buffer = terminal.backend().buffer().clone();
+    let y = (0..buffer.area.height)
+        .find(|y| {
+            let row: String = (0..buffer.area.width)
+                .map(|x| buffer[(x, *y)].symbol())
+                .collect();
+            row.contains("a reading over an hour old")
+        })
+        .unwrap();
+    let swatch = (0..buffer.area.width)
+        .map(|x| &buffer[(x, y)])
+        .find(|cell| cell.symbol() == "▇")
+        .unwrap();
+
+    assert_eq!(swatch.fg, ratatui::style::Color::Gray);
+}
+
+#[test]
+fn the_split_never_cuts_a_long_limit_detail() {
+    let shown = screen(&reset_account_app(), 90, 24);
+
+    assert!(
+        shown
+            .lines()
+            .any(|line| line.contains("╭ Limits") && line.contains("╭ Today")),
+        "{shown}"
+    );
+    assert!(
+        shown.contains("│ Session · reset at 09:00, not read since "),
+        "{shown}"
+    );
+}
+
+#[test]
+fn a_limits_title_too_wide_for_the_tight_split_keeps_the_reading_age_whole() {
+    let mut account = personal();
+    let limits = account.limits.as_mut().unwrap();
+    limits.source = LimitSource::CachedUsageUtilization;
+    limits.fetched_at_ms = NOW_MS - 2 * 3_600_000;
+    let app = open(snapshot(vec![account]), None);
+
+    let shown = screen(&app, 90, 24);
+
+    assert!(shown.contains("╭ Limits · read 2 hours ago ─"), "{shown}");
+    assert!(shown.contains("╭ Today"), "{shown}");
+}
+
+fn four_card_sessions() -> AccountToday {
+    let mut account = personal();
+    account.sessions_today = vec![
+        card_session("Session A", 9.0, 0.5),
+        card_session("Session B", 6.0, 0.5),
+        card_session("Session C", 3.0, 0.5),
+        card_session("Session D", 1.0, 0.5),
+    ];
+    account
+}
+
+#[test]
+fn each_limit_is_a_full_width_bar_with_its_reset_and_percent_on_the_line_above() {
+    let app = with_spending(open(snapshot(vec![personal()]), None));
+
+    let shown = screen(&app, 90, 24);
+    let lines: Vec<&str> = shown.lines().collect();
+    let name = lines
+        .iter()
+        .position(|line| line.contains("│ Session · resets in 2h 40m at 12:00 "))
+        .unwrap();
+
+    assert!(lines[name].ends_with(" 5% │\""), "{shown}");
+    assert!(
+        lines[name + 1].ends_with(&format!("│ {} │\"", "▇".repeat(46))),
+        "{shown}"
+    );
+}
+
+#[test]
+fn under_90_columns_today_stacks_above_full_width_bars() {
+    let app = with_spending(open(snapshot(vec![personal()]), None));
+
+    let shown = screen(&app, 89, 24);
+
+    assert!(
+        shown.find("╭ Today").unwrap() < shown.find("╭ Limits").unwrap(),
+        "{shown}"
+    );
+    assert!(
+        line_with(&shown, "│ Session · resets in 2h 40m at 12:00 ").ends_with(" 5% │\""),
+        "{shown}"
+    );
+    assert!(
+        shown.contains(&format!("│ {} │", "▇".repeat(85))),
+        "{shown}"
+    );
+}
+
+#[test]
+fn a_short_window_shows_one_row_of_session_cards_and_counts_the_rest() {
+    let app = with_spending(open(snapshot(vec![four_card_sessions()]), None));
+
+    let shown = screen(&app, 90, 30);
+
+    assert!(shown.contains("Session A"), "{shown}");
+    assert!(shown.contains("Session B"), "{shown}");
+    assert!(!shown.contains("Session C"), "{shown}");
+    assert!(shown.contains("+ 2 more"), "{shown}");
+}
+
+#[test]
+fn extra_rows_go_to_spending_then_spacing_then_the_chart_then_more_cards() {
+    let app = with_spending(open(snapshot(vec![four_card_sessions()]), None));
+    let spending = |shown: &str| shown.contains("╭ Spending");
+    let spacing = |shown: &str| {
+        let lines: Vec<&str> = shown.lines().collect();
+        let title = lines
+            .iter()
+            .position(|line| line.contains("╭ Limits"))
+            .unwrap();
+        let left = lines[title][..lines[title].find("╭ Limits").unwrap()]
+            .chars()
+            .count();
+        lines[title + 1]
+            .chars()
+            .skip(left + 1)
+            .take(60)
+            .all(|c| c == ' ')
+    };
+    let chart = |shown: &str| shown.contains("usual day");
+    let second_row = |shown: &str| shown.contains("Session C");
+    let first_with = |has: &dyn Fn(&str) -> bool| {
+        (20..80u16)
+            .map(|height| screen(&app, 120, height))
+            .find(|shown| has(shown))
+            .unwrap()
+    };
+
+    let at = first_with(&spending);
+    assert!(!spacing(&at), "{at}");
+    let at = first_with(&chart);
+    assert!(spending(&at) && spacing(&at) && !second_row(&at), "{at}");
+    let at = first_with(&second_row);
+    assert!(spending(&at) && spacing(&at) && chart(&at), "{at}");
+}
+
+fn all_view(accounts: Vec<AccountToday>) -> App {
+    let tab = KeyCode::Char(char::from_digit(accounts.len() as u32 + 1, 10).unwrap());
+    let mut app = with_spending(open(snapshot(accounts), None));
+    app.handle(tab.into());
+    answer(&mut app);
+    app
+}
+
+#[test]
+fn from_90_columns_each_accounts_box_puts_today_beside_its_bars() {
+    let app = all_view(vec![personal(), work()]);
+
+    let shown = screen(&app, 90, 24);
+
+    let lines: Vec<&str> = shown.lines().collect();
+    let session = lines
+        .iter()
+        .position(|line| line.contains("│ Session "))
+        .unwrap();
+    assert!(lines[session].ends_with(" 5% │\""), "{shown}");
+    assert!(lines[session + 1].starts_with("\"│ $ ▀█ "), "{shown}");
+}
+
+#[test]
+fn each_accounts_box_names_the_account_and_where_its_limits_came_from() {
+    let app = all_view(vec![personal(), work()]);
+
+    let shown = screen(&app, 90, 24);
+
+    assert!(
+        shown.contains("╭ personal · limits from get_usage, read 3 minutes ago "),
+        "{shown}"
+    );
+    assert!(shown.contains("╭ work · limits "), "{shown}");
+}
+
+#[test]
+fn under_90_columns_today_sits_above_each_accounts_bars() {
+    let app = all_view(vec![personal(), work()]);
+
+    let shown = screen(&app, 80, 24);
+    let lines: Vec<&str> = shown.lines().collect();
+    let today = lines
+        .iter()
+        .position(|line| line.contains("│ $14.20 · 2.0× your usual"))
+        .unwrap();
+
+    let session = lines
+        .iter()
+        .position(|line| line.contains("│ Session · resets in 2h 40m at 12:00 "))
+        .unwrap();
+    assert!(today < session, "{shown}");
+    assert!(
+        !lines[today..session]
+            .iter()
+            .any(|line| line.contains("Limits")),
+        "{shown}"
+    );
+}
+
+#[test]
+fn the_all_view_keeps_its_columns_when_they_fit_with_cards_and_spending() {
+    let app = all_view(vec![personal(), work()]);
+
+    let tall = screen(&app, 120, 60);
+    let short = screen(&app, 120, 30);
+
+    assert!(tall.contains("╭ personal · today"), "{tall}");
+    assert!(tall.contains("╭ Spending"), "{tall}");
+    assert!(!short.contains("╭ personal · today"), "{short}");
+}
+
+#[test]
+fn account_boxes_show_big_digits_before_the_spending_table() {
+    let app = all_view(vec![personal(), work()]);
+
+    let shown = (20..60)
+        .map(|height| screen(&app, 120, height))
+        .find(|shown| shown.contains("╭ Spending"))
+        .unwrap();
+
+    assert!(shown.contains("╭ personal · limits"), "{shown}");
+    assert!(shown.contains("│ $ ▀█ "), "{shown}");
+    assert!(!shown.contains("▄█▀"), "{shown}");
+    assert!(!shown.contains("▄█▄"), "{shown}");
+}
+
+#[test]
+fn a_long_model_name_in_the_narrow_today_side_keeps_the_divider_in_line() {
+    let mut account = personal();
+    account.unpriced_models = vec!["claude-haiku-4-5-20251001".to_string()];
+    let app = all_view(vec![account, work()]);
+
+    let shown = screen(&app, 90, 30);
+    let lines: Vec<&str> = shown.lines().collect();
+    let top = lines
+        .iter()
+        .position(|line| line.contains("╭ personal"))
+        .unwrap();
+    let bottom = top
+        + lines[top..]
+            .iter()
+            .position(|line| line.contains('╰'))
+            .unwrap();
+
+    let divider = lines[top + 1]
+        .chars()
+        .skip(2)
+        .position(|c| c == '│')
+        .unwrap()
+        + 2;
+    for line in &lines[top + 1..bottom] {
+        assert_eq!(line.chars().nth(divider), Some('│'), "{shown}");
+    }
+}
+
+#[test]
+fn big_digits_too_wide_for_the_today_side_leave_the_labeled_amount() {
+    let mut account = personal();
+    account.cost_usd = 123_456.78;
+    let app = all_view(vec![account, work()]);
+
+    let shown = screen(&app, 100, 30);
+
+    assert!(shown.contains("│ $123456.78 today"), "{shown}");
+}
+
+#[test]
+fn account_boxes_take_extra_rows_in_order() {
+    let mut side = personal();
+    side.account = Some(NEW.to_string());
+    side.account_label = "side".to_string();
+    side.sessions_today = Vec::new();
+    let app = all_view(vec![four_card_sessions(), work(), side]);
+    let spending = |shown: &str| shown.contains("╭ Spending");
+    let resets_under = |shown: &str| shown.contains("│ resets in 2h 40m at 12:00 ");
+    let cards_gap = |shown: &str| {
+        let lines: Vec<&str> = shown.lines().collect();
+        let cards = lines
+            .iter()
+            .position(|line| line.contains("╭ Sessions today"))
+            .unwrap();
+        lines[cards + 1].trim_matches(['"', ' ', '│']).is_empty()
+    };
+    let first_with = |has: &dyn Fn(&str) -> bool| {
+        (20..120u16)
+            .map(|height| screen(&app, 120, height))
+            .find(|shown| has(shown))
+            .unwrap()
+    };
+
+    let at = first_with(&spending);
+    assert!(!cards_gap(&at), "{at}");
+    let at = first_with(&|shown: &str| shown.contains("Session C"));
+    assert!(
+        spending(&at) && !resets_under(&at) && cards_gap(&at),
+        "{at}"
+    );
+}
+
+#[test]
+fn shrinking_the_window_never_makes_todays_number_bigger() {
+    let mut side = personal();
+    side.account = Some(NEW.to_string());
+    side.account_label = "side".to_string();
+    side.sessions_today = Vec::new();
+    let app = all_view(vec![four_card_sessions(), work(), side]);
+    let size = |shown: &str| {
+        if shown.contains("· today ─") {
+            2
+        } else if shown.contains("│ $ ") {
+            1
+        } else {
+            0
+        }
+    };
+
+    let sizes: Vec<(u16, u8)> = (24..60)
+        .rev()
+        .map(|height| (height, size(&screen(&app, 212, height))))
+        .collect();
+
+    assert!(
+        sizes.windows(2).all(|pair| pair[0].1 >= pair[1].1),
+        "{sizes:?}"
+    );
+    assert!(sizes.iter().any(|(_, size)| *size == 1), "{sizes:?}");
+    let lowest_with_digits = sizes
+        .iter()
+        .filter(|(_, size)| *size == 1)
+        .map(|(height, _)| *height)
+        .min()
+        .unwrap();
+    let shown = screen(&app, 212, lowest_with_digits);
+    assert!(!shown.contains("╭ Spending"), "{shown}");
+}
+
+#[test]
+fn side_by_side_today_sits_left_of_the_limits() {
+    let app = with_spending(open(snapshot(vec![personal()]), None));
+
+    let shown = screen(&app, 120, 40);
+    let titles = line_with(&shown, "╭ Today");
+
+    assert!(
+        titles.find("╭ Today").unwrap() < titles.find("╭ Limits").unwrap(),
+        "{shown}"
+    );
+}
+
+#[test]
+fn beside_the_cards_the_spending_table_sits_under_today_and_the_cards_under_the_limits() {
+    let app = with_spending(open(snapshot(vec![personal()]), None));
+
+    let shown = screen(&app, 200, 40);
+    let lines: Vec<&str> = shown.lines().collect();
+    let column =
+        |line: &str, title: &str| line.find(title).map(|byte| line[..byte].chars().count());
+    let today = lines
+        .iter()
+        .find_map(|line| column(line, "╭ Today"))
+        .unwrap();
+    let limits = lines
+        .iter()
+        .find_map(|line| column(line, "╭ Limits"))
+        .unwrap();
+    let spending = lines
+        .iter()
+        .find_map(|line| column(line, "╭ Spending"))
+        .unwrap();
+    let cards = lines
+        .iter()
+        .find_map(|line| column(line, "╭ Sessions today"))
+        .unwrap();
+
+    assert_eq!(spending, today, "{shown}");
+    assert_eq!(cards, limits, "{shown}");
+}
+
+#[test]
+fn the_small_digits_leave_a_blank_row_under_the_box_heading() {
+    let app = all_view(vec![personal(), work()]);
+
+    let shown = screen(&app, 120, 30);
+    let lines: Vec<&str> = shown.lines().collect();
+    let heading = lines
+        .iter()
+        .position(|line| line.contains("╭ personal · limits"))
+        .unwrap();
+
+    assert!(lines[heading + 1].starts_with("\"│    "), "{shown}");
+    assert!(lines[heading + 2].starts_with("\"│ $ "), "{shown}");
+}
+
+#[test]
+fn the_today_side_keeps_its_notes_on_full_lines() {
+    let app = all_view(vec![personal(), work()]);
+
+    let shown = screen(&app, 90, 30);
+
+    assert!(
+        shown.contains("│ 2.0× your usual of $7.10 by 09:20 "),
+        "{shown}"
+    );
+}
+
+fn three_accounts(personal_sessions: Vec<SessionSpend>) -> App {
+    let mut first = personal();
+    first.sessions_today = personal_sessions;
+    let mut side = personal();
+    side.account = Some(NEW.to_string());
+    side.account_label = "side".to_string();
+    side.sessions_today = Vec::new();
+    all_view(vec![first, work(), side])
+}
+
+fn once_on_stays_on(flags: &[(u16, bool)]) -> bool {
+    flags.windows(2).all(|pair| !pair[0].1 || pair[1].1)
+}
+
+#[test]
+fn account_boxes_keep_each_reset_on_its_name_line_at_every_height() {
+    let app = three_accounts(four_card_sessions().sessions_today);
+
+    for width in [90, 120] {
+        for height in 20..80 {
+            let shown = screen(&app, width, height);
+            assert!(
+                !shown.contains("│ resets in 2h 40m"),
+                "{width}x{height}\n{shown}"
+            );
+        }
+    }
+}
+
+#[test]
+fn growing_the_window_only_ever_adds_extras() {
+    let one = with_spending(open(snapshot(vec![four_card_sessions()]), None));
+    let all = three_accounts(four_card_sessions().sessions_today);
+    let spacing = |shown: &str| {
+        let lines: Vec<&str> = shown.lines().collect();
+        let title = lines
+            .iter()
+            .position(|line| line.contains("╭ Limits"))
+            .unwrap();
+        let left = lines[title][..lines[title].find("╭ Limits").unwrap()]
+            .chars()
+            .count();
+        lines[title + 1]
+            .chars()
+            .skip(left + 1)
+            .take(40)
+            .all(|c| c == ' ')
+    };
+    let flags = |app: &App, width: u16, has: &dyn Fn(&str) -> bool| -> Vec<(u16, bool)> {
+        (20..80u16)
+            .map(|height| (height, has(&screen(app, width, height))))
+            .collect()
+    };
+
+    for width in [90, 120] {
+        for (name, has) in [
+            (
+                "spending",
+                &(|shown: &str| shown.contains("╭ Spending")) as &dyn Fn(&str) -> bool,
+            ),
+            ("spacing", &spacing),
+            ("chart", &|shown: &str| shown.contains("usual day")),
+            ("second row", &|shown: &str| shown.contains("Session C")),
+        ] {
+            let seen = flags(&one, width, has);
+            assert!(
+                once_on_stays_on(&seen),
+                "one account {width} {name}: {seen:?}"
+            );
+        }
+    }
+    for (name, has) in [
+        (
+            "spending",
+            &(|shown: &str| shown.contains("╭ Spending")) as &dyn Fn(&str) -> bool,
+        ),
+        ("second row", &|shown: &str| shown.contains("Session C")),
+        ("columns", &|shown: &str| shown.contains("· today ─")),
+    ] {
+        let seen = flags(&all, 120, has);
+        assert!(once_on_stays_on(&seen), "all {name}: {seen:?}");
+        let two = all_view(vec![four_card_sessions(), work()]);
+        let seen = flags(&two, 120, has);
+        assert!(once_on_stays_on(&seen), "two accounts {name}: {seen:?}");
+    }
+}
+
+#[test]
+fn a_session_starting_never_moves_what_sits_above_the_cards() {
+    let above_cards = |shown: &str| -> String {
+        shown
+            .lines()
+            .take_while(|line| !line.contains("╭ Sessions today"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    let mut idle = personal();
+    idle.sessions_today = Vec::new();
+    let mut busy = personal();
+    busy.sessions_today = vec![card_session("Session A", 9.0, 0.5)];
+    busy.cost_usd = idle.cost_usd;
+
+    for (width, height) in [(90, 24), (120, 30), (120, 40)] {
+        let before = screen(
+            &with_spending(open(snapshot(vec![idle.clone()]), None)),
+            width,
+            height,
+        );
+        let after = screen(
+            &with_spending(open(snapshot(vec![busy.clone()]), None)),
+            width,
+            height,
+        );
+        assert_eq!(
+            above_cards(&before),
+            above_cards(&after),
+            "{width}x{height}\n{before}\n{after}"
+        );
+    }
+    for (width, height) in [(120, 30), (120, 44)] {
+        let before = screen(&three_accounts(Vec::new()), width, height);
+        let after = screen(
+            &three_accounts(vec![card_session("Session A", 9.0, 0.5)]),
+            width,
+            height,
+        );
+        assert_eq!(
+            above_cards(&before),
+            above_cards(&after),
+            "{width}x{height}\n{before}\n{after}"
+        );
+    }
+}
+
+#[test]
+fn a_credit_limit_puts_its_reset_on_the_name_line_and_its_money_under_the_bar() {
+    let app = with_spending(open(snapshot(vec![work()]), None));
+
+    let shown = screen(&app, 120, 30);
+    let lines: Vec<&str> = shown.lines().collect();
+    let name = lines
+        .iter()
+        .position(|line| line.contains("│ Credits "))
+        .unwrap();
+
+    assert!(
+        lines[name].contains("│ Credits · resets in 21d 14h "),
+        "{shown}"
+    );
+    assert!(!lines[name].contains("$437.60"), "{shown}");
+    assert!(
+        lines[name + 2].contains("│ $437.60 of $2,200 · $82 / day "),
+        "{shown}"
+    );
+}
+
+#[test]
+fn a_session_starting_never_shows_or_hides_the_spending_table() {
+    for height in 20..70 {
+        let idle = screen(&three_accounts(Vec::new()), 120, height);
+        let busy = screen(
+            &three_accounts(vec![card_session("Session A", 9.0, 0.5)]),
+            120,
+            height,
+        );
+        assert_eq!(
+            idle.contains("╭ Spending"),
+            busy.contains("╭ Spending"),
+            "{height}\n{idle}\n{busy}"
+        );
+    }
+}
+
+#[test]
+fn under_90_columns_the_spacing_row_tops_both_panes() {
+    let app = with_spending(open(snapshot(vec![personal()]), None));
+    let blank_under = |lines: &[&str], title: &str| {
+        let at = lines.iter().position(|line| line.contains(title)).unwrap();
+        lines[at + 1].trim_matches(['"', ' ', '│']).is_empty()
+    };
+
+    let spaced = (20..80)
+        .map(|height| screen(&app, 80, height))
+        .find(|shown| blank_under(&shown.lines().collect::<Vec<_>>(), "╭ Limits"))
+        .unwrap();
+
+    assert!(
+        blank_under(&spaced.lines().collect::<Vec<_>>(), "╭ Today"),
+        "{spaced}"
+    );
+}
+
+#[test]
+fn a_big_usual_amount_stays_on_one_line_beside_the_bars() {
+    let mut account = personal();
+    account.pace.usual_usd = Some(201.27);
+    account.pace.today_usd = 80.0;
+    account.cost_usd = 80.0;
+    let app = all_view(vec![account, work()]);
+
+    let shown = screen(&app, 100, 30);
+
+    assert!(
+        shown.contains("│ 0.4× your usual of $201.27 by 09:20 │"),
+        "{shown}"
+    );
+}
+
+#[test]
+fn a_long_usual_note_wraps_instead_of_losing_its_time() {
+    let mut account = personal();
+    account.pace.usual_usd = Some(201.27);
+    account.pace.today_usd = 2_012.7;
+    account.cost_usd = 2_012.7;
+    let app = with_spending(open(snapshot(vec![account]), None));
+
+    let shown = screen(&app, 90, 30);
+
+    assert!(shown.contains("09:20"), "{shown}");
+}
+
+#[test]
+fn growing_the_all_view_never_goes_back_from_columns_to_boxes() {
+    let mut many = four_card_sessions();
+    many.sessions_today
+        .push(card_session("Session E", 0.8, 0.5));
+    many.sessions_today
+        .push(card_session("Session F", 0.7, 0.5));
+    let mut side = personal();
+    side.account = Some(NEW.to_string());
+    side.account_label = "side".to_string();
+    side.sessions_today = Vec::new();
+    for (accounts, widths) in [
+        (
+            vec![many.clone(), work()],
+            vec![100, 110, 120, 140, 160, 179],
+        ),
+        (vec![many.clone(), personal()], vec![100, 120, 160]),
+        (vec![many.clone(), work(), side], vec![150, 160, 179]),
+    ] {
+        let app = all_view(accounts);
+        for width in widths {
+            let columns: Vec<(u16, bool)> = (20..90u16)
+                .map(|height| (height, screen(&app, width, height).contains("· today ─")))
+                .collect();
+            assert!(once_on_stays_on(&columns), "{width}: {columns:?}");
+        }
+    }
+}
+
+#[test]
+fn a_session_starting_never_switches_the_all_view_between_columns_and_boxes() {
+    let above_cards = |shown: &str| -> String {
+        shown
+            .lines()
+            .take_while(|line| !line.contains("╭ Sessions today"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    let with_running = |count: usize| {
+        let mut account = personal();
+        account.sessions_today = ["Session A", "Session B", "Session C"][..count]
+            .iter()
+            .map(|label| card_session(label, 3.0, 0.5))
+            .collect();
+        all_view(vec![account, work()])
+    };
+    let (two, three) = (with_running(2), with_running(3));
+
+    for height in 30..70 {
+        let before = screen(&two, 120, height);
+        let after = screen(&three, 120, height);
+        assert_eq!(
+            above_cards(&before),
+            above_cards(&after),
+            "{height}\n{before}\n{after}"
+        );
+    }
 }
