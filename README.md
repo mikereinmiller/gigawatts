@@ -26,7 +26,7 @@ mise install        # installs the pinned Rust version
 mise run install    # builds, installs, and starts the engine
 ```
 
-That puts `gigawatts` in `~/.cargo/bin`. Make sure that folder is on your `PATH`. Without mise, run `cargo install --path . --locked`, then `gigawatts stop` and `gigawatts engine`.
+That puts `gigawatts` in `~/.cargo/bin`. Make sure that folder is on your `PATH`, ahead of mise's shims: mise also adds a `gigawatts` shim, which fails outside this repo with `No version is set for shim` unless you set a global Rust with `mise use -g rust`. Without mise, run `cargo install --path . --locked`, then `gigawatts stop` and `gigawatts engine`.
 
 The engine keeps running after you close the terminal view, but it stops when the computer restarts. To have it start again at login, run:
 
