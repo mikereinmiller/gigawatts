@@ -19,6 +19,10 @@ Read only these commands. The history database and the report page's `/api/*` ro
 
 Each `data --json` row's `paid_for` splits its tokens' cost into input, output, cache writes, and cache reads, in dollars at list price. Use it instead of token counts: cache reads are the largest count in almost every session but cost the least per token. Cache writes are context sent fresh, as after a cold start or a resume past the cache's lifetime; cache reads are context re-read on every turn. `paid_for` covers every day in the range. It is null when no priced tokens cover a row, as on a model with no price, and its sum can differ from `cost_usd`, which also covers surcharges such as fast mode.
 
+## Reading sessions
+
+Each session in `active_sessions` and `sessions_today` has `context_tokens`: the size of its latest main-conversation request, its input plus cache read and cache write tokens. Every turn re-reads that context, so a bigger number means each turn costs more, and it drops after a `/compact`, but only once the next request lands: the compact itself makes no request, so until the user sends another prompt it still shows the size from before. Subagents' requests don't count toward it, and it's null for a session that has made only subagent requests.
+
 ## Reading insights
 
 `skills` and `agents` overlap. A subagent's requests made inside a skill count toward both the skill's row and the subagent's, so never add the two lists together. A skill row's `subagent_cost_usd` is the part of its cost its subagents spent. A skill run is one unbroken stretch of the skill in a session's main conversation; a subagent run is one subagent, counted in the week it started. A week's `cost_usd` includes runs that started the week before, so a week with spend and no runs has a null `cost_per_run_usd`.

@@ -186,7 +186,14 @@ impl Store {
                         (SELECT coalesce(sum(cost_usd), 0) FROM requests
                          WHERE requests.session_id = recent.session_id
                            AND requests.account_id IS ?3
-                           AND requests.day = date(?2 / 1000, 'unixepoch', 'localtime'))
+                           AND requests.day = date(?2 / 1000, 'unixepoch', 'localtime')),
+                        (SELECT input_tokens + cache_read_tokens
+                                + cache_write_5m_tokens + cache_write_1h_tokens
+                         FROM requests INDEXED BY requests_by_session
+                         WHERE requests.session_id = recent.session_id
+                           AND requests.is_sidechain = 0 AND requests.time_ms <= ?2
+                         ORDER BY requests.time_ms DESC, requests.id DESC
+                         LIMIT 1)
                  FROM recent
                  JOIN sessions AS session ON session.id = recent.session_id
                  JOIN requests AS latest ON latest.id = recent.last_id
@@ -214,6 +221,7 @@ impl Store {
                         total_usd: row.get(5)?,
                         last_active_ms: row.get(6)?,
                         today_usd: row.get(7)?,
+                        context_tokens: row.get::<_, Option<i64>>(8)?.map(|tokens| tokens as u64),
                         top_driver: None,
                         models: Vec::new(),
                     })

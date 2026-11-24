@@ -173,6 +173,7 @@ fn the_snapshot_carries_each_tracked_accounts_spend_today_and_the_engines_proble
         total_usd: 0.042,
         last_active_ms: local_ms(&today, "12:00:00"),
         today_usd: 0.028,
+        context_tokens: Some(1000),
         top_driver: Some(Share {
             label: "no skill".to_string(),
             share: 1.0,

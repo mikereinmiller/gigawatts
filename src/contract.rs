@@ -845,6 +845,9 @@ pub struct SessionSpend {
     pub today_usd: f64,
     /// The skill or subagent that spent most of today's spend, with its share, or null.
     #[serde(default)]
+    /// The context size of the session's latest main-conversation request, in tokens: its input, cache read, and cache write tokens. After a `/compact` it drops with the next request, since the compact itself makes none. Null when the session has made only subagent requests.
+    #[serde(default)]
+    pub context_tokens: Option<u64>,
     pub top_driver: Option<Share>,
     /// Today's spend split by model.
     #[serde(default)]

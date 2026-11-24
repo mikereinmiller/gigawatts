@@ -75,6 +75,7 @@ fn session(label: &str, repo: &str, branch: &str, recent: f64, total: f64) -> Se
         total_usd: total,
         last_active_ms: NOW_MS - 2 * 60_000,
         today_usd: total,
+        context_tokens: None,
         top_driver: None,
         models: Vec::new(),
     }

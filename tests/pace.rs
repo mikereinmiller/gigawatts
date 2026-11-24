@@ -646,6 +646,7 @@ fn the_fastest_session_spent_most_in_the_last_15_minutes_counting_its_subagents(
             total_usd: 5.0,
             last_active_ms: local_ms("2026-11-04 13:58:00"),
             today_usd: 5.0,
+            context_tokens: Some(0),
             top_driver: Some(Share {
                 label: "no skill".to_string(),
                 share: 1.0,
@@ -793,6 +794,7 @@ fn active_sessions_are_every_session_written_in_the_last_15_minutes_fastest_firs
             total_usd,
             last_active_ms: local_ms(last),
             today_usd: total_usd,
+            context_tokens: Some(0),
             top_driver: Some(Share {
                 label: "no skill".to_string(),
                 share: 1.0,
@@ -809,6 +811,70 @@ fn active_sessions_are_every_session_written_in_the_last_15_minutes_fastest_firs
             spend("s1", 4.0, 14.0, "2026-11-04 13:55:00")
         ]
     );
+}
+
+fn context_line(request: &str, local: &str, cache_read: u64, sidechain: bool) -> String {
+    let timestamp = local_to_utc(local);
+    format!(
+        r#"{{"type":"assistant","sessionId":"s1","requestId":"{request}","timestamp":"{timestamp}","isSidechain":{sidechain},"cwd":"/work/orchard","message":{{"model":"claude-opus-5-5","usage":{{"input_tokens":100,"cache_creation_input_tokens":1000,"cache_read_input_tokens":{cache_read},"output_tokens":500}}}}}}"#
+    ) + "\n"
+}
+
+#[test]
+fn a_session_s_context_is_its_latest_main_conversation_request_so_it_drops_after_a_compact() {
+    let dir = tempfile::tempdir().unwrap();
+    let projects = dir.path().join("projects").join("-work-orchard");
+    fs::create_dir_all(projects.join("s1").join("subagents")).unwrap();
+    fs::write(
+        projects.join("s1.jsonl"),
+        context_line("a1", "2026-11-04 13:40:00", 400_000, false)
+            + &context_line("a2", "2026-11-04 13:50:00", 30_000, false),
+    )
+    .unwrap();
+    fs::write(
+        projects.join("s1").join("subagents").join("agent-x.jsonl"),
+        context_line("a3", "2026-11-04 13:55:00", 900_000, true),
+    )
+    .unwrap();
+    let mut store = Store::open(&dir.path().join("history.sqlite3")).unwrap();
+    ingest_tree(
+        &mut store,
+        &dir.path().join("projects"),
+        &PriceTable::built_in(),
+        &Attribution::default(),
+        &Resolver,
+    )
+    .unwrap();
+
+    let today = sessions_today(&store, None, local_ms("2026-11-04 14:00:00")).unwrap();
+
+    assert_eq!(today[0].context_tokens, Some(31_100));
+}
+
+#[test]
+fn a_session_with_only_subagent_requests_has_no_context() {
+    let dir = tempfile::tempdir().unwrap();
+    let projects = dir.path().join("projects").join("-work-orchard");
+    fs::create_dir_all(projects.join("s1").join("subagents")).unwrap();
+    fs::write(
+        projects.join("s1").join("subagents").join("agent-x.jsonl"),
+        context_line("a1", "2026-11-04 13:55:00", 900_000, true),
+    )
+    .unwrap();
+    let mut store = Store::open(&dir.path().join("history.sqlite3")).unwrap();
+    ingest_tree(
+        &mut store,
+        &dir.path().join("projects"),
+        &PriceTable::built_in(),
+        &Attribution::default(),
+        &Resolver,
+    )
+    .unwrap();
+
+    let today = sessions_today(&store, None, local_ms("2026-11-04 14:00:00")).unwrap();
+
+    assert_eq!(today.len(), 1);
+    assert_eq!(today[0].context_tokens, None);
 }
 
 #[test]
@@ -845,6 +911,7 @@ fn a_session_with_only_unpriced_requests_in_the_last_15_minutes_counts_as_spendi
             total_usd: 0.0,
             last_active_ms: local_ms("2026-11-04 13:50:00"),
             today_usd: 0.0,
+            context_tokens: Some(0),
             top_driver: Some(Share {
                 label: "no skill".to_string(),
                 share: 0.0,
@@ -1032,6 +1099,7 @@ fn a_session_quiet_for_two_hours_is_in_sessions_today_but_not_active() {
             total_usd: today_usd,
             last_active_ms: local_ms(last),
             today_usd,
+            context_tokens: Some(0),
             top_driver: Some(Share {
                 label: "no skill".to_string(),
                 share: 1.0,
