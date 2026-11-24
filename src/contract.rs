@@ -258,6 +258,8 @@ pub struct AccountToday {
     pub pace: DollarPace,
     /// The running session spending fastest over the last 15 minutes, or null when none is running.
     pub fastest_session: Option<SessionSpend>,
+    /// The hourly rate, US dollars, at or above which a running session counts as spending fast: `last_15_minutes_usd` times 4. Set by `fast_usd_per_hour` in `config.toml`, 20 by default.
+    pub fast_usd_per_hour: f64,
     /// Sessions that wrote to their transcript in the last 15 minutes, fastest spending (`last_15_minutes_usd`) first.
     pub active_sessions: Vec<SessionSpend>,
     /// Sessions with requests today, running or finished, most spent today (`today_usd`) first. Their `today_usd` adds up to `cost_usd`, apart from spend Claude Code never wrote to a transcript.
@@ -843,11 +845,11 @@ pub struct SessionSpend {
     /// The session's spend today on this account, US dollars.
     #[serde(default)]
     pub today_usd: f64,
-    /// The skill or subagent that spent most of today's spend, with its share, or null.
-    #[serde(default)]
     /// The context size of the session's latest main-conversation request, in tokens: its input, cache read, and cache write tokens. After a `/compact` it drops with the next request, since the compact itself makes none. Null when the session has made only subagent requests.
     #[serde(default)]
     pub context_tokens: Option<u64>,
+    /// The skill or subagent that spent most of today's spend, with its share, or null.
+    #[serde(default)]
     pub top_driver: Option<Share>,
     /// Today's spend split by model.
     #[serde(default)]

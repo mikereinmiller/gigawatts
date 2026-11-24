@@ -69,6 +69,7 @@ pub struct Switch {
 }
 
 pub const DEFAULT_REPORT_PORT: u16 = 7878;
+pub const DEFAULT_FAST_USD_PER_HOUR: f64 = 20.0;
 
 #[derive(Debug, Default)]
 pub struct Config {
@@ -79,6 +80,7 @@ pub struct Config {
     switches: HashMap<PathBuf, Switch>,
     prices: HashMap<String, ModelPrices>,
     price_updates: Option<bool>,
+    fast_usd_per_hour: Option<f64>,
 }
 
 #[derive(Deserialize, Default)]
@@ -91,6 +93,7 @@ struct RawConfig {
     directories: BTreeMap<String, RawDirectory>,
     prices: BTreeMap<String, RawPrices>,
     price_updates: Option<bool>,
+    fast_usd_per_hour: Option<f64>,
 }
 
 #[derive(Deserialize)]
@@ -134,6 +137,14 @@ impl Config {
             return Err(Error::Invalid(
                 "request_detail_days must be 1 or more. Leave it out to keep request detail forever"
                     .to_string(),
+            ));
+        }
+        if raw
+            .fast_usd_per_hour
+            .is_some_and(|rate| !rate.is_finite() || rate <= 0.0)
+        {
+            return Err(Error::Invalid(
+                "fast_usd_per_hour must be more than 0, in US dollars an hour".to_string(),
             ));
         }
         let mut accounts = HashMap::new();
@@ -193,6 +204,7 @@ impl Config {
                 })
                 .collect(),
             price_updates: raw.price_updates,
+            fast_usd_per_hour: raw.fast_usd_per_hour,
         })
     }
 
@@ -226,6 +238,10 @@ impl Config {
 
     pub fn price_updates(&self) -> bool {
         self.price_updates.unwrap_or(true)
+    }
+
+    pub fn fast_usd_per_hour(&self) -> f64 {
+        self.fast_usd_per_hour.unwrap_or(DEFAULT_FAST_USD_PER_HOUR)
     }
 }
 

@@ -281,3 +281,23 @@ fn price_updates_are_on_unless_the_config_turns_them_off() {
     assert!(unset.price_updates());
     assert!(!off.price_updates());
 }
+
+#[test]
+fn a_session_counts_as_spending_fast_from_20_dollars_an_hour_unless_the_config_says_otherwise() {
+    let home = Path::new(HOME);
+
+    assert_eq!(Config::parse("", home).unwrap().fast_usd_per_hour(), 20.0);
+    assert_eq!(
+        Config::parse("fast_usd_per_hour = 40\n", home)
+            .unwrap()
+            .fast_usd_per_hour(),
+        40.0
+    );
+    let error = Config::parse("fast_usd_per_hour = 0.0\n", home).unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("fast_usd_per_hour must be more than 0"),
+        "{error}"
+    );
+}

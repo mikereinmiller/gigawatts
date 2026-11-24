@@ -1023,7 +1023,12 @@ pub(crate) fn clip_middle(text: &str, width: usize) -> String {
     format!("{start}…{end}")
 }
 
-pub(crate) fn help(frame: &mut Frame, area: Rect, report_port: Option<u16>) {
+pub(crate) fn help(
+    frame: &mut Frame,
+    area: Rect,
+    report_port: Option<u16>,
+    fast_usd_per_hour: f64,
+) {
     let key = |key: &'static str, what: &'static str| {
         Line::from(vec![
             Span::styled(format!("  {key:<8}"), KEY.add_modifier(Modifier::BOLD)),
@@ -1086,11 +1091,16 @@ pub(crate) fn help(frame: &mut Frame, area: Rect, report_port: Option<u16>) {
             Style::new().fg(EVEN).add_modifier(Modifier::DIM),
             "used elsewhere, like claude.ai (~13% is estimated)",
         ),
-        color(
-            "▲",
-            Style::new().fg(OVER).add_modifier(Modifier::BOLD),
-            "a session spending $20/hr or more",
-        ),
+        Line::from(vec![
+            Span::styled(
+                format!("  {:<8}", "▲"),
+                Style::new().fg(OVER).add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(format!(
+                "a session spending {} or more",
+                sessions::dollars_an_hour(fast_usd_per_hour)
+            )),
+        ]),
     ]);
     let popup = super::centered(area, 64, lines.len() as u16 + 2);
     frame.render_widget(Clear, popup);

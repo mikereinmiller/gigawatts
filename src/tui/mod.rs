@@ -470,7 +470,15 @@ impl App {
         frame.render_widget(Paragraph::new(notices), bottom);
         frame.render_widget(Paragraph::new(self.key_strip(keys.width)), keys);
         if self.help {
-            sections::help(frame, frame.area(), self.served_report_port());
+            sections::help(
+                frame,
+                frame.area(),
+                self.served_report_port(),
+                self.shown()
+                    .map_or(crate::config::DEFAULT_FAST_USD_PER_HOUR, |account| {
+                        account.fast_usd_per_hour
+                    }),
+            );
         }
         if self.advice_open {
             advice::draw(frame, frame.area(), self.advice.as_ref(), now_ms);

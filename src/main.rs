@@ -444,6 +444,7 @@ fn status(name: Option<&str>, all: bool) -> ExitCode {
                 cost_usd: 0.0,
                 pace,
                 fastest_session: None,
+                fast_usd_per_hour: config.fast_usd_per_hour(),
                 active_sessions: Vec::new(),
                 sessions_today: Vec::new(),
                 unpriced_models: Vec::new(),

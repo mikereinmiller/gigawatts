@@ -22,7 +22,6 @@ const THREE_COLUMNS_FROM: u16 = 146;
 const BACKGROUND_REPO: &str = "temporary";
 const UNTITLED_ID_CHARS: usize = 8;
 const MODEL_PREFIX: &str = "claude-";
-pub(crate) const FAST_PER_HOUR: f64 = 20.0;
 const IDLE_FROM_MS: i64 = 5 * 60_000;
 const MINUTES_UNTIL_HOURS: i64 = 60;
 
@@ -63,7 +62,8 @@ fn owned<'a>(account: &'a AccountToday, owner: Option<&'a str>, now_ms: i64) -> 
         .map(|spend| Owned {
             owner,
             spend,
-            tier: tier(spend, now_ms),
+            tier: tier(spend, account.fast_usd_per_hour, now_ms),
+            fast_usd_per_hour: account.fast_usd_per_hour,
         })
         .collect()
 }
@@ -75,10 +75,10 @@ enum Tier {
     Finished,
 }
 
-fn tier(spend: &SessionSpend, now_ms: i64) -> Tier {
+fn tier(spend: &SessionSpend, fast_usd_per_hour: f64, now_ms: i64) -> Tier {
     if spend.last_active_ms > 0 && now_ms - spend.last_active_ms > FASTEST_WITHIN_MS {
         Tier::Finished
-    } else if hourly(spend) >= FAST_PER_HOUR {
+    } else if hourly(spend) >= fast_usd_per_hour {
         Tier::Fast
     } else {
         Tier::Running
@@ -90,6 +90,7 @@ struct Owned<'a> {
     owner: Option<&'a str>,
     spend: &'a SessionSpend,
     tier: Tier,
+    fast_usd_per_hour: f64,
 }
 
 struct Plan<'a> {
@@ -185,6 +186,14 @@ fn columns(inner: u16) -> usize {
         2
     } else {
         1
+    }
+}
+
+pub(crate) fn dollars_an_hour(rate: f64) -> String {
+    if rate.fract() == 0.0 {
+        format!("${rate:.0}/hr")
+    } else {
+        format!("${rate:.2}/hr")
     }
 }
 
@@ -478,14 +487,18 @@ fn summary(hidden: &[Owned], background: &[Owned]) -> Line<'static> {
             format!("+ {} more · ${:.2} today", hidden.len(), today(hidden)),
             MUTED,
         ));
-        let fast = hidden
+        let fast: Vec<&Owned> = hidden
             .iter()
             .filter(|session| session.tier == Tier::Fast)
-            .count();
-        if fast > 0 {
+            .collect();
+        if let Some(lowest) = fast
+            .iter()
+            .map(|session| session.fast_usd_per_hour)
+            .reduce(f64::min)
+        {
             spans.push(Span::styled(" · ", MUTED));
             spans.push(Span::styled(
-                format!("▲ {fast} at ${FAST_PER_HOUR:.0}/hr+"),
+                format!("▲ {} at {}+", fast.len(), dollars_an_hour(lowest)),
                 Style::new().fg(OVER).add_modifier(Modifier::BOLD),
             ));
         }

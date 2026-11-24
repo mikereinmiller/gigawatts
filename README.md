@@ -112,6 +112,9 @@ report_port = 7878
 # Download Anthropic's pricing page when a price looks out of date; false never does.
 price_updates = true
 
+# Flag a session as spending fast from this many dollars an hour.
+fast_usd_per_hour = 20
+
 [accounts."<account id>"]
 label = "work"
 tracking = true

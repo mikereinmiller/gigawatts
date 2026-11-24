@@ -23,6 +23,8 @@ Each `data --json` row's `paid_for` splits its tokens' cost into input, output, 
 
 Each session in `active_sessions` and `sessions_today` has `context_tokens`: the size of its latest main-conversation request, its input plus cache read and cache write tokens. Every turn re-reads that context, so a bigger number means each turn costs more, and it drops after a `/compact`, but only once the next request lands: the compact itself makes no request, so until the user sends another prompt it still shows the size from before. Subagents' requests don't count toward it, and it's null for a session that has made only subagent requests.
 
+A session is spending fast when `last_15_minutes_usd` times 4 reaches its account's `fast_usd_per_hour`. Compare against that field rather than a fixed number: the user can change it in `config.toml`, and the terminal view flags sessions by the same line.
+
 ## Reading insights
 
 `skills` and `agents` overlap. A subagent's requests made inside a skill count toward both the skill's row and the subagent's, so never add the two lists together. A skill row's `subagent_cost_usd` is the part of its cost its subagents spent. A skill run is one unbroken stretch of the skill in a session's main conversation; a subagent run is one subagent, counted in the week it started. A week's `cost_usd` includes runs that started the week before, so a week with spend and no runs has a null `cost_per_run_usd`.

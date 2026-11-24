@@ -60,6 +60,7 @@ fn account(id: &str, label: &str, fetched_ago_ms: i64, limits: Vec<PacedLimit>) 
         unpriced_models: Vec::new(),
         adjusted_models: Vec::new(),
         cost_estimated: false,
+        fast_usd_per_hour: 20.0,
         limits: Some(AccountLimits {
             source: LimitSource::GetUsage,
             fetched_at_ms: NOW_MS - fetched_ago_ms,

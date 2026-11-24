@@ -62,6 +62,7 @@ fn account(limits: Option<AccountLimits>, cost_usd: f64, today: DollarPace) -> A
         unpriced_models: Vec::new(),
         adjusted_models: Vec::new(),
         cost_estimated: false,
+        fast_usd_per_hour: 20.0,
         limits,
     }
 }

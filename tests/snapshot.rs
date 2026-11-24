@@ -214,6 +214,7 @@ fn the_snapshot_carries_each_tracked_accounts_spend_today_and_the_engines_proble
                     unpriced_models: Vec::new(),
                     adjusted_models: Vec::new(),
                     cost_estimated: true,
+                    fast_usd_per_hour: 20.0,
                     limits: Some(AccountLimits {
                         source: LimitSource::GetUsage,
                         fetched_at_ms: 1_699_999_400_000,
@@ -256,6 +257,7 @@ fn the_snapshot_carries_each_tracked_accounts_spend_today_and_the_engines_proble
                     unpriced_models: Vec::new(),
                     adjusted_models: Vec::new(),
                     cost_estimated: false,
+                    fast_usd_per_hour: 20.0,
                     limits: None,
                 },
             ],
@@ -573,6 +575,27 @@ fn spend_today_counts_as_estimated_until_every_session_today_is_checked_against_
 
     assert!(!checked.accounts[0].cost_estimated);
     assert!(with_open.accounts[0].cost_estimated);
+}
+
+#[test]
+fn each_account_carries_the_fast_rate_set_in_the_config() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut store = Store::open(&dir.path().join("history.sqlite3")).unwrap();
+    let today = store.local_today().unwrap();
+    let projects = dir.path().join("projects");
+    fs::create_dir_all(&projects).unwrap();
+    fs::write(
+        projects.join("s1.jsonl"),
+        request_line("a1", &local_noon_in_utc(&today, 0)),
+    )
+    .unwrap();
+    ingest(&mut store, &projects, &PriceTable::built_in(), ACCOUNT);
+    let config = Config::parse("fast_usd_per_hour = 40\n", dir.path()).unwrap();
+
+    let built = snapshot::build(&store, &config, local_ms(&today, "13:00:00"), &[]).unwrap();
+
+    assert_eq!(built.accounts.len(), 1);
+    assert_eq!(built.accounts[0].fast_usd_per_hour, 40.0);
 }
 
 const CREDIT_PERIOD_START_MS: i64 = 1_793_491_200_000;

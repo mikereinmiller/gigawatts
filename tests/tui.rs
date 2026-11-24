@@ -109,6 +109,7 @@ fn personal() -> AccountToday {
         sessions_today: active_sessions.clone(),
         active_sessions,
         cost_estimated: true,
+        fast_usd_per_hour: 20.0,
         unpriced_models: vec!["claude-opus-5-6".to_string()],
         adjusted_models: Vec::new(),
         limits: Some(AccountLimits {
@@ -162,6 +163,7 @@ fn work() -> AccountToday {
         active_sessions: Vec::new(),
         sessions_today: Vec::new(),
         cost_estimated: false,
+        fast_usd_per_hour: 20.0,
         unpriced_models: Vec::new(),
         adjusted_models: Vec::new(),
         limits: Some(AccountLimits {
@@ -2729,6 +2731,47 @@ fn fast_sessions_beyond_the_cards_are_flagged_in_the_line_that_adds_up_the_rest(
     assert!(
         shown.contains("+ 4 more · $18.50 today · ▲ 3 at $20/hr+"),
         "{shown}"
+    );
+}
+
+#[test]
+fn the_account_s_fast_rate_decides_which_sessions_are_flagged() {
+    let mut account = personal();
+    account.cost_usd = 40.0;
+    account.fast_usd_per_hour = 40.0;
+    account.sessions_today = vec![
+        card_session("Session A", 9.0, 12.0),
+        card_session("Session B", 8.0, 12.0),
+        card_session("Session C", 7.0, 12.0),
+        card_session("Session D", 6.0, 12.0),
+        card_session("Session E", 5.0, 12.0),
+        card_session("Session F", 0.5, 6.0),
+    ];
+    let mut app = open(snapshot(vec![account]), None);
+
+    let shown = screen(&app, 100, 34);
+    app.handle(KeyCode::Char('?').into());
+    let help = screen(&app, 80, 24);
+
+    assert!(
+        shown.contains("+ 4 more · $18.50 today · ▲ 3 at $40/hr+"),
+        "{shown}"
+    );
+    assert!(help.contains("a session spending $40/hr or more"), "{help}");
+}
+
+#[test]
+fn a_fast_rate_with_cents_shows_its_cents() {
+    let mut account = personal();
+    account.fast_usd_per_hour = 7.5;
+    let mut app = open(snapshot(vec![account]), None);
+
+    app.handle(KeyCode::Char('?').into());
+    let help = screen(&app, 80, 24);
+
+    assert!(
+        help.contains("a session spending $7.50/hr or more"),
+        "{help}"
     );
 }
 
