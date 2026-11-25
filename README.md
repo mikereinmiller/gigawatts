@@ -63,9 +63,9 @@ A light red badge at the right end of the title row means a limit is forecast to
 
 Every command takes `--help`.
 
-`gigawatts report` opens the same numbers as a page in your browser, with spend per day, limits over time, and where the money went:
+`gigawatts report` opens the same numbers as a page in your browser, with what to change, spend per day, where the money went and what it paid for, and how close each limit is:
 
-![The Gigawatts report page: a month's spend, weekly limit forecast, today's spend, and spend per day by repo](docs/images/report.jpg)
+![The Gigawatts report page: a month's spend, today's spend, weekly limits, and what to change](docs/images/report.jpg)
 
 ## Ask an agent about your spend
 

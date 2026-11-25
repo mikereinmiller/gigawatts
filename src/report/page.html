@@ -28,6 +28,7 @@ try {
   --accent: #2a78d6;
   --warning: #fab219;
   --critical: #d03b3b;
+  --good: #0b7a50;
   --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100;
   --s5: #e87ba4; --s6: #008300; --s7: #6250d6; --s8: #e34948;
   --other: #c3c2b7;
@@ -50,6 +51,7 @@ try {
     --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
     --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767;
     --other: #5a5a56;
+    --good: #4cc79a;
     --shadow: none;
   }
 }
@@ -69,6 +71,7 @@ try {
   --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
   --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767;
   --other: #5a5a56;
+  --good: #4cc79a;
   --shadow: none;
 }
 :root {
@@ -167,25 +170,64 @@ h3 { font-size: var(--text-xs); line-height: 1.33; margin: 0 0 var(--space-3); f
 .tile .sub { color: var(--ink-2); font-size: var(--text-sm); line-height: 1.45; }
 .tile .sub.faint { color: var(--muted); font-size: var(--text-xs); line-height: 1.5; }
 .tile .sub:not(.faint) + .sub.faint { margin-top: var(--space-1); }
-.tile.link { text-align: left; border-top: 0; border-right: 0; border-bottom: 0; background: none; color: inherit; font: inherit; cursor: pointer; border-radius: 0; }
-.tile.link:hover .label { color: var(--accent); }
 .delta.up::before { content: "▲ "; font-size: 9px; vertical-align: 1px; }
 .delta.down::before { content: "▼ "; font-size: 9px; vertical-align: 1px; }
 .status-line { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
 .status-line::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--dot); flex: none; }
 .status-line.warning { --dot: var(--warning); }
 .status-line.critical { --dot: var(--critical); }
-.meter { --fill: var(--accent); position: relative; height: 8px; border-radius: 4px; background: color-mix(in srgb, var(--fill) 20%, var(--surface)); overflow: hidden; }
+.meter { --fill: var(--accent); position: relative; height: 8px; border-radius: 4px; background: color-mix(in srgb, var(--fill) 20%, var(--surface)); }
 .meter > span { display: block; height: 100%; min-width: 8px; border-radius: 4px; background: var(--fill); }
 .meter > b { position: absolute; top: 0; bottom: 0; border-radius: 0 4px 4px 0; background: color-mix(in srgb, var(--fill) 50%, var(--surface)); }
-.meter > i { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--ink); opacity: 0.75; }
+.meter > i { position: absolute; top: -4px; bottom: -4px; width: 2px; border-radius: 1px; background: var(--ink-2); }
 .meter.warning { --fill: var(--warning); }
 .meter.critical { --fill: var(--critical); }
 .spark { flex: none; }
+.split { display: flex; flex-wrap: wrap; gap: 2px var(--space-3); margin: var(--space-1) 0 var(--space-2); font-size: var(--text-sm); color: var(--ink-2); }
+.split .key b { font-weight: 400; }
+.money-row { display: grid; grid-template-columns: 1.4fr 1fr; }
+.money { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 0 var(--space-6); border-left: 1px solid var(--grid); }
+.money:first-child { padding-left: 0; border-left: 0; }
+.money .label { color: var(--muted); font-size: var(--text-sm); font-weight: 500; }
+.money-value { font-size: 30px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.1; margin: var(--space-1) 0 var(--space-2); font-variant-numeric: tabular-nums; }
+.money-value.hero { font-size: 44px; letter-spacing: -0.03em; line-height: 1.05; }
+.split-bar { display: flex; gap: 2px; height: 10px; margin-bottom: var(--space-1); }
+.split-bar span { height: 100%; min-width: 3px; }
+.split-bar span:first-child { border-radius: 4px 0 0 4px; }
+.split-bar span:last-child { border-radius: 0 4px 4px 0; }
+.split-bar span:only-child { border-radius: 4px; }
+.split-bar.empty { background: var(--raised); border-radius: 4px; }
+.money-note { color: var(--muted); font-size: var(--text-xs); margin-top: var(--space-1); }
+.limits-row { display: grid; grid-template-columns: repeat(var(--columns), minmax(0, 1fr)); margin-top: var(--space-5); padding-top: var(--space-5); border-top: 1px solid var(--grid); }
+.limits-account { display: grid; align-content: start; gap: var(--space-3); min-width: 0; padding: 0 var(--space-6); border-left: 1px solid var(--grid); }
+.limits-account:first-child { padding-left: 0; border-left: 0; }
+.limits-name { font-weight: 600; color: var(--ink); }
+.limit-line { display: grid; gap: 6px; }
+.limit-top { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-2); }
+.limit-top b { font-size: var(--text-xl); font-weight: 600; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+.limit-line .meter { height: 10px; border-radius: 5px; }
+.limit-line .meter > span { border-radius: 5px; }
+.limit-line.minor .limit-top b { font-size: var(--text-md); font-weight: 500; color: var(--ink-2); }
+.limit-line.minor .meter { height: 6px; }
+.limit-line.minor .meter > i { top: -3px; bottom: -3px; }
+.limit-note { color: var(--muted); font-size: var(--text-xs); }
+.limit-note.status-line { color: var(--ink-2); font-weight: 500; }
 .limit-chart + .limit-chart { margin-top: var(--space-5); }
 .limit-chart .limit-head { display: flex; justify-content: space-between; gap: var(--space-4); font-size: var(--text-sm); color: var(--ink-2); margin-bottom: var(--space-2); }
 .limit-chart .limit-head b { color: var(--ink); font-weight: 600; }
-.limits-account { font-size: var(--text-md); margin: var(--space-5) 0 var(--space-3); }
+.limit-rows { display: grid; }
+.limit-row { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.7fr) minmax(0, 1.2fr) minmax(0, 1fr); gap: var(--space-4); align-items: center; min-height: 48px; padding: var(--space-2); margin: 0 calc(-1 * var(--space-2)); border-bottom: 1px solid var(--grid); border-radius: 6px; font-variant-numeric: tabular-nums; }
+.limit-row:last-child { border-bottom: 0; }
+.limit-row.clickable { cursor: pointer; }
+.limit-row.clickable:hover, .limit-row.clickable:focus-visible { background: var(--hover); outline: none; }
+.limit-header { min-height: 0; padding-top: 0; color: var(--muted); font-size: var(--text-xs); font-weight: 500; }
+.limit-name { color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.limit-name b { color: var(--ink); font-weight: 600; }
+.limit-now { display: grid; grid-template-columns: minmax(48px, 140px) 40px auto; gap: var(--space-3); align-items: center; }
+.limit-now b { font-weight: 600; text-align: right; }
+.limit-row small { color: var(--muted); font-size: var(--text-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.limit-out { color: var(--muted); }
+.limit-out.status-line { color: var(--ink); font-weight: 500; }
 .problems { background: var(--surface); border: 1px solid color-mix(in srgb, var(--warning) 45%, var(--ring)); border-radius: 14px; padding: var(--space-4) var(--pad); margin: 0 0 var(--space-6); font-size: var(--text-sm); }
 .problems ul { list-style: none; margin: var(--space-3) 0 0; padding: 0; display: grid; gap: var(--space-2); }
 .problems .faint { color: var(--muted); }
@@ -197,7 +239,7 @@ h3 { font-size: var(--text-xs); line-height: 1.33; margin: 0 0 var(--space-3); f
 .key::before { content: ""; width: 10px; height: 10px; border-radius: 3px; background: var(--swatch); flex: none; }
 .key b { font-weight: 500; color: var(--ink); font-variant-numeric: tabular-nums; }
 
-#tip { position: fixed; pointer-events: none; display: none; z-index: 6; min-width: 200px; max-width: 320px; background: var(--surface); border: 1px solid var(--ring); border-radius: 10px; padding: var(--space-3); font-size: var(--text-sm); box-shadow: 0 8px 28px rgb(0 0 0 / 0.2); }
+#tip { position: fixed; pointer-events: none; display: none; z-index: 9; min-width: 200px; max-width: 320px; background: var(--surface); border: 1px solid var(--ring); border-radius: 10px; padding: var(--space-3); font-size: var(--text-sm); box-shadow: 0 8px 28px rgb(0 0 0 / 0.2); }
 #tip .head { display: flex; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-2); padding-bottom: var(--space-2); border-bottom: 1px solid var(--grid); color: var(--ink-2); }
 #tip .line { display: grid; grid-template-columns: 10px 1fr auto; gap: var(--space-2); align-items: center; padding: 2px 0; }
 #tip .line i { width: 10px; height: 10px; background: var(--swatch); border-radius: 3px; }
@@ -213,16 +255,46 @@ th:last-child, td:last-child { padding-right: var(--pad); }
 th { height: 36px; font-weight: 500; color: var(--muted); font-size: var(--text-xs); }
 tfoot td { height: 48px; font-weight: 600; border-bottom: 0; }
 td.name { font-weight: 500; }
+td.strong { font-weight: 600; }
+table.sessions td.where { text-align: left; }
+table.sessions th.where { text-align: left; }
 .name-wrap { display: flex; align-items: center; gap: var(--space-1); min-width: 0; }
 .name-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .name-meta { display: block; margin-top: 2px; color: var(--muted); font-size: var(--text-xs); font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 tr.session td { height: 60px; }
-tbody tr.clickable, .insight-row.clickable, .change-event.clickable, .insight-link.clickable { cursor: pointer; }
+tbody tr.clickable, .todo-row.clickable, .insight-link.clickable { cursor: pointer; }
 tbody tr.clickable:hover { background: var(--hover); }
 tbody tr.loading td { color: var(--muted); font-size: var(--text-sm); height: 36px; }
 
+.pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-5); align-items: start; }
+.rank-list { display: grid; }
+.rank { display: grid; grid-template-columns: minmax(0, 1fr) minmax(40px, 28%) 64px 36px; gap: var(--space-3); align-items: center; min-height: 36px; padding: 0 var(--space-2); margin: 0 calc(-1 * var(--space-2)); border-radius: 6px; font-variant-numeric: tabular-nums; }
+.rank.clickable { cursor: pointer; }
+.rank.clickable:hover, .rank.clickable:focus-visible { background: var(--hover); outline: none; }
+.rank-list.code .rank:not(.others) .name-text { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: var(--text-sm); }
+.rank-name { display: flex; align-items: center; min-width: 0; gap: var(--space-1); }
+.rank.others .rank-name { color: var(--ink-2); }
+.rank .track { height: 6px; border-radius: 3px; background: var(--grid); overflow: hidden; }
+.rank .track span { display: block; height: 100%; min-width: 3px; border-radius: 3px; background: var(--muted); }
+.rank b { font-weight: 500; text-align: right; white-space: nowrap; }
+.rank em { font-style: normal; text-align: right; color: var(--muted); font-size: var(--text-sm); }
+.rank-list > .link-button { justify-self: start; padding-left: 0; }
+.paid-bar { display: flex; height: 12px; gap: 2px; margin: 0 0 var(--space-3); }
+.paid-bar span { height: 100%; min-width: 3px; }
+.paid-bar span:first-child { border-radius: 4px 0 0 4px; }
+.paid-bar span:last-child { border-radius: 0 4px 4px 0; }
+.paid-bar span:only-child { border-radius: 4px; }
+.paid-list { display: grid; gap: 2px; }
+.paid-row { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto 40px; gap: 2px var(--space-3); align-items: baseline; padding: var(--space-2); margin: 0 calc(-1 * var(--space-2)); border-radius: 8px; font-variant-numeric: tabular-nums; }
+.paid-row i { width: 10px; height: 10px; border-radius: 3px; background: var(--swatch); }
+.paid-row.lead { background: var(--hover); }
+.paid-name { font-weight: 500; }
+.paid-row b { font-weight: 600; text-align: right; }
+.paid-row em { font-style: normal; text-align: right; color: var(--ink-2); }
+.paid-means { grid-column: 2 / 3; color: var(--muted); font-size: var(--text-sm); }
+.paid-before { grid-column: 3 / 5; text-align: right; color: var(--muted); font-size: var(--text-xs); white-space: nowrap; }
 .share { display: flex; align-items: center; gap: var(--space-3); }
-.share .track { flex: 1; height: 6px; border-radius: 3px; background: var(--raised); overflow: hidden; }
+.share .track { flex: 1; height: 6px; border-radius: 3px; background: var(--grid); overflow: hidden; }
 .share .track span { display: block; height: 100%; min-width: 6px; border-radius: 3px; background: var(--swatch, var(--accent)); }
 .share em { font-style: normal; color: var(--ink-2); font-size: var(--text-sm); width: 36px; text-align: right; flex: none; }
 .mix { display: flex; height: 8px; gap: 2px; }
@@ -264,41 +336,15 @@ tbody tr.loading td { color: var(--muted); font-size: var(--text-sm); height: 36
 
 .panel-paid { margin: calc(-1 * var(--space-5)) 0 var(--space-8); }
 .panel-text { margin: var(--space-3) 0 0; color: var(--ink-2); line-height: 1.55; }
-.advice { display: grid; }
-.insight-scope { margin: 0 0 var(--space-3); }
-.insight-verdict { margin: 0 0 var(--space-2); font-weight: 600; }
 .event-chart + .event-chart { margin-top: var(--space-6); }
 .event-chart .takeaway-head { margin-bottom: var(--space-2); }
 .event-chart .week-chart { margin: 0; }
 .week-bar.before { background: color-mix(in srgb, var(--accent) 35%, transparent); }
-.change-event { display: grid; grid-template-columns: 4.5rem minmax(0, 1fr) auto; gap: var(--space-1) var(--space-4); align-items: baseline; padding: var(--space-3) var(--space-2); margin: 0 calc(-1 * var(--space-2)); border-bottom: 1px solid var(--grid); border-radius: 6px; }
-.change-event.clickable:hover, .change-event.clickable:focus-visible, .insight-link.clickable:hover, .insight-link.clickable:focus-visible { background: var(--hover); outline: none; }
+.insight-link.clickable:hover, .insight-link.clickable:focus-visible { background: var(--hover); outline: none; }
 .insight-links { margin: var(--space-3) 0 var(--space-8); }
 .insight-link { display: flex; justify-content: space-between; gap: var(--space-3); padding: var(--space-2); margin: 0 calc(-1 * var(--space-2)); border-bottom: 1px solid var(--grid); border-radius: 6px; }
-.change-event > span:first-child { color: var(--ink-2); font-variant-numeric: tabular-nums; }
-.change-event > b { font-weight: 500; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.change-event.reversed > b, .change-event.reversed > div > span { color: var(--muted); }
-.change-event small { display: block; color: var(--muted); font-size: var(--text-sm); margin-top: 2px; }
-.insight-list { display: grid; margin-bottom: var(--space-4); }
 .link-button.inline { padding: 0; }
 .name-text + .link-button { margin-left: var(--space-2); font-weight: 400; }
-.insight-row { display: grid; grid-template-columns: 11rem minmax(0, 1fr) 4.5rem 7.5rem 8rem; gap: var(--space-4); align-items: baseline; padding: var(--space-3) var(--space-2); margin: 0 calc(-1 * var(--space-2)); border-bottom: 1px solid var(--grid); border-radius: 6px; }
-.insight-row.clickable:hover, .insight-row.clickable:focus-visible { background: var(--hover); outline: none; }
-.insight-header { color: var(--muted); font-size: var(--text-sm); padding-top: 0; }
-.insight-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.insight-name small { display: block; color: var(--muted); font-size: var(--text-xs); font-weight: 400; margin-top: 2px; }
-.insight-main small { display: block; color: var(--muted); font-size: var(--text-sm); margin-top: 2px; }
-.insight-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-b.insight-num { font-weight: 500; }
-.insight-num small { margin-left: var(--space-2); color: var(--muted); font-size: var(--text-xs); }
-@media (max-width: 720px) {
-  .insight-row { grid-template-columns: minmax(0, 1fr) auto; }
-  .insight-name { grid-column: 1 / -1; font-weight: 500; }
-  .insight-header { display: none; }
-  .insight-runs, .insight-last { display: none; }
-  .change-event { grid-template-columns: 3.5rem minmax(0, 1fr); }
-  .change-event > b { grid-column: 2; text-align: left; }
-}
 .week-chart { margin: var(--space-3) 0 var(--space-8); }
 .week-top { display: flex; justify-content: space-between; color: var(--muted); font-size: var(--text-xs); font-variant-numeric: tabular-nums; border-bottom: 1px dashed var(--grid); padding-bottom: 2px; }
 .week-cols { display: grid; grid-template-columns: repeat(var(--weeks), minmax(0, 1fr)); gap: 2px; }
@@ -316,13 +362,25 @@ b.insight-num { font-weight: 500; }
 .next-step { margin-bottom: var(--space-8); }
 .week-note { margin: var(--space-2) 0 0; color: var(--muted); font-size: var(--text-xs); }
 .prompt { margin: var(--space-3) 0 0; padding: var(--space-3); border: 1px solid var(--grid); border-radius: 8px; font-family: var(--mono, ui-monospace, monospace); font-size: var(--text-sm); overflow-wrap: anywhere; }
+.card-head .title { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-1) var(--space-3); min-width: 0; }
+.todo { display: grid; }
+.todo-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-4); align-items: center; padding: var(--space-3) var(--space-2); margin: 0 calc(-1 * var(--space-2)); border-bottom: 1px solid var(--grid); border-radius: 6px; }
+.todo-row:last-child { border-bottom: 0; }
+.todo-row.clickable:hover, .todo-row.clickable:focus-visible { background: var(--hover); outline: none; }
+.todo-what { font-weight: 500; overflow-wrap: anywhere; }
+.todo-what .dim { font-weight: 400; }
+.todo-why { color: var(--muted); font-size: var(--text-sm); margin-top: 2px; overflow-wrap: anywhere; }
+.todo-amount { text-align: right; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.todo-amount small { display: block; color: var(--muted); font-size: var(--text-xs); font-weight: 400; }
+.todo-amount.good, .totals .good { color: var(--good); }
+.todo-amount.muted { color: var(--muted); font-weight: 400; }
+.totals { display: flex; flex-wrap: wrap; width: fit-content; gap: var(--space-2) var(--space-8); padding: var(--space-3) var(--space-4); margin-bottom: var(--space-2); background: var(--page); border: 1px solid var(--ring); border-radius: 10px; }
+.totals span { display: block; color: var(--muted); font-size: var(--text-xs); }
+.totals b { font-size: var(--text-xl); font-weight: 600; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+.totals b small { margin-left: var(--space-1); color: var(--muted); font-size: var(--text-sm); font-weight: 400; }
+.tab-foot { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: var(--space-2) var(--space-4); margin-top: var(--space-2); color: var(--muted); font-size: var(--text-sm); }
+.tab-foot .link-button { padding-left: 0; }
 .card .table + .table, .card .table + h3 { margin-top: var(--space-5); }
-.advice-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-4); align-items: baseline; padding: var(--space-3) 0; border-bottom: 1px solid var(--grid); }
-.advice-row:first-child { padding-top: 0; }
-.advice-row span { font-weight: 500; }
-.advice-row small { display: block; color: var(--muted); font-size: var(--text-sm); margin-top: 2px; overflow-wrap: anywhere; }
-.advice-row b { font-weight: 500; color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.advice + h3 { margin-top: var(--space-6); }
 
 .scope { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 2px 0 var(--space-3); border-radius: 999px; background: color-mix(in srgb, var(--accent) 12%, var(--surface)); border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); font-size: var(--text-sm); }
@@ -339,6 +397,13 @@ b.insight-num { font-weight: 500; }
 @media (max-width: 860px) {
   :root { --pad: var(--space-4); }
   .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-6) 0; }
+  .pair { grid-template-columns: minmax(0, 1fr); }
+  .money-row, .limits-row { grid-template-columns: minmax(0, 1fr); gap: var(--space-5); }
+  .money, .limits-account { padding: 0; border-left: 0; }
+  .limit-row { grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-1) var(--space-3); }
+  .limit-header { display: none; }
+  .limit-now { grid-column: 1 / -1; grid-template-columns: minmax(48px, 1fr) 40px auto; }
+  .limit-peak { grid-column: 1; }
   .tile { padding: 0 var(--space-4); }
   .tile:nth-child(odd) { padding-left: 0; border-left: 0; }
   .tile.hero .value { font-size: var(--text-2xl); }
@@ -360,7 +425,7 @@ b.insight-num { font-weight: 500; }
     --ring: rgba(11, 11, 11, 0.12); --accent: #2a78d6;
     --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100;
     --s5: #e87ba4; --s6: #008300; --s7: #6250d6; --s8: #e34948;
-    --other: #c3c2b7; --shadow: none;
+    --other: #c3c2b7; --good: #0b7a50; --shadow: none;
   }
   * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   body { background: #fff; }
@@ -464,14 +529,18 @@ const SCOPE_OF_LEVEL = {repo: 'repo', repo_branch: 'branch', skill: 'skill', age
 const CHART_BY = [['repo', 'Repo'], ['model', 'Model']];
 const LEVEL_NAMES = {repo: 'Repo', branch: 'Branch', repo_branch: 'Branch', skill: 'Skill', agent: 'Subagent', model: 'Model', session: 'Session'};
 const SLOTS = ['--s1', '--s2', '--s3', '--s4', '--s5', '--s6', '--s7', '--s8'];
-const MIX_PARTS = [['input_usd', 'Input', '--s1'], ['output_usd', 'Output', '--s2'], ['cache_write_usd', 'Cache writes', '--s7'], ['cache_read_usd', 'Cache reads', '--s3']];
+const ACCOUNT_SLOTS = ['--s1', '--s5', '--s4', '--s7', '--s2', '--s3', '--s6', '--s8'];
+const MIX_PARTS = [['input_usd', 'Input', '--other'], ['output_usd', 'Output', '--s2'], ['cache_write_usd', 'Cache writes', '--s7'], ['cache_read_usd', 'Cache reads', '--s3']];
 const ALL = 'all';
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const DAY_MS = 86400000;
-const FOLD_SHARE = 0.01;
-const FOLD_MIN_ROWS = 8;
+const FOLD_KEEP = 7;
+const EXPORT_FOLD_SHARE = 0.01;
+const EXPORT_FOLD_MIN_ROWS = 8;
 const PANEL_ROWS = 6;
 const PANEL_SESSIONS = 5;
+const PANEL_CHART_WIDTH = 392;
+const PAGE_SESSIONS = 5;
 const MIN_CHART_WIDTH = 280;
 const DAY_LABEL_GAP = 48;
 const MONTH_LABEL_GAP = 64;
@@ -505,7 +574,7 @@ function readState() {
     since: params.get('since') || '',
     until: params.get('until') || '',
     by: Object.hasOwn(GROUP_NAMES, params.get('by') ?? '') ? params.get('by') : 'repo',
-    chart: pick('chart', CHART_BY, 'repo'),
+    chart: ['account', 'repo', 'model'].includes(params.get('chart')) ? params.get('chart') : null,
     scope,
   };
 }
@@ -519,9 +588,13 @@ function scopeLabel(kind, key) {
   return key;
 }
 
+function defaultAccount(accounts) {
+  return accounts.length > 1 ? ALL : accounts[0]?.account ?? ALL;
+}
+
 function accountParam() {
   const accounts = latest?.now.accounts ?? [];
-  if (!state.account || state.account === accounts[0]?.account) return null;
+  if (!state.account || state.account === defaultAccount(accounts)) return null;
   if (state.account === ALL) return ALL;
   const found = accounts.find(account => account.account === state.account);
   if (!found) return state.account;
@@ -545,7 +618,7 @@ function stateHash() {
     if (state.until) add('until', state.until);
   }
   if (state.by !== 'repo') add('by', state.by);
-  if (state.chart !== 'repo') add('chart', state.chart);
+  if (state.chart) add('chart', state.chart);
   for (const item of state.scope) add('scope', `${item.kind}:${item.key}`);
   return parts.length ? '#' + parts.join('&') : '';
 }
@@ -581,8 +654,50 @@ function breakdownGrouping() {
   return options.includes(state.by) ? state.by : options[0] ?? 'model';
 }
 
+function defaultChart() {
+  return state.account === ALL ? 'account' : 'repo';
+}
+
 function chartGrouping() {
-  return state.scope.length ? groupings()[0] ?? 'model' : state.chart;
+  if (state.scope.length) return groupings()[0] ?? 'model';
+  const chart = state.chart ?? defaultChart();
+  return chart === 'account' && state.account !== ALL ? 'repo' : chart;
+}
+
+function chartOptions() {
+  return state.account === ALL ? [['account', 'Account'], ...CHART_BY] : CHART_BY;
+}
+
+function chartName(by) {
+  return by === 'account' ? 'Account' : GROUP_NAMES[by];
+}
+
+function seriesBy(chart) {
+  return chart === 'account' ? 'repo' : chart;
+}
+
+function seriesMissing() {
+  const chart = chartGrouping();
+  return chart !== 'account' && latest.seriesBy !== chart;
+}
+
+function pickChart(chart) {
+  state.chart = chart === defaultChart() ? null : chart;
+  if (seriesMissing()) loadChart();
+  else render();
+}
+
+function accountName(id) {
+  return latest.now.accounts.find(account => account.account === id)?.account_label ?? 'No account';
+}
+
+function accountColor(id) {
+  const index = latest.now.accounts.findIndex(account => account.account === id);
+  return index === -1 ? 'var(--other)' : `var(${ACCOUNT_SLOTS[index % ACCOUNT_SLOTS.length]})`;
+}
+
+function byAccount(entries) {
+  return entries.map(entry => ({day: entry.day, key: entry.account ?? '', label: accountName(entry.account), not_in_transcript: false, other: false, cost_usd: entry.cost_usd}));
 }
 
 function scopeParams(params, extra = []) {
@@ -760,7 +875,7 @@ function avatar(label, index) {
     return box;
   }
   const box = element('span', (label || '?').trim().charAt(0).toUpperCase(), 'avatar');
-  box.style.setProperty('--swatch', `var(${SLOTS[index % SLOTS.length]})`);
+  box.style.setProperty('--swatch', `var(${ACCOUNT_SLOTS[index % ACCOUNT_SLOTS.length]})`);
   return box;
 }
 
@@ -795,7 +910,7 @@ function drawControls(accounts, view) {
     meta: `${money(option.today)} today`,
     checked: option.id === current?.id,
     lead: avatar(option.label, option.index),
-    onPick: () => { state.account = option.id; resetTree(); render(); },
+    onPick: () => { state.account = option.id; resetTree(); render(); if (seriesMissing()) loadChart(); },
   })));
 
   const today = localDay();
@@ -1013,8 +1128,7 @@ function multiple(ratio) {
 // Headline
 
 function tile(label, value, subs, options = {}) {
-  const box = element(options.onClick ? 'button' : 'div', undefined, 'tile' + (options.hero ? ' hero' : '') + (options.onClick ? ' link' : ''));
-  if (options.onClick) { box.type = 'button'; box.addEventListener('click', options.onClick); }
+  const box = element('div', undefined, 'tile' + (options.hero ? ' hero' : ''));
   box.append(element('span', label, 'label'));
   const valueRow = element('div', undefined, 'value-row');
   valueRow.append(element('span', value, 'value'));
@@ -1110,32 +1224,10 @@ function limitAge(limits) {
   return `${source}, ${age}`;
 }
 
-function summary(view) {
-  const sentences = [];
-  const {monthSpend, pace} = monthNumbers(view);
-  let month = `On pace for about ${money(pace)} this month`;
-  if (view.lastMonth && view.lastMonth.spend > 0) {
-    const ratio = monthSpend / view.lastMonth.spend;
-    const then = `${view.lastMonth.name} by this point (${money(view.lastMonth.spend)})`;
-    month += ratio >= 2
-      ? `, ${ratio.toFixed(ratio >= 10 ? 0 : 1)}× ${then}`
-      : `, ${percent(Math.abs(ratio - 1) * 100)} ${ratio >= 1 ? 'more' : 'less'} than ${then}`;
-  }
-  sentences.push(month + '.');
-  const credits = creditsOf(view);
-  if (credits?.runOutMs) {
-    sentences.push(credits.runsOutFirst
-      ? `At this rate credits run out about ${longDate(credits.runOutMs)}, before the reset on ${longDate(credits.resetMs)}.`
-      : `At this rate credits last past the reset on ${longDate(credits.resetMs ?? credits.runOutMs)}.`);
-  }
-  const closest = closestLimit(view);
-  if (closest?.limit.forecast) {
-    sentences.push(`${limitName(closest.limit)} reaches 100% by ${localTime(closest.limit.forecast.full_at_ms)}${recentPace(closest.limit.forecast)}, before it resets.`);
-  } else if (closest) {
-    const headed = headedFor(closest.limit, closest.limits.fetched_at_ms);
-    if (headed !== null) sentences.push(`${limitName(closest.limit)} is headed for about ${percent(Math.min(headed, 999))} at its reset.`);
-  }
-  return sentences.join(' ');
+function accountsBySpend() {
+  const spend = new Map();
+  for (const row of latest.data.rows) spend.set(row.account, (spend.get(row.account) || 0) + (row.cost_usd ?? 0));
+  return [...latest.now.accounts].sort((a, b) => (spend.get(b.account) || 0) - (spend.get(a.account) || 0));
 }
 
 function pastHeadline(view) {
@@ -1154,7 +1246,7 @@ function pastHeadline(view) {
   tiles.append(spendTile(view));
   tiles.append(tile('Average active day', money(active.length ? spend / active.length : 0), [`${active.length} of ${days.length} days had spend`]));
   if (busiest && byDay.get(busiest)) tiles.append(tile('Busiest day', money(byDay.get(busiest)), [new Date(busiest + 'T00:00:00Z').toLocaleDateString(undefined, {weekday: 'long', month: 'short', day: 'numeric', timeZone: 'UTC'}), [`${percent(byDay.get(busiest) / spend * 100)} of the range`, 'faint']]));
-  const driver = driverTile(view, true);
+  const driver = driverTile(view);
   if (driver) tiles.append(driver);
   card.append(tiles);
   return card;
@@ -1240,25 +1332,175 @@ function headline(view, shareable) {
   if (view.last < view.today) return pastHeadline(view);
   const card = element('section', undefined, 'card');
   card.setAttribute('aria-label', 'Headline numbers');
-  const sentence = element('p', undefined, 'summary');
-  sentence.append(element('span', summary(view)));
-  card.append(sentence);
-  const tiles = element('div', undefined, 'tiles');
-  tiles.append(spendTile(view));
-  const credits = creditsOf(view);
-  const closest = closestLimit(view);
-  if (credits) {
-    tiles.append(creditsTile(credits), weekdayTile(credits, view));
-  } else if (closest) {
-    tiles.append(limitTile(closest), todayTile(view.now, shareable));
-  } else {
-    const {monthSpend, pace} = monthNumbers(view);
-    tiles.append(tile('This month', money(monthSpend), [`On pace for about ${money(pace)}`, ['Straight line from the days so far', 'faint']]));
-  }
-  const driver = driverTile(view, shareable);
-  if (driver) tiles.append(driver);
-  card.append(tiles);
+  const moneyRow = element('div', undefined, 'money-row');
+  moneyRow.append(periodBlock(view), todayBlock(view, shareable));
+  card.append(moneyRow);
+  const limits = limitsRow(view);
+  if (limits) card.append(limits);
   return card;
+}
+
+function splitBar(parts) {
+  const bar = element('div', undefined, 'split-bar');
+  for (const [, value, color] of parts) {
+    if (value <= 0) continue;
+    const piece = element('span');
+    piece.style.flexGrow = String(value);
+    piece.style.background = color;
+    bar.append(piece);
+  }
+  if (!bar.children.length) bar.classList.add('empty');
+  return bar;
+}
+
+function accountParts(valueOf) {
+  return accountsBySpend().map(account => [account.account === null ? 'No account' : account.account_label ?? 'Account', valueOf(account), accountColor(account.account)]);
+}
+
+function periodBlock(view) {
+  const box = element('div', undefined, 'money');
+  const spend = cost(view.rows);
+  box.append(element('span', `Spend, ${shortPeriod(view.first, view.last)}`, 'label'), element('div', money(spend), 'money-value hero'));
+  if (state.account === ALL) {
+    const totals = new Map();
+    for (const row of latest.data.rows) totals.set(row.account, (totals.get(row.account) || 0) + (row.cost_usd ?? 0));
+    const parts = accountParts(account => totals.get(account.account) || 0);
+    const listed = latest.now.accounts.some(account => account.account === null);
+    if (!listed && (totals.get(null) || 0) >= 0.005) parts.push(['No account', totals.get(null), 'var(--other)']);
+    box.append(splitBar(parts), splitLine(parts.map(([label, value, color]) => [label, value >= 0.005 ? money(value) : '$0', color])));
+  }
+  const lines = [];
+  if (state.range === 'month') lines.push(`On pace for about ${money(monthNumbers(view).pace)} this month`);
+  if (view.previousLabel) {
+    const previous = cost(view.previousRows);
+    lines.push(previous > 0 ? `${multiple(spend / previous)} vs ${view.previousLabel} (${money(previous)})` : `Nothing in ${view.previousLabel}`);
+  } else if (view.historyStart) {
+    lines.push(state.range === 'month' ? 'no earlier month to compare' : `no comparison: history starts ${shortDate(view.historyStart)}`);
+  }
+  if (lines.length) box.append(element('span', lines.join(' · '), 'money-note'));
+  return box;
+}
+
+function todayBlock(view, shareable) {
+  const accounts = state.account === ALL ? latest.now.accounts : [view.now];
+  const spend = accounts.reduce((sum, account) => sum + account.cost_usd, 0);
+  const box = element('div', undefined, 'money');
+  const clock = latest.fetchedAt.toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'});
+  box.append(element('span', `Today, by ${clock}`, 'label'), element('div', dollars(spend), 'money-value'));
+  if (state.account === ALL) {
+    const parts = accountParts(account => account.cost_usd);
+    box.append(splitBar(parts), splitLine(parts.map(([label, value, color]) => [label, dollars(value, 0), color])));
+  }
+  const usuals = accounts.filter(account => account.pace.usual_usd !== null);
+  const usual = usuals.reduce((sum, account) => sum + account.pace.usual_usd, 0);
+  if (usuals.length && usual > 0) {
+    const times = usuals.reduce((sum, account) => sum + account.cost_usd, 0) / usual;
+    box.append(times >= 1.5
+      ? element('span', `${times.toFixed(1)}× your usual ${dollars(usual)} by now`, 'money-note status-line warning')
+      : element('span', `Usual by now: ${dollars(usual)}`, 'money-note'));
+  } else {
+    box.append(element('span', 'No usual yet', 'money-note'));
+  }
+  const busiest = state.account === ALL ? null : view.now.fastest_session;
+  if (busiest && !shareable) box.append(element('span', 'Busiest now: ' + busiest.label, 'money-note'));
+  return box;
+}
+
+function headlineLimits(account) {
+  const scope = {now: account};
+  const credits = creditsOf(scope);
+  const limits = account.limits?.limits ?? [];
+  const usage = limits.filter(limit => limit.kind !== 'credits');
+  const closest = usage.slice().sort((a, b) => b.percent - a.percent)[0];
+  const shown = usage.filter(limit => limit.kind !== 'session' || limit === closest || limit.forecast);
+  const fetchedAtMs = account.limits?.fetched_at_ms;
+  return credits ? [{limit: credits.limit, credits}, ...shown.map(limit => ({limit, fetchedAtMs}))] : shown.map(limit => ({limit, fetchedAtMs}));
+}
+
+function weekdaysLeft(credits) {
+  const today = localDay();
+  const end = credits.resetMs ? localDay(new Date(credits.resetMs - 1)) : today;
+  return daysBetween(today, end).filter(isWeekday).length;
+}
+
+function limitLine({limit, credits, fetchedAtMs}, first) {
+  const fraction = credits ? credits.used / credits.cap : limit.percent / 100;
+  const box = element('div', undefined, 'limit-line' + (first ? '' : ' minor'));
+  const top = element('div', undefined, 'limit-top');
+  top.append(element('span', capitalized(shortLimitName(limit))), element('b', percent(fraction * 100)));
+  box.append(top, meter(fraction, limit.pace ? limit.pace.expected_percent / 100 : undefined));
+  const headed = credits ? null : headedFor(limit, fetchedAtMs);
+  let note = null, tone = '';
+  if (credits) {
+    const weekdays = weekdaysLeft(credits);
+    note = `${dollars(credits.used, 0)} of ${dollars(credits.cap, 0)} · ${weekdays ? `${dollars(credits.left / weekdays, 0)} a weekday left` : `${dollars(credits.left, 0)} left`}`;
+    if (credits.runsOutFirst) [note, tone] = [`Runs out about ${longDate(credits.runOutMs)}`, 'status-line warning'];
+  } else if (limit.forecast) {
+    [note, tone] = [`100% by about ${localTime(limit.forecast.full_at_ms)}`, 'status-line critical'];
+  } else if (headed !== null && headed >= 100) {
+    [note, tone] = ['Headed past 100% before the reset', 'status-line warning'];
+  } else if (first && limit.resets_at) {
+    note = `Resets ${resetTime(Date.parse(limit.resets_at))}`;
+  }
+  if (note) box.append(element('span', note, 'limit-note ' + tone));
+  return box;
+}
+
+function limitsRow(view) {
+  const accounts = (state.account === ALL ? accountsBySpend() : [view.now]).filter(account => headlineLimits(account).length);
+  if (!accounts.length) return null;
+  const row = element('div', undefined, 'limits-row');
+  if (state.account === ALL) {
+    row.style.setProperty('--columns', accounts.length);
+    for (const account of accounts) {
+      const block = element('div', undefined, 'limits-account');
+      const name = element('span', account.account_label ?? 'Account', 'key limits-name');
+      name.style.setProperty('--swatch', accountColor(account.account));
+      block.append(name, ...headlineLimits(account).map((entry, index) => limitLine(entry, index === 0)));
+      row.append(block);
+    }
+  } else {
+    const entries = headlineLimits(view.now);
+    row.style.setProperty('--columns', entries.length);
+    for (const entry of entries) {
+      const block = element('div', undefined, 'limits-account');
+      block.append(limitLine(entry, true));
+      row.append(block);
+    }
+  }
+  return row;
+}
+
+function splitLine(parts) {
+  const line = element('div', undefined, 'split');
+  for (const [label, value, color] of parts) {
+    const part = element('span', label, 'key');
+    part.style.setProperty('--swatch', color);
+    part.append(document.createTextNode(' '), element('b', value));
+    line.append(part);
+  }
+  return line;
+}
+
+function shortLimitName(limit) {
+  return {session: 'session', weekly_all: 'weekly', weekly_scoped: limit.scope ?? 'weekly', credits: 'credits'}[limit.kind] ?? limit.kind;
+}
+
+function paidTotals(rows) {
+  const totals = {input_usd: 0, output_usd: 0, cache_write_usd: 0, cache_read_usd: 0};
+  for (const row of rows) for (const field of Object.keys(totals)) totals[field] += row.paid_for?.[field] ?? 0;
+  return {...totals, total: Object.values(totals).reduce((sum, value) => sum + value, 0)};
+}
+
+function previousPaid(view) {
+  if (!shortPrevious(view)) return null;
+  const totals = paidTotals(view.previousRows);
+  return totals.total > 0 ? totals : null;
+}
+
+function shortPrevious(view) {
+  if (!latest.previous) return null;
+  return state.range === 'month' ? lastMonthBounds(view.today).name : latest.previous.label;
 }
 
 function spendTile(view) {
@@ -1292,52 +1534,11 @@ function creditsTile(credits) {
   return tile('Credits used', dollars(used, 0), subs, {meter: used / cap, expected: limit.pace ? limit.pace.expected_percent / 100 : undefined, elsewhere: limit.elsewhere_usd ? limit.elsewhere_usd / cap : undefined});
 }
 
-function weekdayTile(credits, view) {
-  const end = credits.resetMs ? localDay(new Date(credits.resetMs - 1)) : view.today;
-  const remaining = daysBetween(view.today, end).filter(isWeekday);
-  const past = view.month.filter(day => day.day < view.today && isWeekday(day.day));
-  const average = past.length ? past.reduce((sum, day) => sum + day.cost_usd, 0) / past.length : null;
-  if (!remaining.length) return tile('Per weekday left', dollars(credits.left, 0), ['No weekdays left before the reset']);
-  const perDay = credits.left / remaining.length;
-  const subs = [`Over the ${remaining.length} weekdays to the reset`];
-  if (average !== null) {
-    subs.push(perDay >= average
-      ? `Room to spare: you average ${dollars(average, 0)}`
-      : [`Over budget: you average ${dollars(average, 0)}`, 'status-line warning']);
-  }
-  subs.push(['Weekdays are Monday to Friday', 'faint']);
-  return tile('Per weekday left', dollars(perDay, 0), subs);
-}
-
 function recentPace(forecast) {
   return forecast.basis === 'recent' ? " at the last 30m's pace" : '';
 }
 
-function limitTile({limit, limits}) {
-  const subs = [];
-  const headed = headedFor(limit, limits.fetched_at_ms);
-  if (limit.forecast) subs.push([`100% by ${localTime(limit.forecast.full_at_ms)}${recentPace(limit.forecast)}`, 'status-line critical']);
-  else if (headed !== null) subs.push(headed >= 100 ? [`Headed past 100% before the reset`, 'status-line warning'] : `Headed for about ${percent(headed)} at the reset`);
-  if (limit.elsewhere_percent) subs.push(`~${Math.round(limit.elsewhere_percent)}% used elsewhere (estimate)`);
-  if (limit.resets_at) subs.push('Resets ' + localTime(Date.parse(limit.resets_at)));
-  if (limit.pace) subs.push([`Mark shows even pace (${percent(limit.pace.expected_percent)}) · from ${limitAge(limits)}`, 'faint']);
-  return tile(limitName(limit), percent(limit.percent), subs, {meter: limit.percent / 100, expected: limit.pace ? limit.pace.expected_percent / 100 : undefined, elsewhere: limit.elsewhere_percent ? limit.elsewhere_percent / 100 : undefined});
-}
-
-function todayTile(account, shareable) {
-  const pace = account.pace;
-  const subs = [];
-  if (pace.usual_usd !== null && pace.usual_usd > 0) {
-    const times = account.cost_usd / pace.usual_usd;
-    subs.push(times >= 1.5 ? [`${times.toFixed(1)}× your usual ${dollars(pace.usual_usd)} by ${pace.clock}`, 'status-line warning'] : `Usual by ${pace.clock}: ${dollars(pace.usual_usd)}`);
-  } else {
-    subs.push(['No usual yet', 'faint']);
-  }
-  if (account.fastest_session && !shareable) subs.push(['Busiest now: ' + account.fastest_session.label, 'faint']);
-  return tile('Today', dollars(account.cost_usd), subs);
-}
-
-function driverTile(view, shareable) {
+function driverTile(view) {
   const merged = new Map();
   for (const row of view.agents) {
     const id = row.agent + ' · ' + row.model;
@@ -1350,19 +1551,21 @@ function driverTile(view, shareable) {
   return tile('Biggest driver', percent(top.cost / total * 100), [
     `${who} on ${prettyModel(top.model)}`,
     [`${money(top.cost)} of ${money(total)}`, 'faint'],
-  ], shareable ? {} : {onClick: () => document.getElementById('who')?.scrollIntoView({behavior: 'smooth', block: 'start'})});
+  ]);
 }
 
 // Chart
 
-function spendChart(view, chartBy, entries, interactive) {
+function spendChart(view, chartBy, series, interactive) {
   const card = element('section', undefined, 'card');
   const head = element('div', undefined, 'card-head');
   head.append(element('h2', 'Spend per day'));
-  if (interactive && !state.scope.length) head.append(tabs(CHART_BY, chartBy, chart => { state.chart = chart; loadChart(); }, 'Color by', 'tabs small'));
-  else head.append(element('span', 'By ' + GROUP_NAMES[chartBy].toLowerCase(), 'hint'));
+  if (interactive && !state.scope.length) head.append(tabs(chartOptions(), chartBy, pickChart, 'Color by', 'tabs small'));
+  else head.append(element('span', 'By ' + chartName(chartBy).toLowerCase(), 'hint'));
   card.append(head);
+  const entries = chartBy === 'account' ? byAccount(series) : series;
   const {order, colors, totals, labels} = seriesColors(entries);
+  if (chartBy === 'account') for (const id of order) if (id !== 'other') colors.set(id, accountColor(id || null));
   const days = daysBetween(view.first, view.last);
   const index = new Map(days.map((day, position) => [day, position]));
   const perDay = days.map(() => new Map());
@@ -1449,25 +1652,146 @@ function localMidnight(day) {
   return new Date(day + 'T00:00:00').getTime();
 }
 
-function limitsOverTime(view) {
+const RECENT_LIMIT_DAYS = 28;
+const HOUR_MS = 3600000;
+
+function creditPeriodStart(pace, atMs) {
+  const first = new Date(pace.window_start_ms);
+  const day = Math.max(first.getUTCDate(), new Date(pace.window_end_ms).getUTCDate());
+  const timeOfDay = pace.window_start_ms - Date.UTC(first.getUTCFullYear(), first.getUTCMonth(), first.getUTCDate());
+  let year = first.getUTCFullYear(), month = first.getUTCMonth(), start = pace.window_start_ms;
+  while (start > atMs) {
+    month -= 1;
+    if (month < 0) [year, month] = [year - 1, 11];
+    const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+    start = Date.UTC(year, month, Math.min(day, daysInMonth)) + timeOfDay;
+  }
+  return start;
+}
+
+function limitPeriods(limit, current) {
+  const periods = new Map();
+  const since = localMidnight(addDays(localDay(), -RECENT_LIMIT_DAYS));
+  const creditPace = limit.kind === 'credits' && current?.pace && !current.pace.provisional ? current.pace : null;
+  for (const point of limit.points) {
+    if (point.at_ms < since) continue;
+    const reset = point.resets_at ? Math.round(Date.parse(point.resets_at) / HOUR_MS) * HOUR_MS : null;
+    const id = limit.kind !== 'credits' ? reset : creditPace ? creditPeriodStart(creditPace, point.at_ms) : localDay(new Date(point.at_ms)).slice(0, 7);
+    if (id === null) continue;
+    const period = periods.get(id) ?? {id, reset, peak: 0, peakAt: point.at_ms, fullAt: null, readings: 0};
+    period.readings += 1;
+    if (point.percent > period.peak) { period.peak = point.percent; period.peakAt = point.at_ms; }
+    if (point.percent >= 100) period.fullAt = point.at_ms;
+    periods.set(id, period);
+  }
+  return [...periods.values()];
+}
+
+function periodName(limit, period, current) {
+  if (limit.kind === 'credits' && typeof period.id === 'number') {
+    if (period.id === current.pace.window_start_ms) return 'this period';
+    return `period from ${shortDate(localDay(new Date(period.id)))}`;
+  }
+  if (limit.kind === 'credits') {
+    if (period.id === localDay().slice(0, 7)) return 'this month';
+    return new Date(period.id + '-01T00:00:00Z').toLocaleDateString(undefined, {month: 'long', timeZone: 'UTC'});
+  }
+  if (current?.resets_at && Math.round(Date.parse(current.resets_at) / HOUR_MS) * HOUR_MS === period.reset) return 'this period';
+  return `week of ${shortDate(localDay(new Date(period.reset - 7 * DAY_MS + 12 * HOUR_MS)))}`;
+}
+
+function sameLimit(a, b) {
+  return a.kind === b.kind && (a.scope ?? null) === (b.scope ?? null);
+}
+
+function limitRecord(account, current) {
+  const history = latest.limitsRecent.accounts.find(entry => entry.account === account.account)?.limits.find(entry => sameLimit(entry, current));
+  const periods = history ? limitPeriods(history, current) : [];
+  const highest = periods.reduce((best, period) => !best || period.peak > best.peak ? period : best, null);
+  const full = periods.filter(period => period.fullAt !== null);
+  return {
+    highest: highest ? {percent: highest.peak, when: periodName(current, highest, current) + (highest.readings === 1 ? ', one reading' : '')} : null,
+    ranOut: full.length ? {count: full.length, last: Math.max(...full.map(period => period.fullAt))} : null,
+  };
+}
+
+function limitFraction(limit) {
+  return limit.kind === 'credits' && limit.credits?.limit ? limit.credits.used / limit.credits.limit : limit.percent / 100;
+}
+
+function resetTime(ms) {
+  const at = new Date(Math.round(ms / 60000) * 60000);
+  const minutes = at.getMinutes();
+  return at.toLocaleString(undefined, {weekday: 'short', hour: 'numeric', ...(minutes ? {minute: '2-digit'} : {})});
+}
+
+function limitReset(limit) {
+  if (limit.kind === 'credits' && limit.pace && !limit.pace.provisional) return `resets ${shortDate(localDay(new Date(limit.pace.window_end_ms)))}`;
+  if (limit.kind === 'credits') return new Date().toLocaleDateString(undefined, {month: 'long'});
+  return limit.resets_at ? `resets ${resetTime(Date.parse(limit.resets_at))}` : '';
+}
+
+function limitsCard(view) {
   const card = element('section', undefined, 'card');
   const head = element('div', undefined, 'card-head');
-  head.append(element('h2', 'Limits over time'), element('span', state.scope.length ? 'For the whole account, not only this focus · dashed lines mark resets' : 'Dashed lines mark resets', 'hint'));
+  const title = element('div', undefined, 'title');
+  title.append(element('h2', 'Limits'), element('span', state.scope.length ? 'For the whole account, not only this focus. Click a row for its full chart.' : 'Is any limit close, and has any run out? Click a row for its full chart.', 'hint'));
+  head.append(title);
   card.append(head);
+  const accounts = forAccount(accountsBySpend()).filter(account => account.limits);
+  const several = latest.now.accounts.length > 1 && state.account === ALL;
+  const list = element('div', undefined, 'limit-rows');
+  const header = element('div', undefined, 'limit-row limit-header');
+  for (const text of ['Limit', 'This period', 'Highest, last 4 weeks', 'Ran out']) header.append(element('span', text));
+  list.append(header);
+  for (const account of accounts) {
+    for (const limit of account.limits.limits.filter(entry => entry.kind !== 'session')) {
+      const record = limitRecord(account, limit);
+      const fraction = limitFraction(limit);
+      const line = element('div', undefined, 'limit-row');
+      const name = element('span', undefined, 'limit-name');
+      if (several) name.append(element('b', account.account_label ?? 'Account'), ' ');
+      name.append(several ? shortLimitName(limit) : limitName(limit));
+      const now = element('span', undefined, 'limit-now');
+      now.append(meter(fraction, limit.pace ? limit.pace.expected_percent / 100 : undefined), element('b', percent(fraction * 100)), element('small', limitReset(limit)));
+      const highest = element('span', record.highest ? percent(record.highest.percent) : '–', 'limit-peak');
+      if (record.highest) highest.append(' ', element('small', record.highest.when));
+      const ranOut = element('span', record.ranOut ? `${record.ranOut.count === 1 ? 'Once' : `${record.ranOut.count} times`}, last ${longDate(record.ranOut.last)}` : 'Never', record.ranOut ? 'limit-out status-line warning' : 'limit-out');
+      line.append(name, now, highest, ranOut);
+      clickable(line, () => limitPanel(account, limit, record, view));
+      list.append(line);
+    }
+  }
+  if (list.children.length === 1) {
+    card.append(element('p', 'No limit readings for this account.', 'note'));
+    return card;
+  }
+  card.append(list, element('p', 'The tick marks even pace: where use would sit now if spread evenly over the week or month.', 'note'));
+  return card;
+}
+
+function limitPanel(account, limit, record, view) {
+  panelShell(`${account.account_label ?? 'Account'}: ${limitName(limit)}`, view.period);
+  const {facts, fact} = factList();
+  const fraction = limitFraction(limit);
+  fact('This period', `${percent(fraction * 100)}${limit.pace ? `, even pace ${percent(limit.pace.expected_percent)}` : ''}${limitReset(limit) ? `, ${limitReset(limit)}` : ''}`);
+  if (record.highest) fact('Highest', `${percent(record.highest.percent)}, ${record.highest.when}, in the last 4 weeks`);
+  fact('Ran out', record.ranOut ? `${record.ranOut.count === 1 ? 'Once' : `${record.ranOut.count} times`} in the last 4 weeks, last ${longDate(record.ranOut.last)}` : 'Never in the last 4 weeks');
+  if (limit.forecast) fact('Forecast', `100% by about ${localTime(limit.forecast.full_at_ms)}${recentPace(limit.forecast)}`);
+  else if (limit.kind !== 'credits' && headedFor(limit, account.limits.fetched_at_ms) !== null) fact('Headed for', `about ${percent(Math.min(headedFor(limit, account.limits.fetched_at_ms), 999))} at the reset`);
+  if (limit.elsewhere_percent) fact('Elsewhere', `~${Math.round(limit.elsewhere_percent)}% used on other machines or claude.ai (estimate)`);
+  if (limit.elsewhere_usd) fact('Elsewhere', `${dollars(limit.elsewhere_usd, 0)} used on other machines or claude.ai`);
+  const session = limit.kind === 'credits' ? null : account.limits.limits.find(entry => entry.kind === 'session');
+  if (session?.elsewhere_percent) fact('Session elsewhere', `~${Math.round(session.elsewhere_percent)}% of the session limit used on other machines or claude.ai (estimate)`);
+  fact('Read from', limitAge(account.limits));
+  panel.append(facts);
   const start = localMidnight(view.first);
   const end = Math.min(localMidnight(addDays(view.last, 1)), Date.now());
-  const accounts = forAccount(latest.limits.accounts);
-  let drawn = 0;
-  for (const account of accounts) {
-    const charts = account.limits.map(limit => limitChart(limit, start, end)).filter(Boolean);
-    if (charts.length && accounts.length > 1) {
-      card.append(element('h3', latest.now.accounts.find(known => known.account === account.account)?.account_label ?? account.account, 'limits-account'));
-    }
-    card.append(...charts);
-    drawn += charts.length;
-  }
-  if (!drawn) card.append(element('p', 'No limit readings in this range.', 'note'));
-  return card;
+  const history = latest.limits.accounts.find(entry => entry.account === account.account)?.limits ?? [];
+  const shown = [history.find(entry => sameLimit(entry, limit)), ...(limit.kind === 'credits' ? [] : [history.find(entry => entry.kind === 'session')])];
+  const charts = shown.filter(Boolean).map(entry => limitChart(entry, start, end, PANEL_CHART_WIDTH)).filter(Boolean);
+  if (charts.length) panel.append(element('h3', 'Over this range'), ...charts, element('p', 'Dashed lines mark resets. After a reset the line sits at 0% until the next reading.', 'note'));
+  else panel.append(element('p', 'No readings in this range.', 'note'));
 }
 
 function limitSteps(points, start, end) {
@@ -1489,7 +1813,7 @@ function limitSteps(points, start, end) {
   return {steps: clipped, resets: resets.filter(reset => reset > start && reset < end)};
 }
 
-function limitChart(limit, start, end) {
+function limitChart(limit, start, end, chartSize = chartWidth()) {
   const {steps, resets} = limitSteps(limit.points, start, end);
   if (!steps.length) return null;
   const wrap = element('div', undefined, 'limit-chart');
@@ -1499,7 +1823,7 @@ function limitChart(limit, start, end) {
   const peakText = element('span', `Peak ${percent(peak)}${resets.length ? ` · ${resets.length} ${resets.length === 1 ? 'reset' : 'resets'}` : ''}`);
   top.append(name, peakText);
   wrap.append(top);
-  const width = chartWidth(), height = 120, left = 48, right = 0, upper = 6, lower = 24;
+  const width = chartSize, height = 120, left = 48, right = 0, upper = 6, lower = 24;
   const x = ms => left + (width - left - right) * (ms - start) / Math.max(end - start, 1);
   const y = value => upper + (height - upper - lower) * (1 - Math.min(value, 100) / 100);
   const root = svg('svg', {viewBox: `0 0 ${width} ${height}`, role: 'img', 'aria-label': `${limitName(limit)}, peak ${percent(peak)}`});
@@ -1638,18 +1962,6 @@ function mixLegend() {
   return legend;
 }
 
-function columns(table, first) {
-  const group = element('colgroup');
-  for (const width of ['36%', '19%', '11%', '9%', '11%', '14%']) {
-    const column = element('col');
-    column.style.width = width;
-    group.append(column);
-  }
-  table.append(group);
-  const header = table.createTHead().insertRow();
-  for (const name of [first, 'Share', 'Cost', 'Sessions', 'Per session', 'Paid for']) header.append(element('th', name));
-}
-
 function nameCell(text, meta) {
   const cell = element('td', undefined, 'name');
   const wrap = element('div', undefined, 'name-wrap');
@@ -1677,45 +1989,15 @@ function ago(ms) {
   return elapsed < 1 ? 'just now' : elapsed < 60 ? `${elapsed} min ago` : `${Math.round(elapsed / 60)} h ago`;
 }
 
-function adviceCard(view) {
-  if (state.scope.length || view.last < view.today) return null;
-  const entries = forAccount(latest.advice.accounts);
-  const card = element('section', undefined, 'card');
-  const head = element('div', undefined, 'card-head');
-  const span = entries.length && entries.every(entry => entry.behaviors?.week) ? 'This week\'s usage' : entries.length && entries.every(entry => !entry.behaviors?.week && entry.behaviors?.day) ? 'Today\'s usage' : 'Usage';
-  head.append(element('h2', 'Anthropic\'s advice'), element('span', entries.length ? `${span}, from Claude Code's /usage, read ${ago(Math.max(...entries.map(entry => entry.fetched_at_ms)))}` : 'From Claude Code\'s /usage', 'hint'));
-  card.append(head);
-  if (!entries.length) {
-    card.append(element('p', 'No advice saved today. The engine saves it hourly while Claude Code is active.', 'note'));
-    return card;
-  }
-  for (const entry of entries) {
-    const period = entry.behaviors?.week ? ['this week', entry.behaviors.week] : entry.behaviors?.day ? ['today', entry.behaviors.day] : null;
-    if (state.account === ALL) card.append(element('h3', latest.now.accounts.find(account => account.account === entry.account)?.account_label ?? entry.account));
-    const recommendations = period?.[1].recommendations ?? [];
-    if (!recommendations.length) {
-      card.append(element('p', 'Nothing flagged.', 'note'));
-      continue;
-    }
-    const list = element('div', undefined, 'advice');
-    for (const recommendation of recommendations) {
-      const row = element('div', undefined, 'advice-row');
-      const what = element('div');
-      what.append(element('span', recommendation.title ?? String(recommendation.key ?? '').replace(/_/g, ' ')));
-      if (recommendation.detail) what.append(element('small', recommendation.detail));
-      row.append(what, element('b', `${percent(recommendation.pct ?? 0)} of usage`));
-      list.append(row);
-    }
-    card.append(list);
-    card.append(element('p', `Each percentage is the share of your usage ${period[0]} that matched the pattern, so they overlap.`, 'note'));
-  }
-  return card;
+function foldRows(rows) {
+  if (rows.length < FOLD_KEEP + 2) return {major: rows, tail: []};
+  return {major: rows.slice(0, FOLD_KEEP), tail: rows.slice(FOLD_KEEP)};
 }
 
-function foldRows(rows, costOf) {
-  if (rows.length <= FOLD_MIN_ROWS) return {major: rows, tail: []};
+function foldSmallRows(rows, costOf) {
+  if (rows.length <= EXPORT_FOLD_MIN_ROWS) return {major: rows, tail: []};
   const total = rows.reduce((sum, row) => sum + (costOf(row) ?? 0), 0);
-  const major = rows.filter(row => (costOf(row) ?? 0) >= total * FOLD_SHARE);
+  const major = rows.filter(row => (costOf(row) ?? 0) >= total * EXPORT_FOLD_SHARE);
   const tail = rows.filter(row => !major.includes(row));
   return tail.length >= 2 ? {major, tail} : {major: rows, tail: []};
 }
@@ -1743,7 +2025,20 @@ function clickable(line, action) {
   line.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); action(); } });
 }
 
-function breakdown(view, colors) {
+function rankRow(name, value, total, top) {
+  const line = element('div', undefined, 'rank');
+  const label = element('span', undefined, 'rank-name');
+  label.append(element('span', name, 'name-text'));
+  label.title = name;
+  const track = element('span', undefined, 'track');
+  const fill = element('span');
+  fill.style.width = (top > 0 ? (value ?? 0) / top * 100 : 0) + '%';
+  if (value > 0) track.append(fill);
+  line.append(label, track, element('b', value == null ? 'no price' : money(value)), element('em', shareText(total > 0 ? (value ?? 0) / total : 0)));
+  return line;
+}
+
+function breakdown(view) {
   const by = breakdownGrouping();
   const card = element('section', undefined, 'card');
   const head = element('div', undefined, 'card-head');
@@ -1753,57 +2048,82 @@ function breakdown(view, colors) {
     card.append(element('p', 'No spend in this range.', 'note'));
     return card;
   }
-  card.append(mixLegend());
   const total = cost(view.rows);
-  const sameColors = by === chartGrouping();
   const opensPanel = Boolean(SCOPE_OF_LEVEL[view.level]);
-  const wrapper = element('div', undefined, 'table');
-  const table = element('table');
-  columns(table, LEVEL_NAMES[view.level]);
-  const body = table.createTBody();
-  const foot = table.createTFoot().insertRow();
-  const sessions = [...view.mix.values()].reduce((sum, mix) => sum + mix.sessions, 0);
-  foot.append(element('td', 'Total'), element('td', ''), element('td', dollars(total)), element('td', ''), element('td', ''), element('td', ''));
-
-  const valueCells = (line, row, mix) => {
-    line.append(shareCell(total > 0 ? (row.cost_usd ?? 0) / total : 0, row.color));
-    line.append(element('td', row.cost_usd == null ? 'no price' : dollars(row.cost_usd)));
-    const count = mix?.sessions ?? 0;
-    line.append(element('td', count ? count.toLocaleString() : '', count ? '' : 'dim'));
-    line.append(element('td', perSession(row, mix)));
-    line.append(mixCell(mix));
-  };
-
-  const addRow = (row, color) => {
-    const line = body.insertRow();
-    line.append(nameCell(rowName(row, view.level)));
-    valueCells(line, {...row, color}, view.mix.get(rowId(row)));
-    if (row.not_in_transcript) clickable(line, openNotInTranscriptsPanel);
-    else if (opensPanel && row.key != null) clickable(line, () => openRowPanel(row, view.level));
-  };
-
-  const {major, tail} = foldRows(view.rows, row => row.cost_usd);
+  const {major, tail} = foldRows(view.rows);
+  const top = Math.max(0, cost(tail), ...view.rows.map(row => row.cost_usd ?? 0));
+  const list = element('div', undefined, 'rank-list' + (['repo', 'repo_branch'].includes(view.level) ? ' code' : ''));
   const toggle = () => { expanded.has('where') ? expanded.delete('where') : expanded.add('where'); fill(); };
+  const link = text => {
+    const button = element('button', text, 'link-button inline');
+    button.type = 'button';
+    button.addEventListener('click', toggle);
+    return button;
+  };
 
   const fill = () => {
-    body.replaceChildren();
+    list.replaceChildren();
     const open = expanded.has('where');
-    for (const row of open ? view.rows : major) addRow(row, tail.includes(row) ? 'var(--other)' : sameColors ? colors.get(rowId(row)) ?? 'var(--other)' : null);
+    for (const row of open ? view.rows : major) {
+      const line = rankRow(rowName(row, view.level), row.cost_usd, total, top);
+      if (row.not_in_transcript) clickable(line, openNotInTranscriptsPanel);
+      else if (opensPanel && row.key != null) clickable(line, () => openRowPanel(row, view.level));
+      list.append(line);
+    }
     if (!tail.length) return;
     if (open) {
-      foldRow(body, null, 'Show fewer', toggle).cells[0].colSpan = 6;
+      list.append(link('Show fewer'));
       return;
     }
-    valueCells(foldRow(body, `Others (${tail.length})`, 'Show', toggle), {cost_usd: cost(tail), color: 'var(--other)'}, foldMix(tail, view.mix));
+    const others = rankRow(`Others (${tail.length})`, cost(tail), total, top);
+    others.classList.add('others');
+    others.firstChild.append(link('Show'));
+    list.append(others);
   };
 
   fill();
-  wrapper.append(table);
-  card.append(wrapper);
-  const distinct = view.sessionCount ?? sessions;
-  const partial = view.keptFrom && view.keptFrom > view.first;
-  const hint = distinct ? `${distinct.toLocaleString()} sessions in this range${partial ? `, counted from ${shortDate(view.keptFrom)}, when session detail starts` : ''}. ` : '';
-  card.append(element('p', `${hint}"Paid for" splits each row's cost by token type at list price.`, 'note'));
+  card.append(list);
+  if (opensPanel) card.append(element('p', view.level === 'repo' ? 'Click a row for its branches, sessions, and token mix.' : 'Click a row for its sessions and token mix.', 'note'));
+  return card;
+}
+
+const PAID_FOR_LINES = {
+  input_usd: 'New prompt text not yet cached.',
+  output_usd: 'What Claude wrote, thinking included.',
+  cache_write_usd: 'Context built from scratch: a new session, a subagent launch, or a resume after the cache expired. Fewer launches and cold restarts lower it.',
+  cache_read_usd: 'Context re-read on every turn. Grows with long sessions.',
+};
+
+function paidForCard(view) {
+  const card = element('section', undefined, 'card');
+  const head = element('div', undefined, 'card-head');
+  head.append(element('h2', 'What the money paid for'));
+  card.append(head);
+  const paid = paidTotals(forAccount(latest.data.rows));
+  if (paid.total <= 0) {
+    card.append(element('p', 'No priced tokens in this range.', 'note'));
+    return card;
+  }
+  const before = previousPaid(view);
+  const parts = MIX_PARTS.filter(([field]) => paid[field] > 0).sort(([a], [b]) => paid[b] - paid[a]);
+  const bar = element('div', undefined, 'paid-bar');
+  bar.setAttribute('role', 'img');
+  bar.setAttribute('aria-label', parts.map(([field, label]) => `${label} ${shareText(paid[field] / paid.total)}`).join(', '));
+  const list = element('div', undefined, 'paid-list');
+  for (const [field, label, slot] of parts) {
+    const piece = element('span');
+    piece.style.flexGrow = String(paid[field]);
+    piece.style.background = `var(${slot})`;
+    bar.append(piece);
+    const row = element('div', undefined, 'paid-row' + (field === 'cache_write_usd' ? ' lead' : ''));
+    const key = element('i');
+    key.style.setProperty('--swatch', `var(${slot})`);
+    row.append(key, element('span', label, 'paid-name'), element('b', money(paid[field])), element('em', shareText(paid[field] / paid.total)));
+    row.append(element('span', PAID_FOR_LINES[field], 'paid-means'));
+    if (before) row.append(element('span', `${shareText(before[field] / before.total)} in ${shortPrevious(view)}`, 'paid-before'));
+    list.append(row);
+  }
+  card.append(bar, list);
   return card;
 }
 
@@ -1832,7 +2152,7 @@ function staticBreakdown(title, rows, level, mix, previous) {
   const header = table.createTHead().insertRow();
   for (const name of [LEVEL_NAMES[level], 'Share', 'Cost', ...(previous ? ['Change'] : []), 'Sessions', 'Per session', 'Paid for']) header.append(element('th', name));
   const body = table.createTBody();
-  const {major, tail} = foldRows(rows, row => row.cost_usd);
+  const {major, tail} = foldSmallRows(rows, row => row.cost_usd);
   const shownRows = [...major];
   if (tail.length) {
     const tailMix = foldMix(tail, mix);
@@ -1862,7 +2182,9 @@ function whoDidTheWork(rows, interactive) {
   const card = element('section', undefined, 'card');
   card.id = 'who';
   const head = element('div', undefined, 'card-head');
-  head.append(element('h2', 'Who did the work'), element('span', 'Your own conversation and each subagent, by the model it ran on', 'hint'));
+  const title = element('div', undefined, 'title');
+  title.append(element('h2', 'Who did the work'), element('span', 'Your own conversation and each subagent, by the model it ran on', 'hint'));
+  head.append(title);
   card.append(head);
   if (!rows.length) {
     card.append(element('p', 'No spend in this range.', 'note'));
@@ -1886,24 +2208,25 @@ function whoDidTheWork(rows, interactive) {
   const table = element('table');
   const group = element('colgroup');
   const modelColumns = shown.length + (rest.length ? 1 : 0);
-  for (const width of ['30%', '22%', ...Array(modelColumns).fill(`${36 / modelColumns}%`), '12%']) {
+  for (const width of ['34%', ...Array(modelColumns).fill(`${44 / modelColumns}%`), '12%', '10%']) {
     const column = element('col');
     column.style.width = width;
     group.append(column);
   }
   table.append(group);
   const header = table.createTHead().insertRow();
-  header.append(element('th', 'Who'), element('th', 'Share'));
+  header.append(element('th', 'Who'));
   for (const model of shown) header.append(element('th', prettyModel(model)));
   if (rest.length) header.append(element('th', 'Other models'));
-  header.append(element('th', 'Total'));
+  header.append(element('th', 'Total'), element('th', 'Share'));
   const body = table.createTBody();
-  const cell = value => element('td', value >= 0.005 ? dollars(value) : '—', value >= 0.005 ? '' : 'dim');
+  const whole = value => dollars(value, value > 0 && value < 1 ? 2 : 0);
+  const cell = value => element('td', value >= 0.005 ? whole(value) : '–', value >= 0.005 ? '' : 'dim');
+  const share = sum => element('td', shareText(total > 0 ? sum / total : 0), 'dim');
   const valueCells = (line, models, sum) => {
-    line.append(shareCell(total > 0 ? sum / total : 0));
     for (const model of shown) line.append(cell(models.get(model) || 0));
     if (rest.length) line.append(cell(rest.reduce((acc, model) => acc + (models.get(model) || 0), 0)));
-    line.append(element('td', dollars(sum)));
+    line.append(element('td', whole(sum), 'strong'), share(sum));
   };
   const addRow = agent => {
     const line = body.insertRow();
@@ -1913,7 +2236,7 @@ function whoDidTheWork(rows, interactive) {
     valueCells(line, agent.models, agent.total);
   };
   const ordered = [...agents.values()].sort((a, b) => b.total - a.total);
-  const {major, tail} = foldRows(ordered, agent => agent.total);
+  const {major, tail} = interactive ? foldRows(ordered) : foldSmallRows(ordered, agent => agent.total);
   const toggle = () => { expanded.has('who') ? expanded.delete('who') : expanded.add('who'); fill(); };
   const fill = () => {
     body.replaceChildren();
@@ -1924,33 +2247,22 @@ function whoDidTheWork(rows, interactive) {
       foldRow(body, null, 'Show fewer', toggle).cells[0].colSpan = 3 + modelColumns;
       return;
     }
-    const models = new Map();
-    for (const agent of tail) for (const [model, value] of agent.models) models.set(model, (models.get(model) || 0) + value);
-    valueCells(foldRow(body, `Others (${tail.length})`, interactive ? 'Show' : null, toggle), models, tail.reduce((sum, agent) => sum + agent.total, 0));
+    const sum = tail.reduce((acc, agent) => acc + agent.total, 0);
+    const line = foldRow(body, `Others (${tail.length})`, interactive ? 'Show' : null, toggle);
+    for (let column = 0; column < modelColumns; column++) line.append(element('td'));
+    line.append(element('td', whole(sum), 'dim'), share(sum));
   };
   fill();
-  const foot = table.createTFoot().insertRow();
-  foot.append(element('td', 'Total'), element('td', ''));
-  for (const model of shown) foot.append(element('td', dollars(modelTotals.get(model))));
-  if (rest.length) foot.append(element('td', dollars(rest.reduce((sum, model) => sum + modelTotals.get(model), 0))));
-  foot.append(element('td', dollars(total)));
+  if (!interactive) {
+    const foot = table.createTFoot().insertRow();
+    foot.append(element('td', 'Total'));
+    for (const model of shown) foot.append(element('td', whole(modelTotals.get(model))));
+    if (rest.length) foot.append(element('td', whole(rest.reduce((sum, model) => sum + modelTotals.get(model), 0))));
+    foot.append(element('td', whole(total)), element('td', ''));
+  }
   wrapper.append(table);
   card.append(wrapper);
   return card;
-}
-
-const INSIGHT_ROWS = 8;
-let insightsShowAll = false;
-let insightsTab = 'suggestions';
-
-function perRun(weeks) {
-  const runs = weeks.reduce((sum, week) => sum + week.runs, 0);
-  const cost = weeks.reduce((sum, week) => sum + week.cost_usd, 0);
-  return runs ? cost / runs : null;
-}
-
-function signedPercent(fraction) {
-  return `${fraction < 0 ? '−' : '+'}${percent(Math.abs(fraction) * 100)}`;
 }
 
 function weekText(week) {
@@ -1964,25 +2276,6 @@ function changeEffect(change) {
 
 function lowerFirst(text) {
   return text.charAt(0).toLowerCase() + text.slice(1);
-}
-
-function insightLine(row, note) {
-  const line = element('div', undefined, 'insight-row');
-  const sized = note.takeaways.filter(item => item.monthly_usd !== null);
-  const headline = sized[0] ?? note.takeaways[0];
-  const main = element('div', undefined, 'insight-main');
-  const title = element('span', headline?.title ?? '', sized.length ? '' : 'dim');
-  main.append(title);
-  if (sized.length > 1) main.append(element('span', ` +${sized.length - 1} more`, 'dim'));
-  const recent = perRun(row.weeks.slice(-2));
-  const before = perRun(row.weeks.slice(-4, -2));
-  const last = element('span', recent === null ? '—' : dollars(recent), 'insight-num insight-last' + (recent === null ? ' dim' : ''));
-  if (recent !== null && before) last.append(element('small', signedPercent(recent / before - 1)));
-  const name = element('span', row.name, 'insight-name');
-  if (note.subagent) name.append(element('small', 'Subagent'));
-  line.append(name, main, element('span', row.runs.toLocaleString(), 'insight-num insight-runs'), element('b', note.to_save_usd === null ? '—' : dollars(note.to_save_usd, 0), 'insight-num' + (note.to_save_usd === null ? ' dim' : '')), last);
-  clickable(line, () => insightsPanel(row, note.subagent, note));
-  return line;
 }
 
 function claudePrompt(row, isSubagent) {
@@ -2157,62 +2450,203 @@ function eventPanel(event, ordered) {
   panel.append(links);
 }
 
-function changesTab(card, events, ordered) {
-  const total = effect => events.filter(event => event.effect === effect).reduce((sum, event) => sum + event.monthly_usd, 0);
-  const verdict = [['saving', total('saving')], ['costing', total('costing')]].filter(([, value]) => value).map(([word, value]) => `${word} ${dollars(value, 0)} a month`).join(', ');
+const TODO_ROWS = 3;
+const NO_CAUSE = 'No model or effort change';
+let changeTab = 'suggestions';
+const changeTabOpen = new Set();
+
+function todoRow({what, why, amount, note, tone, onOpen}) {
+  const line = element('div', undefined, 'todo-row');
+  const text = element('div');
+  text.append(what instanceof Node ? what : element('div', what, 'todo-what'));
+  if (why) text.append(element('div', why, 'todo-why'));
+  const figure = element('div', amount, 'todo-amount' + (tone ? ' ' + tone : ''));
+  if (note) figure.append(element('small', note));
+  line.append(text, figure);
+  if (onOpen) clickable(line, onOpen);
+  return line;
+}
+
+function todoList(card, tab, rows, footNote) {
+  const open = changeTabOpen.has(tab);
+  const list = element('div', undefined, 'todo');
+  list.append(...(open ? rows : rows.slice(0, TODO_ROWS)));
+  card.append(list);
+  const more = rows.length > TODO_ROWS;
+  if (!more && !footNote) return;
+  const foot = element('div', undefined, 'tab-foot');
+  if (more) {
+    const toggle = element('button', open ? 'Show fewer' : `Show all ${rows.length}`, 'link-button');
+    toggle.type = 'button';
+    toggle.addEventListener('click', () => { open ? changeTabOpen.delete(tab) : changeTabOpen.add(tab); render(); });
+    foot.append(toggle);
+  }
+  if (footNote) foot.append(element('span', footNote));
+  card.append(foot);
+}
+
+function biggestTakeaway(note) {
+  return note.takeaways.filter(item => item.monthly_usd !== null).sort((a, b) => b.monthly_usd - a.monthly_usd)[0] ?? null;
+}
+
+function perRun(weeks) {
+  const runs = weeks.reduce((sum, week) => sum + week.runs, 0);
+  return runs ? weeks.reduce((sum, week) => sum + week.cost_usd, 0) / runs : null;
+}
+
+function plural(name) {
+  return name.endsWith('s') ? name : name + 's';
+}
+
+function suggestionText(row, note, takeaway) {
+  const text = suggestionSentence(row, note, takeaway);
+  if (!note.subagent || !text.what.startsWith(row.name)) return text;
+  const what = element('div', row.name, 'todo-what');
+  what.append(element('span', ' subagent', 'dim'), text.what.slice(row.name.length));
+  return {...text, what};
+}
+
+function suggestionSentence(row, note, takeaway) {
+  const name = row.name;
+  const kind = note.subagent ? 'subagent' : 'skill';
+  const recent = perRun(row.weeks.slice(-2));
+  const runs = `${row.runs.toLocaleString()} run${row.runs === 1 ? '' : 's'}${recent === null ? '' : `, ${dollars(recent)} a run over the last 2 weeks`}`;
+  const rise = /^Cost per run up (\d+%) since (.+?), (.+)$/.exec(takeaway.title);
+  if (rise) {
+    const [, change, date, cause] = rise;
+    const why = cause === 'no model or effort change' ? `No model or effort change. Check the ${kind}'s edits around ${date}.` : `${capitalized(cause)} that week.`;
+    return {what: `${name} costs ${change} more a run since ${date}`, why};
+  }
+  const launches = /^([\d.]+) (.+) launches a run$/.exec(takeaway.title);
+  if (launches) return {what: `${name} launches ${launches[1]} ${plural(launches[2])} a run`, why: runs};
+  const repeat = /^Repeat runs in the same session \((.+)\)$/.exec(takeaway.title);
+  if (repeat) return {what: `${name} spends ${repeat[1]} on repeat runs in the same session`, why: runs};
+  const launchedFirst = /^(.+)'s first requests are (.+) of its cost$/.exec(takeaway.title);
+  if (launchedFirst) return {what: `${launchedFirst[1]} spends ${launchedFirst[2]} of its cost in ${name} on first requests`, why: `Check what ${name} hands it: a path or a slice instead of the whole input.`};
+  const first = /^First requests are (.+) of its cost$/.exec(takeaway.title);
+  if (first) return {what: `${name} spends ${first[1]} of its cost on first requests`, why: 'Check what the skills that launch it hand it: a path or a slice instead of the whole input.'};
+  const tenth = /^Costliest tenth of sessions spent (.+)$/.exec(takeaway.title);
+  if (tenth) return {what: `${name}'s costliest tenth of sessions spent ${tenth[1]}`, why: runs};
+  return {what: `${name}: ${lowerFirst(takeaway.title)}`, why: takeaway.detail};
+}
+
+function suggestionRows(card, ordered) {
+  const flagged = ordered.filter(([, note]) => note.to_save_usd !== null && biggestTakeaway(note));
+  const quiet = ordered.length - flagged.length;
+  const footNote = quiet ? `${quiet.toLocaleString()} more ran with nothing to flag` : null;
+  if (!flagged.length) {
+    card.append(element('p', ordered.length ? 'Nothing flagged in the last 8 weeks.' : 'No skill or subagent runs in the last 8 weeks.', 'note'));
+    if (footNote) card.append(element('p', footNote, 'note'));
+    return;
+  }
+  todoList(card, 'suggestions', flagged.map(([row, note]) => {
+    const {what, why} = suggestionText(row, note, biggestTakeaway(note));
+    return todoRow({what, why, amount: dollars(note.to_save_usd, 0), note: 'a month at stake', onOpen: () => insightsPanel(row, note.subagent, note)});
+  }), footNote);
+}
+
+function joinNames(names) {
+  return names.length < 3 ? names.join(' and ') : `${names.slice(0, -1).join(', ')}, and ${names.at(-1)}`;
+}
+
+function eventTitle(event) {
+  const names = joinNames(event.rows.map(member => member.name));
+  if (event.cause !== NO_CAUSE) return `${names} ${lowerFirst(event.cause)}`;
+  return `${names} got ${event.effect === 'saving' ? 'cheaper' : 'more expensive'} with no model or effort change`;
+}
+
+function eventRow(event, ordered) {
+  const why = `Week of ${shortDate(event.week)}${event.undid ? `, undoing ${shortDate(event.undid.week)}: ${lowerFirst(event.undid.cause)}` : ''}`;
+  const open = () => eventPanel(event, ordered);
+  if (event.effect === 'reversed') return todoRow({what: eventTitle(event), why, amount: `reversed ${shortDate(event.reversed_on)}`, tone: 'muted', onOpen: open});
+  const saving = event.effect === 'saving';
+  return todoRow({what: eventTitle(event), why, amount: dollars(event.monthly_usd, 0), note: saving ? 'a month saved' : 'a month more', tone: saving ? 'good' : '', onOpen: open});
+}
+
+function changeRows(card, events, ordered) {
   if (!events.length) {
     card.append(element('p', 'No change in cost per run of 30% or more in the last 8 weeks.', 'note'));
     return;
   }
-  if (verdict) card.append(element('p', verdict.charAt(0).toUpperCase() + verdict.slice(1), 'insight-verdict'));
-  const list = element('div');
-  for (const event of events) {
-    const line = element('div', undefined, `change-event ${event.effect}`);
-    const what = element('div');
-    what.append(element('span', event.cause));
-    const rows = event.rows.map(member => member.name).join(', ');
-    what.append(element('small', event.undid ? `${rows}, undoing ${shortDate(event.undid.week)}: ${lowerFirst(event.undid.cause)}` : rows));
-    line.append(element('span', shortDate(event.week)), what, element('b', eventEffect(event)));
-    clickable(line, () => eventPanel(event, ordered));
-    list.append(line);
+  const total = effect => events.filter(event => event.effect === effect).reduce((sum, event) => sum + event.monthly_usd, 0);
+  const totals = element('div', undefined, 'totals');
+  for (const [label, value, tone] of [['Saved', total('saving'), 'good'], ['Added', total('costing'), '']]) {
+    const box = element('div');
+    const figure = element('b', dollars(value, 0), tone);
+    figure.append(element('small', 'a month'));
+    box.append(element('span', label), figure);
+    totals.append(box);
   }
-  card.append(list);
-  card.append(element('p', 'Each change in cost per run of 30% or more, listed once with every skill and subagent it moved, and sized by the one it moved most. Savings and costs are against the two weeks before each change. A rise that a later change set back is folded into that later line.', 'note'));
+  card.append(totals);
+  const bySize = [...events].sort((a, b) => (a.effect === 'reversed') - (b.effect === 'reversed') || b.monthly_usd - a.monthly_usd);
+  todoList(card, 'changes', bySize.map(event => eventRow(event, ordered)), 'Against the two weeks before each change');
 }
 
-function suggestionsTab(card, ordered) {
-  const list = element('div', undefined, 'insight-list');
-  const header = element('div', undefined, 'insight-row insight-header');
-  header.append(element('span', 'What ran'), element('span', 'Biggest takeaway'), element('span', 'Runs', 'insight-num insight-runs'), element('span', 'At stake a month', 'insight-num'), element('span', 'Last 2 weeks', 'insight-num insight-last'));
-  list.append(header);
-  const shown = insightsShowAll ? ordered : ordered.slice(0, INSIGHT_ROWS);
-  for (const [row, note] of shown) list.append(insightLine(row, note));
-  card.append(list);
-  if (ordered.length > INSIGHT_ROWS) {
-    const more = element('button', insightsShowAll ? 'Show fewer' : `Show ${ordered.length - INSIGHT_ROWS} more`, 'link-button inline');
-    more.type = 'button';
-    more.addEventListener('click', () => { insightsShowAll = !insightsShowAll; render(); });
-    card.append(more);
+function adviceRecommendations(view) {
+  const entries = forAccount(latest.advice.accounts);
+  const merged = new Map();
+  const labels = [];
+  const spans = new Set();
+  for (const entry of entries) {
+    const period = entry.behaviors?.week ? ['week', entry.behaviors.week] : entry.behaviors?.day ? ['day', entry.behaviors.day] : null;
+    const recommendations = period?.[1].recommendations ?? [];
+    if (!recommendations.length) continue;
+    spans.add(period[0]);
+    const label = latest.now.accounts.find(account => account.account === entry.account)?.account_label ?? entry.account;
+    labels.push({account: entry.account, label});
+    for (const recommendation of recommendations) {
+      const key = recommendation.key ?? recommendation.title;
+      if (!merged.has(key)) merged.set(key, {title: recommendation.title ?? String(recommendation.key ?? '').replace(/_/g, ' '), detail: recommendation.detail, shares: new Map()});
+      merged.get(key).shares.set(entry.account, recommendation.pct ?? 0);
+    }
   }
-  card.append(element('p', 'Each row is one skill or subagent, the most at stake first. A skill\'s cost includes the subagents it launched, so a skill and one of its subagents can count the same dollars; don\'t add rows together. Costs are at list price.', 'note'));
+  return {entries, labels, items: [...merged.values()], span: spans.size === 1 && spans.has('day') ? 'Today' : 'This week'};
 }
 
-function insightsCard() {
+function adviceRows(card, advice) {
+  if (!advice.entries.length) {
+    card.append(element('p', 'No advice saved today. The engine saves it hourly while Claude Code is active.', 'note'));
+    return;
+  }
+  if (!advice.items.length) {
+    card.append(element('p', 'Nothing flagged.', 'note'));
+    return;
+  }
+  const several = state.account === ALL && latest.now.accounts.length > 1;
+  todoList(card, 'advice', advice.items.map(item => todoRow({
+    what: item.title,
+    why: item.detail ? capitalized(item.detail) : null,
+    amount: advice.labels.map(({account}) => item.shares.has(account) ? percent(item.shares.get(account)) : '–').join(' · '),
+    note: several ? advice.labels.map(({label}) => label).join(' · ') : 'of usage',
+  })), `Read ${ago(Math.max(...advice.entries.map(entry => entry.fetched_at_ms)))}`);
+}
+
+function whatToChange(view) {
   if (state.scope.length) return null;
-  if (!latest.insights) return insightsError ? insightsFailure() : null;
-  const ordered = insightRows();
+  const showAdvice = view.last >= view.today;
+  const advice = showAdvice ? adviceRecommendations(view) : null;
+  const options = [['suggestions', 'Suggestions'], ...(showAdvice ? [['advice', 'Anthropic\'s advice']] : []), ['changes', 'Changes']];
+  const tab = options.some(([value]) => value === changeTab) ? changeTab : 'suggestions';
+  const subtitles = {
+    suggestions: 'Last 8 weeks, all accounts',
+    advice: `${advice?.span ?? 'This week'}, from /usage · shares overlap`,
+    changes: 'Last 8 weeks, all accounts',
+  };
   const card = element('section', undefined, 'card');
+  card.setAttribute('aria-label', 'What to change');
   const head = element('div', undefined, 'card-head');
-  head.append(element('h2', 'Insights'));
-  if (ordered.length) head.append(tabs([['suggestions', 'Suggestions'], ['changes', 'Changes']], insightsTab, picked => { insightsTab = picked; render(); }, 'Show', 'tabs small'));
+  const title = element('div', undefined, 'title');
+  title.append(element('h2', 'What to change'), element('span', subtitles[tab], 'hint'));
+  head.append(title, tabs(options, tab, picked => { changeTab = picked; render(); }, 'Show', 'tabs small'));
   card.append(head);
-  card.append(element('p', `Last 8 weeks across every account, ${shortDate(latest.insights.data_starts)} to ${shortDate(latest.insights.until)}. The range and account picked above don't change it.`, 'note insight-scope'));
-  if (!ordered.length) {
-    card.append(element('p', 'No skill or subagent runs in the last 8 weeks.', 'note'));
-  } else if (insightsTab === 'changes') {
-    changesTab(card, latest.insights.takeaways?.events ?? [], ordered);
+  if (tab === 'advice') {
+    adviceRows(card, advice);
+  } else if (!latest.insights) {
+    card.append(element('p', insightsError ? `Can't load insights: ${insightsError}` : 'Loading insights…', insightsError ? 'note error' : 'note'));
+  } else if (tab === 'changes') {
+    changeRows(card, latest.insights.takeaways?.events ?? [], insightRows());
   } else {
-    suggestionsTab(card, ordered);
+    suggestionRows(card, insightRows());
   }
   return card;
 }
@@ -2220,40 +2654,54 @@ function insightsCard() {
 function biggestSessions(view) {
   const card = element('section', undefined, 'card');
   const head = element('div', undefined, 'card-head');
-  head.append(element('h2', 'Biggest sessions'));
-  if (view.keptFrom) head.append(element('span', `Session detail is kept from ${shortDate(view.keptFrom)}`, 'hint'));
+  const title = element('div', undefined, 'title');
+  title.append(element('h2', 'Biggest sessions'));
+  if (view.keptFrom) title.append(element('span', `Session detail is kept from ${shortDate(view.keptFrom)}`, 'hint'));
+  head.append(title);
   card.append(head);
   if (!view.sessions.length) {
     card.append(element('p', 'No sessions with request detail in this range.', 'note'));
     return card;
   }
+  const open = expanded.has('sessions');
+  if (view.sessions.length > PAGE_SESSIONS) {
+    const more = element('button', open ? 'Show fewer' : `Show ${view.sessions.length - PAGE_SESSIONS} more`, 'link-button');
+    more.type = 'button';
+    more.addEventListener('click', () => { open ? expanded.delete('sessions') : expanded.add('sessions'); render(); });
+    head.append(more);
+  }
+  const shown = open ? view.sessions : view.sessions.slice(0, PAGE_SESSIONS);
+  const where = session => session.branch ? `${session.repo} · ${session.branch}` : session.repo;
+  const showWhere = new Set(shown.map(where)).size > 1;
   const total = cost(view.rows);
   const wrapper = element('div', undefined, 'table');
-  const table = element('table');
+  const table = element('table', undefined, 'sessions');
   const group = element('colgroup');
-  for (const width of ['52%', '19%', '13%', '16%']) {
+  for (const width of showWhere ? ['50%', '34%', '7%', '9%'] : ['84%', '7%', '9%']) {
     const column = element('col');
     column.style.width = width;
     group.append(column);
   }
   table.append(group);
   const header = table.createTHead().insertRow();
-  for (const name of ['Session', 'Share of range', 'Cost', 'Where']) header.append(element('th', name));
+  for (const name of ['Session', ...(showWhere ? ['Where'] : []), 'Share', 'Cost']) header.append(element('th', name, name === 'Where' ? 'where' : undefined));
   const body = table.createTBody();
-  for (const session of view.sessions) {
+  for (const session of shown) {
     const line = body.insertRow();
-    line.className = 'session clickable';
-    line.tabIndex = 0;
+    line.className = 'session';
     line.append(nameCell(session.title ?? 'Untitled session', sessionMeta(session)));
-    line.append(shareCell(total > 0 ? session.cost_usd / total : 0));
-    line.append(element('td', dollars(session.cost_usd)));
-    line.append(element('td', session.branch ? `${session.repo} · ${session.branch}` : session.repo, 'dim'));
-    const open = () => openPanel(session);
-    line.addEventListener('click', open);
-    line.addEventListener('keydown', event => { if (event.key === 'Enter') open(); });
+    if (showWhere) {
+      const place = element('td', where(session), 'dim where');
+      place.title = where(session);
+      line.append(place);
+    }
+    line.append(element('td', shareText(total > 0 ? session.cost_usd / total : 0), 'dim'));
+    line.append(element('td', dollars(session.cost_usd, 0), 'strong'));
+    clickable(line, () => openPanel(session));
   }
   wrapper.append(table);
   card.append(wrapper);
+  if (!showWhere) card.append(element('p', `${shown.length > 1 ? 'All in' : 'In'} ${where(shown[0])}.`, 'note'));
   return card;
 }
 
@@ -2534,7 +2982,7 @@ async function openDayPanel(day, total, parts) {
   panel.append(facts);
   const chartBy = chartGrouping();
   const largestFirst = parts.map(([label, value, color]) => ({label, cost: value, color})).sort((a, b) => (a.color === 'var(--other)') - (b.color === 'var(--other)') || b.cost - a.cost);
-  shareList('By ' + GROUP_NAMES[chartBy].toLowerCase(), largestFirst, total);
+  shareList('By ' + chartName(chartBy).toLowerCase(), largestFirst, total);
   const note = loadingNote();
   const dayParams = () => {
     const params = scopeParams(new URLSearchParams());
@@ -2817,13 +3265,6 @@ async function fetchJson(path) {
   return body;
 }
 
-function insightsFailure() {
-  const card = element('section', undefined, 'card');
-  card.append(element('h2', 'Insights'));
-  card.append(element('p', `Can't load insights: ${insightsError}`, 'note'));
-  return card;
-}
-
 function loadInsights() {
   if (insightsAnswer || insightsRequest) return;
   insightsRequest = fetchJson('/api/insights').then(answer => {
@@ -2873,7 +3314,7 @@ async function load() {
   chartRequest++;
   const scoped = state.scope.length > 0;
   const by = breakdownGrouping();
-  const chart = chartGrouping();
+  const chart = seriesBy(chartGrouping());
   const dataQuery = scopeParams(rangeParams());
   dataQuery.set('by', by);
   const seriesQuery = scopeParams(rangeParams());
@@ -2884,10 +3325,9 @@ async function load() {
   const accountQuery = rangeParams();
   accountQuery.set('by', 'model');
   try {
-    const [now, data, mix, series, agents, month, sessions, history, accountData, advice, limits] = await Promise.all([
+    const [now, data, series, agents, month, sessions, history, accountData, advice, limits, limitsRecent] = await Promise.all([
       fetchJson('/api/now'),
       fetchJson('/api/data?' + dataQuery),
-      fetchJson('/api/mix?' + dataQuery),
       fetchJson('/api/series?' + seriesQuery),
       fetchJson('/api/agents?' + scopeParams(rangeParams())),
       fetchJson('/api/series?range=month&by=model&top=1'),
@@ -2896,19 +3336,16 @@ async function load() {
       scoped ? fetchJson('/api/data?' + accountQuery) : null,
       fetchJson('/api/advice'),
       fetchJson('/api/limits?' + rangeParams()),
+      fetchJson('/api/limits?since=' + addDays(localDay(), -RECENT_LIMIT_DAYS)),
     ]);
     const last = data.until || data.today;
     const first = data.since || series.days.map(day => day.day).sort()[0] || last;
     const previous = previousParams(data, first);
-    const lastMonth = lastMonthBounds(data.today);
-    const [previousData, lastMonthData] = await Promise.all([
-      previous ? fetchJson('/api/data?' + scopeParams(new URLSearchParams(previous.params))) : null,
-      fetchJson(`/api/data?since=${lastMonth.since}&until=${lastMonth.sameDay}&by=model`),
-    ]);
-    latest = {now, data, mix, series, agents, month, sessions, history, first, last, previous, previousData, lastMonth, lastMonthData, accountData, advice, limits, insights: insightsAnswer, fetchedAt: new Date()};
+    const previousData = previous ? await fetchJson('/api/data?' + scopeParams(new URLSearchParams(previous.params))) : null;
+    latest = {now, data, series, seriesBy: chart, agents, month, sessions, history, first, last, previous, previousData, accountData, advice, limits, limitsRecent, insights: insightsAnswer, fetchedAt: new Date()};
     render();
     if (breakdownGrouping() !== by) loadBreakdown();
-    if (chartGrouping() !== chart) loadChart();
+    if (seriesMissing()) loadChart();
     if (!scoped) loadInsights();
   } catch (error) {
     showLoadError(error);
@@ -2928,10 +3365,9 @@ async function loadBreakdown() {
   const query = scopeParams(rangeParams());
   query.set('by', breakdownGrouping());
   try {
-    const [data, mix] = await Promise.all([fetchJson('/api/data?' + query), fetchJson('/api/mix?' + query)]);
+    const data = await fetchJson('/api/data?' + query);
     if (request !== breakdownRequest || !latest) return;
     latest.data = data;
-    latest.mix = mix;
     render();
   } catch (error) {
     showLoadError(error);
@@ -2941,12 +3377,14 @@ async function loadBreakdown() {
 async function loadChart() {
   const request = ++chartRequest;
   const query = scopeParams(rangeParams());
-  query.set('by', chartGrouping());
+  const by = seriesBy(chartGrouping());
+  query.set('by', by);
   query.set('top', '20');
   try {
     const series = await fetchJson('/api/series?' + query);
-    if (request !== chartRequest || !latest) return;
+    if (request !== chartRequest || !latest || by !== seriesBy(chartGrouping())) return;
     latest.series = series;
+    latest.seriesBy = by;
     render();
   } catch (error) {
     showLoadError(error);
@@ -2954,7 +3392,7 @@ async function loadChart() {
 }
 
 function buildView() {
-  const {now, data, mix, series, agents, month, sessions, history, first, last, previous, previousData, lastMonth, lastMonthData, accountData} = latest;
+  const {now, data, series, agents, month, sessions, history, first, last, previous, previousData, accountData} = latest;
   const firstRecord = forAccount(history.days).map(day => day.day).sort()[0];
   const recordedFrom = firstRecord ? addDays(firstRecord, 1) : data.today;
   const monthByDay = new Map();
@@ -2965,7 +3403,6 @@ function buildView() {
   const covered = previous && recordedFrom <= previous.params.get('since');
   return {
     rows: mergeRows(forAccount(data.rows)),
-    mix: mergeMix(forAccount(mix.rows)),
     previousRows: previousData ? forAccount(previousData.rows) : [],
     previousLabel: covered ? previous.label : null,
     historyStart: previous && !covered ? recordedFrom : null,
@@ -2982,7 +3419,6 @@ function buildView() {
     sessions: forAccount(sessions.sessions).slice(0, 10),
     sessionCount: sessionCount(sessions),
     keptFrom: sessions.kept_from,
-    lastMonth: recordedFrom <= lastMonth.since ? {name: lastMonth.name, spend: cost(forAccount(lastMonthData.rows))} : null,
   };
 }
 
@@ -2990,7 +3426,7 @@ function render() {
   if (!latest) return;
   const known = latest.now.accounts.map(account => account.account);
   if (!known.includes(state.account) && state.account !== ALL) {
-    state.account = latest.now.accounts.find(account => slug(account.account_label ?? '') === state.account)?.account ?? known[0] ?? ALL;
+    state.account = latest.now.accounts.find(account => slug(account.account_label ?? '') === state.account)?.account ?? defaultAccount(latest.now.accounts);
   }
   writeState();
   loadedHash = location.hash;
@@ -3009,16 +3445,17 @@ function render() {
   } else {
     sections.push(headline(view, false));
   }
+  const changes = whatToChange(view);
+  if (changes) sections.push(changes);
   sections.push(chart.card);
-  sections.push(limitsOverTime(view));
-  const where = breakdown(view, chart.colors);
+  const pair = element('div', undefined, 'pair');
+  pair.append(breakdown(view), paidForCard(view));
   const who = whoDidTheWork(view.agents, true);
-  sections.push(...(primaryScope() === 'model' ? [who, where] : [where, who]));
+  const whoLeads = primaryScope() === 'model';
+  sections.push(...(whoLeads ? [who, pair] : [pair]));
+  sections.push(limitsCard(view));
+  if (!whoLeads) sections.push(who);
   sections.push(biggestSessions(view));
-  const advice = adviceCard(view);
-  if (advice) sections.push(advice);
-  const insights = insightsCard();
-  if (insights) sections.push(insights);
   document.getElementById('content').replaceChildren(...sections);
   drawProblems();
 }
